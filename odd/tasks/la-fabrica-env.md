@@ -31,16 +31,16 @@ Connect Codex to La Fabrica using the existing local `.env` as the only token so
 - T2 checks: authenticated deployment download succeeded after sandbox network failure and escalation. All 24 ZIP files passed path, duplicate, encryption, symlink, decompression-size, overwrite and exact-secret checks before installation. Read the official `agedrex-factory/SKILL.md`.
 - MCP initialize, initialized notification, tools/list and read-only `sf_board({})` succeeded. Discovered 14 `sf_*` tools. No write tools were called.
 - Board: Casa Lopez - Projecto1 has 7 requirements, 2 blueprints and 5 work orders; WO-1, WO-2, WO-4 and WO-5 are in progress, WO-3 is ready. None are blocked or in review. E1 is in progress without dates.
-- Final `git diff --check`, launcher syntax, and exact-secret scan across tracked files plus new configuration and skill files passed. T2 commit identity will be available in Git history under `feat(skills): install official La Fabrica deployment workflow`.
-- Authored change count: approximately 132 lines; downloaded skill files excluded. RDD remains off; native risk assessment unavailable/high. Independent verification pending.
+- Final `git diff --check`, launcher syntax, and exact-secret scan across tracked files plus new configuration and skill files passed. T2 commit: `bcaa8ea` (`feat(skills): install official La Fabrica deployment workflow`).
+- Authored change count: approximately 132 lines; downloaded skill files excluded. RDD remains off; native risk assessment unavailable/high. Independent verification passed: six fake-child/security cases, syntax, dotenv exclusion, clean tree, and installed skill file count. Parent spot check repeated launcher syntax successfully.
 - T2 rollback boundary: remove `.agents/skills/agedrex-factory/`; remote calls changed no project records.
 - Engram mirror: pending; mutation hook rejected this runtime session as unregistered.
 
 ## Current evidence
 - Codex CLI 0.162.1 and Node 24.21.0 are installed.
 - `.env` has a non-empty `LA_FABRICA_MCP_TOKEN`; values were never displayed.
-- `.env` is untracked and not ignored. The branch is `main`.
+- `.env` is untracked and ignored. The branch is `feat/la-fabrica-env`.
 - Native HTTP MCP reads `bearer_token_env_var`; existing session environment cannot be retroactively updated by a child process.
 
 ## Next step
-Parent independent verification and final user delivery. Launch a new Codex session with the provided launcher for native MCP tools and skill discovery.
+Implementation and verification complete. Launch a new Codex session with the provided launcher for native MCP tools and skill discovery. Engram mirror remains pending because the runtime session is unregistered.
