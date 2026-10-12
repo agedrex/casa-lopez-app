@@ -6,21 +6,21 @@ Keep direct pushes to `main` issue/PR-free, run backend and frontend checks auto
 
 ## Tasks
 
-1. Add a least-privilege GitHub Actions workflow that runs backend pytest and frontend lint/build on pushes (including `main`). **Done** — `.github/workflows/ci.yml` uses Node 24-compatible action releases, `contents: read`, and push/workflow_dispatch triggers. Local `actionlint` passes; latest main run `38275920150` passed both jobs.
+1. Add a least-privilege GitHub Actions workflow that runs backend pytest and frontend lint/build on pushes (including `main`). **Done** — `.github/workflows/ci.yml` uses Node 24-compatible action releases, `contents: read`, and push/workflow_dispatch triggers. Local `actionlint` passes; validation run `38275920150` on implementation commit `b01d626` passed both jobs.
 2. Enable Railway Wait for CI (`checkSuites`) on the two staging deployment triggers only; preserve production auto-deploy disabled. **Done** — staging triggers `2b1426fd-5415-4cfc-adc2-462b9c6f48eb` and `56a13035-6da1-4b08-af5a-5b1e55cbfc26` have `checkSuites:true` and one valid check suite each; production auto-deploy remains false.
-3. Verify workflow status, gated staging deployment, production isolation, and production readiness facts. **Done** — latest main run `38275920150` passed; both staging deployments for commit `b01d626` waited for CI and then succeeded. Staging frontend/API returned HTTP 200 and CORS preflight allowed the staging origin. Production remained untouched; its current domains return HTTP 404.
+3. Verify workflow status, gated staging deployment, production isolation, and production readiness facts. **Done** — run `38275920150` passed for implementation commit `b01d626`; both Railway staging deployments waited for CI and then succeeded. Documentation-only main run `38279694806` also passed. Staging frontend/API returned HTTP 200 and CORS preflight allowed the staging origin. Production remained untouched; its current domains return HTTP 404.
 4. Document the deploy gate and remaining steps to launch the demo in production. **Done in README** — production remains unlaunched pending explicit manual deployment and smoke test.
 
 ## Completion evidence
 
 - Implementation commits: `5b4b0f9` (`ci(deploy): gate staging rollout on checks`), `2817767` (direct push to `main`), and `b01d626` (Node 24-compatible action runtimes).
-- GitHub Actions main run `38275920150` passed both jobs without the previous Node 20 runtime warnings; GitHub displayed only an informational notice about a planned `ubuntu-latest` migration to Ubuntu 26.
-- Railway staging deployments for commit `b01d626`: backend `100172d1-1b1b-495e-9048-1a0bd20e0258`; frontend `bdf59bc5-821f-4c89-b287-70d80f9d18b5`; both `SUCCESS`.
+- GitHub Actions run `38275920150` for implementation commit `b01d626` passed both jobs without the previous Node 20 runtime warnings; GitHub displayed only an informational notice about a planned `ubuntu-latest` migration to Ubuntu 26. Documentation-only run `38279694806` also passed.
+- Railway staging deployments for implementation commit `b01d626`: backend `100172d1-1b1b-495e-9048-1a0bd20e0258`; frontend `bdf59bc5-821f-4c89-b287-70d80f9d18b5`; both `SUCCESS`.
 - Production has no healthy deployment. Manual promotion and production smoke checks are still required; no database is needed for this demo.
 
 ## Known state
 
-- GitHub default branch `main`, commit `b01d626`; direct push policy; main unprotected and no rulesets, so this adds deploy gating without requiring PRs.
+- GitHub default branch `main`; CI implementation commit `b01d626` is on `main`. Direct pushes remain allowed; main is unprotected and has no rulesets, so deploy gating requires no PRs.
 - Railway project `ffe35123-c0aa-4acf-92ff-62347a5daed3`.
 - Staging environment `63b76478-71c4-4bc3-a67e-5bb24ecd231d`; production `eb50e642-d4e0-4e83-a08d-fdad62a2ee49`.
 - Staging service trigger IDs: backend `2b1426fd-5415-4cfc-adc2-462b9c6f48eb`; frontend `56a13035-6da1-4b08-af5a-5b1e55cbfc26`. Both have `checkSuites:true` and `validCheckSuites:1`.
