@@ -43,4 +43,4 @@ The package-owned writer, incident scout, and verifier could not register the ne
 ## Work-unit evidence
 - Feature branch: `feat/wo-4-prototype-foundation`.
 - Implementation commit: `4c23a1b` (`feat: scaffold Casa Lopez prototype stack`).
-- Task-record evidence commit: pending.
+- Task-record evidence commit: `54d817f` (`docs: record WO-4 prototype verification`).
