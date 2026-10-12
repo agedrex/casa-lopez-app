@@ -1,0 +1,9 @@
+{
+  "description": "Launcher manifest consumed by scripts/start-codex-factory.cjs. Codex uses .codex/config.toml; this file is not native standalone Codex configuration.",
+  "mcpServers": {
+    "la_fabrica": {
+      "url": "https://backend-production-49aca.up.railway.app/mcp/",
+      "bearer_token_env_var": "LA_FABRICA_MCP_TOKEN"
+    }
+  }
+}

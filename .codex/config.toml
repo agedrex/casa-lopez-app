@@ -1,0 +1,3 @@
+[mcp_servers.la_fabrica]
+url = "https://backend-production-49aca.up.railway.app/mcp/"
+bearer_token_env_var = "LA_FABRICA_MCP_TOKEN"
