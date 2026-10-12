@@ -131,8 +131,82 @@ de Postgres local descartable. Después de autorizar la sincronización de paque
 en la venv existente, Alembic 1.20.0 generó correctamente el SQL real de upgrade
 y los downgrades offline; `heads` identifica `0002_semillas`. El archivo temporal
 `wo2-esquema.sql` contiene las 11 tablas y semillas esperadas, sin tocar `public`.
-Generar SQL no lo aplica: siguen pendientes el ciclo de migraciones, conteos reales,
-`alembic check` y protección de una tabla `public."user"` en Postgres descartable.
+Generar SQL no lo aplica. La comprobación posterior en staging se registra abajo;
+el ciclo completo de ida y vuelta, `alembic check` y la prueba de protección de
+una tabla `public."user"` en Postgres descartable siguen sin ejecutarse.
 Ver [decisiones y comprobaciones](wo2-decisiones.md).
 
 ## Resultado de la verificación en staging
+
+**Fecha:** 2026-10-12. **Resultado:** migraciones `0001_esquema_costos` y
+`0002_semillas` aplicadas; revisión final `0002_semillas`.
+
+Agustin ejecutó los comandos manualmente y comunicó sus salidas. El agente
+revisó el código local y las salidas informadas; no ejecutó operaciones en Railway.
+
+### Comprobaciones previas y aprobación
+
+- Railway CLI: proyecto `casa-lopez`, environment `staging`, servicio `backend`.
+- Despliegue del backend ACTIVE. Dentro del contenedor se confirmó
+  `RAILWAY_ENVIRONMENT_NAME=staging` y el commit
+  `0e95a3ef1cc848697d584a7ddf5c087881bedfde`, correspondiente al merge del PR #2.
+- Una transacción PostgreSQL con `SET TRANSACTION READ ONLY` confirmó que
+  `costos` no existía, no había tablas y no existía `costos.alembic_version`.
+  La consulta terminó con rollback.
+- Alembic disponible: versión 1.20.0. El SQL offline generado en el contenedor
+  contenía un esquema, 12 tablas (11 del DER más la tabla de versiones), cuatro
+  índices, ocho INSERT y un UPDATE. Todos los destinos pertenecían a `costos`;
+  no se detectaron menciones de `public` ni operaciones adicionales.
+- Agustin revisó estos resultados y autorizó expresamente la aplicación solo en
+  PostgreSQL de Railway staging antes de ejecutar el upgrade.
+
+### Aplicación y comprobaciones
+
+Comandos ejecutados dentro del backend de staging, con las dependencias existentes:
+
+| Comando | Resultado comunicado |
+|---|---|
+| `uv run --no-sync --no-python-downloads python -m alembic upgrade head` | Sin errores; `echo $?` devolvió 0. |
+| `uv run --no-sync --no-python-downloads python -m backend.verificar_db` | Entorno staging, revisión `0002_semillas`, tablas y semillas correctas; todos los chequeos OK, incluido `blocked_exotics_and_gg`. |
+| `uv run --no-sync --no-python-downloads python -m backend.verificar_db --prueba-escritura` | Todos los chequeos OK, incluidas las doce pruebas de restricciones y unicidad. |
+
+El script de escritura abre una transacción principal y revierte cada prueba
+con SAVEPOINT. Su bloque `finally` ejecuta rollback de la transacción principal
+también ante errores; no hay commit. No deja filas demo. Las secuencias de IDs
+pueden avanzar aunque se reviertan las inserciones.
+
+| Tabla semilla | Conteo confirmado |
+|---|---:|
+| etapa | 8 |
+| material | 11 |
+| proveedor | 2 |
+| precio_material | 11 |
+| tipo_cambio | 1 |
+| parametro | 2 |
+| categoria | 3 |
+
+Desde la computadora de Agustin, `/db/estado` respondió
+`{"ok":true,"alembic_revision":"0002_semillas","tablas_costos":11}`.
+`/catalogo/etapas` devolvió las ocho etapas esperadas, ordenadas de 1 a 8:
+CUERO, FORRO, HERRAJES, REFUERZO, CORTE, REB, PREP y MANO_OBRA.
+Los Deploy Logs revisados mostraron ambos GET con 200 OK, sin valores de
+`DATABASE_URL`, contraseñas, tokens ni credenciales de conexión en los registros
+inspeccionados. El panel PostgreSQL, seleccionando `costos`, mostró las 11 tablas
+del DER más `alembic_version`; no se editaron datos desde el panel.
+
+### Hallazgo y límites de la evidencia
+
+**Decisión técnica pendiente de revisión:** el `env.py` actual ejecuta
+`CREATE SCHEMA IF NOT EXISTS costos` y hace commit en toda ejecución online,
+incluido `alembic current`. Por ese motivo se evitó dicho comando antes de la
+aprobación y se consultó la revisión mediante lecturas directas y el script de
+verificación. No se modificó el código durante esta operación. Antes de reutilizar
+`current` como diagnóstico de solo lectura, evaluar este comportamiento.
+
+La suite local conserva su resultado de 59 aprobadas y 15 omitidas; esos quince
+tests no se ejecutaron contra Railway. Las comprobaciones reales de staging
+descritas arriba son evidencia adicional, no una ejecución de esa suite.
+No se ejecutaron `alembic check`, downgrades, el ciclo downgrade/re-upgrade ni
+la prueba con una tabla centinela en `public`. La revisión del SQL acredita los
+destinos previstos; no se realizó una comparación completa de `public` antes y
+después. No se operó sobre production ni proto.
