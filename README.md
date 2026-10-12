@@ -32,6 +32,8 @@ corepack pnpm dev
 
 Open <http://localhost:3000>. The frontend defaults to `http://localhost:8000`; to use another API origin, set `NEXT_PUBLIC_API_URL` in the frontend environment before starting the dev server.
 
+The API includes PostgreSQL connection/session support through `DATABASE_URL`. See [backend configuration and the internal connection check](backend/README.md#postgresql-connection). Demo endpoints still return fictional data; no DER tables or migrations have been added.
+
 ## Checks
 
 ```sh
@@ -46,6 +48,6 @@ Push tested changes directly to `main`; no issue or pull request is required. Gi
 - Frontend: <https://frontend-staging-8dc6.up.railway.app/>
 - API health check: <https://backend-staging-566d.up.railway.app/api/health>
 
-Verify the change in staging before promoting it. Production does **not** deploy automatically; promote only after explicit approval. The current production services have not had a successful deployment yet; after staging is verified, deploy the same tested commit to production and smoke-test both URLs. Railway variables and domains are already configured separately for each environment; this demo does not need a database.
+Verify the change in staging before promoting it. Production does **not** deploy automatically; promote only after explicit approval. The current production services have not had a successful deployment yet; after staging is verified, deploy the same tested commit to production and smoke-test both URLs. Railway variables and domains are already configured separately for each environment. Demo endpoints work without a database; PostgreSQL access uses the backend's `DATABASE_URL` reference.
 
 `main` remains directly writable without PRs; the checks gate Railway's staging deployment, not the GitHub commit itself. Do not enable Railway production auto-deploy.

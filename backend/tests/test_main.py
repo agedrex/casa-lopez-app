@@ -1,5 +1,6 @@
 from importlib import reload
 
+import pytest
 from fastapi.testclient import TestClient
 
 import backend.main as backend_main
@@ -7,6 +8,11 @@ import backend.main as backend_main
 app = backend_main.app
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def isolated_database_environment(monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
 
 
 def test_health_check_is_healthy():
