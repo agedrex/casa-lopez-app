@@ -41,9 +41,11 @@ cd front && corepack pnpm lint && corepack pnpm build
 
 ## Deployment (Railway)
 
-Push tested changes directly to `main`; this repository does not require an issue or pull request for deployment. Each push to `main` automatically deploys the frontend (`front/`) and API (`backend/`) to Railway **staging**. Railway holds variables separately for staging and production.
+Push tested changes directly to `main`; no issue or pull request is required. GitHub Actions runs backend tests and frontend lint/build on each push. Railway waits for those checks before deploying the frontend (`front/`) and API (`backend/`) to **staging**. Failed checks skip the staging deployment, but do not block the commit from landing on `main`.
 
 - Frontend: <https://frontend-staging-8dc6.up.railway.app/>
 - API health check: <https://backend-staging-566d.up.railway.app/api/health>
 
-Verify the change in staging before promoting it. Production does **not** deploy automatically; promote only after explicit approval. The GitHub `main` branch currently has no protection rules or CI checks, so anyone with repository write access can push directly to it. Do not enable Railway production auto-deploy as part of this flow.
+Verify the change in staging before promoting it. Production does **not** deploy automatically; promote only after explicit approval. The current production services have not had a successful deployment yet; after staging is verified, deploy the same tested commit to production and smoke-test both URLs. Railway variables and domains are already configured separately for each environment; this demo does not need a database.
+
+`main` remains directly writable without PRs; the checks gate Railway's staging deployment, not the GitHub commit itself. Do not enable Railway production auto-deploy.

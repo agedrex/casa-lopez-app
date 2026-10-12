@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend-tests:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Run backend tests
+        run: uv run --directory backend pytest -q
+
+  frontend-checks:
+    name: Frontend lint and build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: "12.11.2"
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: front
+      - name: Run frontend lint
+        run: pnpm lint
+        working-directory: front
+      - name: Build frontend
+        run: pnpm build
+        working-directory: front
