@@ -38,3 +38,12 @@ Open <http://localhost:3000>. The frontend defaults to `http://localhost:8000`; 
 uv run --directory backend pytest -q
 cd front && corepack pnpm lint && corepack pnpm build
 ```
+
+## Deployment (Railway)
+
+Push tested changes directly to `main`; this repository does not require an issue or pull request for deployment. Each push to `main` automatically deploys the frontend (`front/`) and API (`backend/`) to Railway **staging**. Railway holds variables separately for staging and production.
+
+- Frontend: <https://frontend-staging-8dc6.up.railway.app/>
+- API health check: <https://backend-staging-566d.up.railway.app/api/health>
+
+Verify the change in staging before promoting it. Production does **not** deploy automatically; promote only after explicit approval. The GitHub `main` branch currently has no protection rules or CI checks, so anyone with repository write access can push directly to it. Do not enable Railway production auto-deploy as part of this flow.
