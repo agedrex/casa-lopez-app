@@ -1,0 +1,12 @@
+.DS_Store
+.pi/
+.atl/
+la-fabrica/
+node_modules/
+backend/.venv/
+backend/**/__pycache__/
+backend/**/*.py[cod]
+front/.next/
+front/node_modules/
+front/next-env.d.ts
+front/**/*.tsbuildinfo
