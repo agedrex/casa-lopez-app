@@ -1,12 +1,11 @@
 #!/usr/bin/env node
 'use strict';
 
-// Launch Codex with only La Fabrica's selected secret loaded from local .env.
+// Launch Codex with La Fabrica's native dotenv HTTP header helper.
 // Native MCP configuration lives in .codex/config.toml, not MCP.json.
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
-const { parseEnv } = require('node:util');
 const { spawnSync } = require('node:child_process');
 
 function fail(message) {
@@ -40,19 +39,15 @@ function main(root = path.resolve(__dirname, '..'), cliPath, args = process.argv
         server?.bearer_token_env_var !== 'LA_FABRICA_MCP_TOKEN') {
       return fail('Invalid La Fabrica launcher manifest.');
     }
-    const key = server.bearer_token_env_var;
-    const token = parseEnv(fs.readFileSync(path.join(root, '.env'), 'utf8'))[key];
-    if (!token?.trim() || /[\r\n]/.test(token)) {
-      return fail('Missing or invalid LA_FABRICA_MCP_TOKEN in local .env.');
-    }
-    // URL and variable name are public; the bearer travels only in child env.
     // Overrides also let inspection commands work before project trust is set.
+    // The helper reads dotenv directly; no token enters arguments or child env.
+    const helper = `"${process.execPath.replaceAll('\\', '/')}" "${path.join(root, 'scripts', 'factory-mcp-headers.cjs').replaceAll('\\', '/')}"`;
     const result = spawnSync(process.execPath, [cliPath || findCodex(),
       '-c', `mcp_servers.la_fabrica.url=${JSON.stringify(server.url)}`,
-      '-c', `mcp_servers.la_fabrica.bearer_token_env_var=${JSON.stringify(key)}`,
+      '-c', `mcp_servers.la_fabrica.http_headers_helper=${JSON.stringify(helper)}`,
       ...args], {
       cwd: root,
-      env: { ...process.env, [key]: token },
+      env: process.env,
       stdio: 'inherit',
       shell: false,
     });
