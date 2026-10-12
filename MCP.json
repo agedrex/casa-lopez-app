@@ -1,0 +1,9 @@
+{
+  "description": "Public launcher manifest. Normal Codex startup uses .codex/config.toml and scripts/factory-mcp-headers.cjs to read the token from project .env; this file is not native Codex configuration.",
+  "mcpServers": {
+    "la_fabrica": {
+      "url": "https://backend-production-49aca.up.railway.app/mcp/",
+      "bearer_token_env_var": "LA_FABRICA_MCP_TOKEN"
+    }
+  }
+}

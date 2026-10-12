@@ -1,12 +1,28 @@
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+from backend import database
+
+
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    engine = database.create_database_engine() if "DATABASE_URL" in os.environ else None
+    application.state.db_engine = engine
+    try:
+        yield
+    finally:
+        if engine is not None:
+            engine.dispose()
+
 
 app = FastAPI(
     title="Casa Lopez Prototype API",
     description="Demonstration API for validating the initial product flow.",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 cors_origins = ["http://localhost:3000"]
