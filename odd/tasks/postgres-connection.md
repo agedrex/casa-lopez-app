@@ -12,7 +12,7 @@ No Railway operations, production access, table creation, migrations, push, merg
 
 ## Work unit
 
-- [ ] PG-01: Implement and verify the connection foundation, then create a local Conventional Commit with code, tests, dependencies, and documentation.
+- [x] PG-01: Implement and verify the connection foundation, then create a local Conventional Commit with code, tests, dependencies, and documentation.
 
 Route: delegated direct. Trigger: multiple non-trivial source/test files, dependency tooling, and reading that prepares a write. One writer owns the implementation; independent verification follows if native assessment is high or unavailable.
 
@@ -42,6 +42,8 @@ Independent verification found no severe candidate-caused defects. No PostgreSQL
 
 Temporary tools: uv and Python 3.13.16 under the task-specific Temp directory; backend/.venv contains local dependencies. UV_CACHE_DIR, UV_PYTHON_INSTALL_DIR, and UV_PYTHON_BIN_DIR point into Temp. The initial Python install warned about executable links in the default user bin directory before UV_PYTHON_BIN_DIR was set; no external cleanup was attempted.
 
-Native current-changes assessment: high/unassessable because new files need an explicit inventory. Assess the committed work unit against the starting boundary after the local commit; the unrelated configuration must stay excluded. No native approval is claimed.
+Implementation commit: bc45b67 (feat(backend): configure PostgreSQL connections and sessions). Committed change: 495 lines total, including 138 generated lockfile lines; approximately 357 authored lines including this task document. No push, merge, or deployment occurred.
 
-Next step: create the local work-unit commit, record its identity, and assess that committed candidate. Native candidate consent remains pending if required by the returned transition.
+Native committed-only assessment against aa5dd17e4fc1ed84044bc87134e51616b86361d6: medium (configuration_change in backend/pyproject.toml), review_due=false, review_due_reason=under_budget. The implementation remains pending in the review slice; no native review or approval is claimed. The unrelated configuration was excluded from the commit and assessment.
+
+Next step: when explicitly authorized, run the documented internal SELECT 1 command in Railway staging. Actual PostgreSQL connectivity remains unverified. DER tables, models, and migrations are future work outside this unit.
