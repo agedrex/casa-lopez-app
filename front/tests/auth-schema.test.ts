@@ -8,7 +8,7 @@ const sql = await readFile(schemaPath, "utf8");
 function tableDefinition(name: string) {
   const match = sql.match(
     new RegExp(
-      `CREATE TABLE(?: IF NOT EXISTS)?\\s+(?:"?public"?\\.)?"?${name}"?\\s*\\(([\\s\\S]*?)\\n\\);`,
+      `CREATE TABLE(?: IF NOT EXISTS)?\\s+(?:"?public"?\\.)?"?${name}"?\\s*\\(([\\s\\S]*?)\\);`,
       "i",
     ),
   );
@@ -58,30 +58,72 @@ test("generated schema includes relationship and index DDL", () => {
   assert.match(sql, /\bUNIQUE\b/i);
 });
 
-test("generated SQL creates only public objects without destructive DDL", () => {
-  assert.doesNotMatch(sql, /\b(?:CREATE|DROP)\s+SCHEMA\b/i);
-  assert.doesNotMatch(
-    sql,
-    /\b(?:DROP|TRUNCATE|DELETE\s+FROM|ALTER\s+TABLE|GRANT|REVOKE)\b/i,
-  );
-
-  const qualifiedNames = sql.matchAll(
-    /\b(?:CREATE\s+(?:UNIQUE\s+)?INDEX(?: IF NOT EXISTS)?|CREATE\s+TABLE(?: IF NOT EXISTS)?|REFERENCES|ON)\s+(?:("?([\w]+)"?)\.)?"?([\w]+)"?/gi,
-  );
-  for (const [, , schema] of qualifiedNames) {
-    assert.ok(
-      !schema || schema.replaceAll('"', "").toLowerCase() === "public",
-      `Unexpected schema: ${schema}`,
-    );
-  }
-
-  const statements = sql
+function assertSafeSchema(source: string) {
+  const statements = source
     .replace(/^\s*--.*$/gm, "")
     .split(";")
     .map((statement) => statement.trim())
     .filter(Boolean);
+
   assert.ok(statements.length >= 6);
   for (const statement of statements) {
-    assert.match(statement, /^CREATE\s+(?:TABLE|(?:UNIQUE\s+)?INDEX)\b/i);
+    assert.doesNotMatch(statement, /\bcostos\b/i);
+    assert.ok(
+      /^CREATE\s+SCHEMA\s+IF\s+NOT\s+EXISTS\s+"public"$/i.test(statement) ||
+        /^CREATE\s+TABLE\s+"public"\."(?:user|session|account|verification)"\s+\([\s\S]*\)$/i.test(
+          statement,
+        ) ||
+        /^CREATE\s+(?:UNIQUE\s+)?INDEX\s+"[\w]+"\s+ON\s+"public"\."(?:user|session|account|verification)"\s+\([\w", ]+\)$/i.test(
+          statement,
+        ),
+      `Unexpected or unsafe SQL statement: ${statement}`,
+    );
+
+    const qualifiedNames = statement.matchAll(
+      /"?([A-Za-z_][\w$]*)"?\s*\.\s*"?[A-Za-z_][\w$]*"?/g,
+    );
+    for (const [, schema] of qualifiedNames) {
+      assert.equal(
+        schema.toLowerCase(),
+        "public",
+        `Unexpected schema: ${schema}`,
+      );
+    }
+
+    const references = statement.matchAll(
+      /\bREFERENCES\s+(?:"?([\w]+)"?\.)?"?([\w]+)"?/gi,
+    );
+    for (const [, schema, table] of references) {
+      assert.equal(schema?.replaceAll('"', "").toLowerCase(), "public");
+      assert.equal(table.replaceAll('"', "").toLowerCase(), "user");
+    }
   }
+}
+
+test("generated SQL creates only public objects without destructive DDL", () => {
+  assertSafeSchema(sql);
+});
+
+test("schema safety rejects other schemas, destructive DDL, and non-auth tables", () => {
+  assert.throws(
+    () =>
+      assertSafeSchema(`${sql}\nCREATE TABLE "private"."user" ("id" text);`),
+    /Unexpected or unsafe SQL statement/,
+  );
+  assert.throws(
+    () =>
+      assertSafeSchema(
+        `${sql}\nCREATE TABLE "public"."user" ("id" text DEFAULT "private"."fn"());`,
+      ),
+    /Unexpected schema: private/,
+  );
+  assert.throws(
+    () => assertSafeSchema(`${sql}\nDROP TABLE "public"."user";`),
+    /Unexpected or unsafe SQL statement/,
+  );
+  assert.throws(
+    () =>
+      assertSafeSchema(`${sql}\nCREATE TABLE "public"."costos" ("id" text);`),
+    /costos/,
+  );
 });
