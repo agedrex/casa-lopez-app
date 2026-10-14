@@ -50,6 +50,7 @@ jobs:
           tests/auth-permissions.test.ts
           tests/admin-auth.test.ts
           tests/admin-status.test.ts
+          tests/admin-page.test.ts
         working-directory: front
       - name: Run frontend lint
         run: pnpm lint
