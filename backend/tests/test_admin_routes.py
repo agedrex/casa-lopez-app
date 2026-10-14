@@ -100,6 +100,19 @@ def test_admin_status_configuration_failure_is_generic_and_not_cacheable(admin_c
     assert response.headers["cache-control"] == "private, no-store"
 
 
+@pytest.mark.parametrize("upstream_status", [500, 503])
+def test_admin_status_session_service_failure_is_sanitized(admin_client, monkeypatch, upstream_status):
+    set_auth_transport(
+        monkeypatch,
+        lambda _: httpx.Response(upstream_status, json={"error": "sensitive database details"}),
+    )
+    response = admin_client.get("/api/admin/status", headers={"Cookie": "session=browser-token"})
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Authentication service unavailable."}
+    assert response.headers["cache-control"] == "private, no-store"
+
+
 @async_test
 async def test_auth_client_disables_redirects_environment_proxies_and_uses_short_timeout(monkeypatch):
     from backend import admin_router

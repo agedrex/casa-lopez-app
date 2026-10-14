@@ -1,4 +1,5 @@
 import { createHash, timingSafeEqual } from "node:crypto";
+import { isAPIError } from "better-auth/api";
 
 type AuthenticatedSession = {
   user?: {
@@ -55,8 +56,11 @@ export function createInternalSessionHandler({
       const role = session?.user?.role;
       if (!userId || !role) return jsonResponse({ error: "unauthorized" }, 401);
       return jsonResponse({ user_id: userId, role }, 200);
-    } catch {
-      return jsonResponse({ error: "unauthorized" }, 401);
+    } catch (error) {
+      if (isAPIError(error) && error.statusCode === 401) {
+        return jsonResponse({ error: "unauthorized" }, 401);
+      }
+      return jsonResponse({ error: "authentication_service_unavailable" }, 503);
     }
   };
 }

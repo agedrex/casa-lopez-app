@@ -21,6 +21,14 @@ Commit `340f111cad22857ef2221b907bc83e1cb5c0713a` passed [GitHub Actions run 385
 
 The schema test verifies the four Better Auth tables, Admin plugin fields, relationships, and indexes. It rejects non-public schema objects, destructive DDL, and statements outside the expected table/index creation set.
 
+## Session failure classification and renewal limitation
+
+The internal verification endpoint returns `401` for missing, invalid, or expired sessions and recognized Better Auth authentication denials. Unexpected Better Auth, PostgreSQL, or session verification errors return a sanitized, uncached `503`. FastAPI preserves authentication failures as `401`, rejects verified non-admin users with `403`, and maps upstream service failures to a generic `503`. Next.js displays the existing administration-unavailable screen on session or permission service errors instead of redirecting to login. Every failure denies administrative access; exception messages and database details are not returned.
+
+**Browser cookie renewal remains a known limitation.** Both Next.js admin checks and the internal endpoint call Better Auth's server-side `getSession` API for its parsed session value. Better Auth can extend the database session and generate renewal cookies during that call, but these paths do not propagate its `Set-Cookie` headers to the browser. The FastAPI-to-Next.js verification request also cannot renew the browser cookie. Continued use through these checks may therefore outlive the browser's original cookie expiry, causing the browser to lose its session and require another login even after a database renewal.
+
+This change does not modify cookie renewal. **No temporal test was run** across the session refresh threshold or browser cookie expiry; the existing expired-session integration case proves rejection only. Before sustained use, add a browser-facing session refresh that delivers Better Auth's renewal cookies, then verify refresh and expiry over time in a browser.
+
 ## Staging application (2026-10-14)
 
 The target was Railway project `casa-lopez`, environment `staging`, Postgres service `272f8917-f099-4b89-a085-cf9bc27b0ac1`. The approved SQL file had SHA-256 `77e72ce9e9f3fea2ab4d4380ff5f905ccdeb081dea31da6ac053822608725d1e` immediately before execution.

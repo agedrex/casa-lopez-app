@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { APIError } from "better-auth/api";
 // @ts-expect-error Node's type stripping resolves this TypeScript extension at runtime.
 import { createInternalSessionHandler } from "../lib/auth-session.ts";
 
@@ -63,16 +64,11 @@ test("valid internal request forwards only the browser cookie and returns minima
   assert.equal(receivedHeaders?.has("authorization"), false);
 });
 
-test("invalid sessions and session lookup failures fail closed", async () => {
-  for (const getSession of [
-    async () => null,
-    async () => {
-      throw new Error("db failure");
-    },
-  ]) {
+test("missing, invalid, and expired sessions return 401", async () => {
+  for (const session of [null, { user: null }, { user: {} }]) {
     const handle = createInternalSessionHandler({
       secret: () => "server-only-secret",
-      getSession,
+      getSession: async () => session,
     });
     const response = await handle(
       new Request("https://example.test/api/internal/auth/session", {
@@ -84,6 +80,41 @@ test("invalid sessions and session lookup failures fail closed", async () => {
       }),
     );
     assert.equal(response.status, 401);
+    assert.equal(response.headers.get("cache-control"), "private, no-store");
+  }
+});
+
+test("session verification errors preserve 401 and sanitize service failures as 503", async () => {
+  for (const [error, status] of [
+    [new APIError("UNAUTHORIZED"), 401],
+    [
+      new APIError("INTERNAL_SERVER_ERROR", {
+        message: "private database details",
+      }),
+      503,
+    ],
+    [new Error("private database details"), 503],
+  ] as const) {
+    const handle = createInternalSessionHandler({
+      secret: () => "server-only-secret",
+      getSession: async () => {
+        throw error;
+      },
+    });
+    const response = await handle(
+      new Request("https://example.test/api/internal/auth/session", {
+        method: "POST",
+        headers: {
+          authorization: "Bearer server-only-secret",
+          cookie: "session=browser-cookie",
+        },
+      }),
+    );
+    assert.equal(response.status, status);
+    assert.deepEqual(await response.json(), {
+      error:
+        status === 401 ? "unauthorized" : "authentication_service_unavailable",
+    });
     assert.equal(response.headers.get("cache-control"), "private, no-store");
   }
 });

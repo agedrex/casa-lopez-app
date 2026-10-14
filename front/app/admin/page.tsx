@@ -5,10 +5,27 @@ import { LogoutButton } from "@/app/admin/logout-button";
 import { requireAdminSession } from "@/lib/admin-auth";
 import { fetchAdminStatus } from "@/lib/admin-status";
 
+function AdminUnavailable() {
+  return (
+    <main>
+      <section aria-labelledby="admin-unavailable-title">
+        <h1 id="admin-unavailable-title">Administración no disponible</h1>
+        <p>No pudimos verificar el acceso. Intentá de nuevo más tarde.</p>
+        <LogoutButton />
+      </section>
+    </main>
+  );
+}
+
 export default async function AdminPage() {
   await connection();
   const sessionHeaders = await headers();
-  const session = await requireAdminSession(sessionHeaders);
+  let session: Awaited<ReturnType<typeof requireAdminSession>>;
+  try {
+    session = await requireAdminSession(sessionHeaders);
+  } catch {
+    return <AdminUnavailable />;
+  }
   if (!session) redirect("/login?next=%2Fadmin");
   const adminStatus = await fetchAdminStatus({
     backendUrl: process.env.AUTH_BACKEND_URL,
@@ -17,15 +34,7 @@ export default async function AdminPage() {
   });
 
   if (!adminStatus) {
-    return (
-      <main>
-        <section aria-labelledby="admin-unavailable-title">
-          <h1 id="admin-unavailable-title">Administración no disponible</h1>
-          <p>No pudimos verificar el acceso. Intentá de nuevo más tarde.</p>
-          <LogoutButton />
-        </section>
-      </main>
-    );
+    return <AdminUnavailable />;
   }
 
   return (

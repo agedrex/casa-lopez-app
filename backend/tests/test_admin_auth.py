@@ -53,6 +53,7 @@ async def test_verify_session_forwards_only_cookie_and_server_secret():
         (httpx.Response(200, content=b"not-json"), (502, None)),
         (httpx.Response(302), (502, None)),
         (httpx.Response(500), (503, None)),
+        (httpx.Response(503, json={"error": "authentication_service_unavailable"}), (503, None)),
     ],
 )
 async def test_verify_session_maps_upstream_results(response, expected):

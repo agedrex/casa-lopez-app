@@ -1,3 +1,5 @@
+import { isAPIError } from "better-auth/api";
+
 export const ADMIN_PERMISSION: { application: ["admin"] } = {
   application: ["admin"],
 };
@@ -29,20 +31,20 @@ export async function getAdminSession({
     if (!session?.user?.id || session.user.role !== "admin") return null;
     const permission = await hasPermission(headers, ADMIN_PERMISSION);
     return permission?.success === true ? session : null;
-  } catch {
-    return null;
+  } catch (error) {
+    if (isAPIError(error) && [401, 403].includes(error.statusCode)) return null;
+    throw new Error("Authentication service unavailable.");
   }
 }
 
 export async function requireAdminSession(headers: Headers) {
   const { getAuth } = await import("@/lib/auth");
-  const auth = getAuth();
   return getAdminSession({
     headers,
     getSession: (requestHeaders) =>
-      auth.api.getSession({ headers: requestHeaders }),
+      getAuth().api.getSession({ headers: requestHeaders }),
     hasPermission: async (requestHeaders, permissions) =>
-      auth.api.userHasPermission({
+      getAuth().api.userHasPermission({
         headers: requestHeaders,
         body: { permissions },
       }),
