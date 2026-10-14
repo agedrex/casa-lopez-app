@@ -62,9 +62,10 @@ server_version="$(docker exec \
   --env PGHOST=127.0.0.1 \
   "$container_id" psql --no-psqlrc --tuples-only --no-align \
   --command 'SHOW server_version')"
+server_version_num="$(docker exec --env PGPASSWORD --env PGUSER --env PGDATABASE --env PGHOST=127.0.0.1 "$container_id" psql --no-psqlrc --tuples-only --no-align --command 'SHOW server_version_num')"
 printf 'Temporary PostgreSQL server_version=%s\n' "$server_version"
-if [[ "$server_version" != "18.6" ]]; then
-  echo "Temporary PostgreSQL must report server_version=18.6." >&2
+if [[ "$server_version_num" != "180006" ]]; then
+  echo "Temporary PostgreSQL must report server_version_num=180006." >&2
   exit 1
 fi
 
