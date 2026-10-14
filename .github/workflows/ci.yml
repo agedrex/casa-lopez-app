@@ -42,9 +42,49 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
         working-directory: front
+      - name: Run focused auth and admin tests
+        run: >-
+          node --experimental-strip-types --test
+          tests/auth-flows.test.ts
+          tests/auth-internal.test.ts
+          tests/auth-permissions.test.ts
+          tests/admin-auth.test.ts
+          tests/admin-status.test.ts
+          tests/admin-page.test.ts
+        working-directory: front
       - name: Run frontend lint
         run: pnpm lint
         working-directory: front
       - name: Build frontend
         run: pnpm build
         working-directory: front
+
+  auth-postgres:
+    name: Better Auth PostgreSQL verification
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6.1.0
+        with:
+          version: "12.11.2"
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: front
+      - name: Generate and verify Better Auth schema
+        run: bash scripts/wo7-ci-postgres.sh
+      - name: Upload generated Better Auth schema
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: better-auth-public-schema
+          path: ${{ runner.temp }}/better-auth-public.sql
+          if-no-files-found: ignore
+          retention-days: 7
