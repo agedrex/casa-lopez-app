@@ -1,6 +1,6 @@
 # WO-7 Stage 3: Better Auth schema verification
 
-**Status: technically verified in ephemeral PostgreSQL CI.** Commit `7089cbcc9b040d8d26ee371e6fb19f8af3bcc929` versions the generated schema at `front/db/better-auth-public.sql`. GitHub Actions run [38502734966](https://github.com/agedrex/casa-lopez-app/actions/runs/38502734966) completed successfully. This verifies the schema and auth behavior in an isolated CI database; applying it to staging and verifying the staging application remain pending and require explicit authorization.
+**Status (2026-10-14): Better Auth 1.7.7 schema and staging configuration are in place.** The four authentication tables were created and verified in `public`; the `costos` schema, its 11 tables, 38 seed rows, and revision `0002_semillas` remain intact. Seven Better Auth service variables were applied with deployment skipping enabled; no deployment was triggered. Staging login, logout, and permission behavior remain untested. PR [#4](https://github.com/agedrex/casa-lopez-app/pull/4) is a draft pending review and merge.
 
 ## CI verification flow
 
@@ -8,7 +8,7 @@ The isolated `auth-postgres` job in `.github/workflows/ci.yml` runs on GitHub's 
 
 1. Confirms Better Auth and its CLI are both pinned to 1.7.7.
 2. Creates cryptographically random PostgreSQL and Better Auth secrets in the runner process environment.
-3. Starts `postgres:17` in Docker, binding its randomly assigned host port only to `127.0.0.1`. It does not use `trust`, repository secrets, Railway, or La Fábrica.
+3. Starts `postgres:18.6` in Docker, binding its randomly assigned host port only to `127.0.0.1`. It does not use `trust`, repository secrets, Railway, or La Fábrica.
 4. Runs the pinned CLI against `front/lib/auth.cli.ts` to generate SQL from an empty database. The checked-in `front/db/better-auth-public.sql` must match the generated SQL byte for byte.
 5. Applies the SQL with `psql` using `ON_ERROR_STOP`, runs `auth check schema`, and executes the static schema and real PostgreSQL integration tests.
 6. Uploads only the generated SQL file from the runner's temporary directory as the `better-auth-public-schema` artifact, retained for seven days. The artifact contains schema DDL, not database rows or credentials. It remains available when later verification fails so the generated DDL can still be reviewed.
@@ -17,26 +17,36 @@ Secret-bearing commands run in one script with shell tracing disabled. The passw
 
 ## Integration coverage
 
-The successful run applied the versioned SQL to temporary PostgreSQL 17 and passed the schema and real-database integration tests. Coverage includes objects constrained to schema `public`; a fresh PostgreSQL connection confirming persisted user, account, and session rows; email/password login; session retrieval and persistence; admin and user roles and permission checks; denial of browser sign-up and unauthorized role assignment; CSRF origin checks for logout; successful logout; and expired-session rejection. Test identities and passwords are generated in memory; response cookies and credentials are never logged.
+Commit `340f111cad22857ef2221b907bc83e1cb5c0713a` passed [GitHub Actions run 38592816341](https://github.com/agedrex/casa-lopez-app/actions/runs/38592816341), including 22 focused auth/admin unit tests and the schema and real-database integration tests against PostgreSQL 18.6. Coverage includes objects constrained to schema `public`; a fresh PostgreSQL connection confirming persisted user, account, and session rows; email/password login; session retrieval and persistence; admin and user roles and permission checks; denial of browser sign-up and unauthorized role assignment; CSRF origin checks for logout; successful logout; and expired-session rejection. Test identities and passwords are generated in memory; response cookies and credentials are never logged.
 
 The schema test verifies the four Better Auth tables, Admin plugin fields, relationships, and indexes. It rejects non-public schema objects, destructive DDL, and statements outside the expected table/index creation set.
 
-## Staging status and next step
+## Staging application (2026-10-14)
 
-The CI run does not connect to staging, production, Railway, or La Fábrica. Applying the versioned schema to staging and verifying the deployed application are still pending; both require explicit authorization. No staging change is claimed here.
+The target was Railway project `casa-lopez`, environment `staging`, Postgres service `272f8917-f099-4b89-a085-cf9bc27b0ac1`. The approved SQL file had SHA-256 `77e72ce9e9f3fea2ab4d4380ff5f905ccdeb081dea31da6ac053822608725d1e` immediately before execution.
 
-## Stage 6 staging gates
+The read-only preflight confirmed PostgreSQL 18.6, no Better Auth tables in `public`, all 11 `costos` tables, 38 seed rows, and `costos.alembic_version = 0002_semillas`. Railway listed manual volume snapshot `bc916e3e-6d4a-4b50-a23c-56a01fed48e5`, created on 2026-10-14 with 864 MB referenced; it was available at the time of the check. **The snapshot's restoration has not been tested.**
 
-Stage 6 remains pending. Before any staging schema action, confirm a strictly read-only revision check using `SELECT version_num FROM costos.alembic_version`; do not use `alembic current`, because `env.py` may create the schema and commit. Also confirm a secure, reproducible admin-account creation procedure: the admin CLI may be absent from the deployed frontend image, so do not install tools or create accounts ad hoc. No staging action is complete or implied by the CI evidence above.
+The approved file was sent to staging Postgres `psql` with `ON_ERROR_STOP` and `--single-transaction`. The command exited `0`; the SQL was not reapplied. PostgreSQL reported that `public` already existed, then created the four tables and three explicit secondary indexes. Primary-key and unique indexes were created with their table constraints. No SQL was applied to `costos`.
 
-### Read-only Railway staging preflight (2026-10-14)
+## Read-only verification after application
 
-The `casa-lopez` project has distinct `staging` and `production` environments. Explicitly targeted staging metadata showed successful current deployments for frontend, backend, and Postgres, with the Postgres volume ready. Railway SSH reached the staging Postgres service and found `psql`. No deployment or configuration was changed.
+| Check | Observed result |
+| --- | --- |
+| Authentication tables | Exactly `public.user`, `public.session`, `public.account`, and `public.verification`; all have zero rows. |
+| Indexes | Nine expected indexes: four primary-key, two unique, and three explicit secondary indexes. |
+| Key constraints | Eight expected: four primary keys, two unique constraints, and two foreign keys to `public.user`. PostgreSQL 18 also lists 24 `NOT NULL` constraints separately in `pg_constraint`; these are not extra key constraints. |
+| Schema shape | Column names, types, and nullability match the approved Better Auth 1.7.7 SQL. |
+| `costos` | The same 11 business tables; `costos.alembic_version = 0002_semillas`. Seed counts: `categoria` 3, `producto` 0, `etapa` 8, `material` 11, `proveedor` 2, `precio_material` 11, `tipo_cambio` 1, `parametro` 2, `cotizacion` 0, `cotizacion_linea` 0, `marca_calidad` 0. Total: 38. |
+| Service state | Staging PostgreSQL responded to the postchecks; Railway listed Postgres, frontend, and backend deployments as `SUCCESS`. The manual snapshot remained listed and available. No deployment was triggered by this work. |
 
-Queries executed in a `READ ONLY` transaction confirmed all 11 expected tables in `costos`, `costos.alembic_version = 0002_semillas`, and the absence of the four Better Auth tables in `public`. The `public` schema exists; the connected database role has database-connect and public-schema usage/create privileges. No SQL was applied and no staging rows, tables, or settings were modified.
+A supplemental **read-only** authentication row-count query initially failed because PowerShell passed quoted SQL incorrectly to `psql`, resulting in a database-name error. The query was resent through standard input inside a read-only transaction and confirmed zero rows in all four tables. This transport error did not affect the successful DDL transaction, and no schema application was repeated.
 
-The staging server reports PostgreSQL 18.6, while the successful CI integration tests used PostgreSQL 17. Railway showed no volume backup, backup schedule, or PITR for the staging Postgres volume. An external recovery mechanism was not established. **Do not apply the authentication SQL until a recoverable backup or equivalent restoration path is confirmed and separately authorized.**
+Seven Better Auth variables were applied to the existing Railway staging services with `skipDeploys: true`; existing variables were preserved:
 
-The current frontend SSH shell did not expose `node`, `corepack`, or `pnpm`; this does not establish what the future WO-7 deployment image will contain. The pinned Better Auth CLI is a frontend development dependency, so the administrator bootstrap procedure still needs an image-specific, secure verification before account creation. No account was created.
+| Service | Variable names |
+| --- | --- |
+| Frontend | `AUTH_DATABASE_URL`, `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `AUTH_INTERNAL_SECRET`, `AUTH_BACKEND_URL` |
+| Backend | `AUTH_VERIFY_URL`, `AUTH_INTERNAL_SECRET` |
 
-PR [#4](https://github.com/agedrex/casa-lopez-app/pull/4) remains a draft. Its frontend CI job runs lint and build, but does not invoke the focused auth/admin unit tests. Add a dedicated test step before merge and verify its result. The separate `auth-postgres` job already covers schema and real-database integration; a later successful run [38505564021](https://github.com/agedrex/casa-lopez-app/actions/runs/38505564021) also passed. Staging authentication, authorization, and administrator login remain untested.
+No deployment was triggered, and no production resources were changed. No users or administrators were created. The deployed application's login, logout, and permissions remain untested. PR [#4](https://github.com/agedrex/casa-lopez-app/pull/4) remains a draft pending review and merge.
