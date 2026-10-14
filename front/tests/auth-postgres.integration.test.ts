@@ -35,6 +35,7 @@ const auth = getAuth();
 const pool = new Pool({ connectionString: databaseUrl });
 const baseURL = process.env.BETTER_AUTH_URL;
 assert.ok(baseURL, "BETTER_AUTH_URL is required for the PostgreSQL test");
+const origin = new URL(baseURL).origin;
 
 const unique = randomBytes(12).toString("hex");
 const adminEmail = `wo7-admin-${unique}@example.test`;
@@ -45,12 +46,20 @@ function endpoint(path: string) {
   return new URL(`/api/auth/${path}`, baseURL);
 }
 
-async function request(path: string, body?: unknown, cookie?: string) {
+async function request(
+  path: string,
+  body?: unknown,
+  cookie?: string,
+  requestOrigin: string | null = origin,
+) {
   return auth.handler(
     new Request(endpoint(path), {
       method: body === undefined ? "GET" : "POST",
       headers: {
         ...(body === undefined ? {} : { "content-type": "application/json" }),
+        ...(body === undefined || requestOrigin === null
+          ? {}
+          : { origin: requestOrigin }),
         ...(cookie ? { cookie } : {}),
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
@@ -170,6 +179,26 @@ test("Better Auth persists identities and enforces configured access", async (t)
     adminCookie,
   );
   assert.ok(userCreation.status === 401 || userCreation.status === 403);
+
+  const logoutWithoutOrigin = await request("sign-out", {}, adminCookie, null);
+  assert.equal(logoutWithoutOrigin.status, 403);
+  const logoutFromUnauthorizedOrigin = await request(
+    "sign-out",
+    {},
+    adminCookie,
+    "https://unauthorized.example.test",
+  );
+  assert.equal(logoutFromUnauthorizedOrigin.status, 403);
+  const sessionAfterRejectedLogouts = await request(
+    "get-session",
+    undefined,
+    adminCookie,
+  );
+  assert.equal(sessionAfterRejectedLogouts.status, 200);
+  const preservedSession = (await sessionAfterRejectedLogouts.json()) as {
+    session?: { id?: string };
+  };
+  assert.ok(preservedSession.session?.id);
 
   const logout = await request("sign-out", {}, adminCookie);
   assert.equal(logout.status, 200);
