@@ -28,3 +28,15 @@ The CI run does not connect to staging, production, Railway, or La Fábrica. App
 ## Stage 6 staging gates
 
 Stage 6 remains pending. Before any staging schema action, confirm a strictly read-only revision check using `SELECT version_num FROM costos.alembic_version`; do not use `alembic current`, because `env.py` may create the schema and commit. Also confirm a secure, reproducible admin-account creation procedure: the admin CLI may be absent from the deployed frontend image, so do not install tools or create accounts ad hoc. No staging action is complete or implied by the CI evidence above.
+
+### Read-only Railway staging preflight (2026-10-14)
+
+The `casa-lopez` project has distinct `staging` and `production` environments. Explicitly targeted staging metadata showed successful current deployments for frontend, backend, and Postgres, with the Postgres volume ready. Railway SSH reached the staging Postgres service and found `psql`. No deployment or configuration was changed.
+
+Queries executed in a `READ ONLY` transaction confirmed all 11 expected tables in `costos`, `costos.alembic_version = 0002_semillas`, and the absence of the four Better Auth tables in `public`. The `public` schema exists; the connected database role has database-connect and public-schema usage/create privileges. No SQL was applied and no staging rows, tables, or settings were modified.
+
+The staging server reports PostgreSQL 18.6, while the successful CI integration tests used PostgreSQL 17. Railway showed no volume backup, backup schedule, or PITR for the staging Postgres volume. An external recovery mechanism was not established. **Do not apply the authentication SQL until a recoverable backup or equivalent restoration path is confirmed and separately authorized.**
+
+The current frontend SSH shell did not expose `node`, `corepack`, or `pnpm`; this does not establish what the future WO-7 deployment image will contain. The pinned Better Auth CLI is a frontend development dependency, so the administrator bootstrap procedure still needs an image-specific, secure verification before account creation. No account was created.
+
+PR [#4](https://github.com/agedrex/casa-lopez-app/pull/4) remains a draft. Its frontend CI job runs lint and build, but does not invoke the focused auth/admin unit tests. Add a dedicated test step before merge and verify its result. The separate `auth-postgres` job already covers schema and real-database integration; a later successful run [38505564021](https://github.com/agedrex/casa-lopez-app/actions/runs/38505564021) also passed. Staging authentication, authorization, and administrator login remain untested.
