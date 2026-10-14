@@ -42,6 +42,15 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
         working-directory: front
+      - name: Run focused auth and admin tests
+        run: >-
+          node --experimental-strip-types --test
+          tests/auth-flows.test.ts
+          tests/auth-internal.test.ts
+          tests/auth-permissions.test.ts
+          tests/admin-auth.test.ts
+          tests/admin-status.test.ts
+        working-directory: front
       - name: Run frontend lint
         run: pnpm lint
         working-directory: front
