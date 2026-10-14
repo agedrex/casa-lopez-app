@@ -7,17 +7,25 @@
     "build": "next build",
     "start": "next start",
     "lint": "biome check",
-    "format": "biome format --write"
+    "format": "biome format --write",
+    "test:auth-permissions": "node --experimental-strip-types --test tests/auth-permissions.test.ts",
+    "test:auth-schema": "node --experimental-strip-types --test tests/auth-schema.test.ts",
+    "test:auth-postgres": "node --experimental-strip-types --test tests/auth-postgres.integration.test.ts"
   },
   "dependencies": {
+    "better-auth": "1.7.7",
+    "kysely": "0.29.6",
     "next": "16.4.0",
+    "pg": "8.23.1",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.2",
+    "auth": "1.7.7",
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
+    "@types/pg": "8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "tailwindcss": "^4",

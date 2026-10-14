@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend import database
+from backend.admin_router import router as admin_router
 from backend.routers import router
 
 
@@ -27,6 +28,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(router)
+app.include_router(admin_router)
 
 
 @app.exception_handler(database.DatabaseConfigurationError)
