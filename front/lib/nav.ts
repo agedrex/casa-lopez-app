@@ -46,7 +46,6 @@ export const NAV_ITEMS: NavGroup[] = [
     title: "Consultas",
     items: [
       { href: "/grilla", label: "Grilla completa", shortLabel: "Grilla" },
-      { href: "/historico", label: "Histórico (Excel viejo)" },
     ],
   },
   { title: "Control", items: [{ href: "/calidad", label: "Alertas" }] },
