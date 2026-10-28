@@ -27,7 +27,8 @@ def database_state(session: Session = Depends(get_session)) -> dict[str, object]
 @router.get("/catalogo/etapas")
 def stage_catalog(session: Session = Depends(get_session)) -> list[dict[str, object]]:
     try:
-        statement = select(Etapa.codigo, Etapa.nombre, Etapa.grupo, Etapa.orden, Etapa.requiere_material).order_by(Etapa.orden)
+        # The free-text columns (que_es_y_de_donde_viene, nota) name people and stay out of this unauthenticated route.
+        statement = select(Etapa.codigo, Etapa.orden, Etapa.tipo, Etapa.va_siempre, Etapa.tratamiento).order_by(Etapa.orden)
         return [dict(row) for row in session.execute(statement).mappings().all()]
     except Exception:
         raise HTTPException(status_code=503, detail="Database unavailable.") from None

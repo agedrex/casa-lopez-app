@@ -23,9 +23,13 @@ class RecordedOperations:
     def __init__(self):
         self.metadata = MetaData()
         self.dropped = []
+        self.executed = []
 
     def f(self, name):
         return name
+
+    def execute(self, statement):
+        self.executed.append(statement)
 
     def create_table(self, name, *elements, schema):
         Table(name, self.metadata, *elements, schema=schema)
@@ -45,12 +49,25 @@ class RecordedOperations:
         self.dropped.append(name)
 
 
-def test_frozen_schema_revision_matches_orm_and_reverses_dependencies(monkeypatch):
+def load_revision(monkeypatch, filename):
     operations = RecordedOperations()
     monkeypatch.setitem(sys.modules, "alembic", SimpleNamespace(op=operations))
-    revision = runpy.run_path(str(VERSIONS / "0001_esquema_costos.py"))
-    assert revision["revision"] == "0001_esquema_costos"
-    assert revision["down_revision"] is None
+    return operations, runpy.run_path(str(VERSIONS / filename))
+
+
+def test_revision_chain_replaces_v1_with_v3_then_seeds(monkeypatch):
+    chain = {}
+    for filename in ("0001_esquema_costos.py", "0002_semillas.py", "0003_der_v3.py", "0004_semillas_v3.py"):
+        _, revision = load_revision(monkeypatch, filename)
+        chain[revision["revision"]] = revision["down_revision"]
+    assert chain == {
+        "0001_esquema_costos": None, "0002_semillas": "0001_esquema_costos",
+        "0003_der_v3": "0002_semillas", "0004_semillas_v3": "0003_der_v3",
+    }
+
+
+def test_der_v3_revision_matches_orm_and_reverses_dependencies(monkeypatch):
+    operations, revision = load_revision(monkeypatch, "0003_der_v3.py")
     revision["upgrade"]()
     assert set(operations.metadata.tables) == set(Base.metadata.tables)
     dialect = postgresql.dialect()
@@ -72,8 +89,38 @@ def test_frozen_schema_revision_matches_orm_and_reverses_dependencies(monkeypatc
         assert {fk.target_fullname for fk in declared.foreign_keys} == {fk.target_fullname for fk in model.foreign_keys}
         assert {index.name: str(CreateIndex(index).compile(dialect=dialect)).lower() for index in declared.indexes} == {
             index.name: str(CreateIndex(index).compile(dialect=dialect)).lower() for index in model.indexes}
+    # Parents are created before the tables that reference them.
+    created = list(operations.metadata.tables)
+    for key, declared in operations.metadata.tables.items():
+        for fk in declared.foreign_keys:
+            if fk.target_fullname.rsplit(".", 1)[0] != key:
+                assert created.index(fk.target_fullname.rsplit(".", 1)[0]) < created.index(key)
     revision["downgrade"]()
-    assert operations.dropped == [table.name for table in reversed(Base.metadata.sorted_tables)]
+    assert sorted(operations.dropped) == sorted(table.name for table in Base.metadata.tables.values())
+
+
+def test_der_v3_upgrade_drops_only_v1_tables_in_costos_with_if_exists(monkeypatch):
+    operations, revision = load_revision(monkeypatch, "0003_der_v3.py")
+    revision["upgrade"]()
+    assert len(operations.executed) == 11
+    for statement in operations.executed:
+        assert re.fullmatch(r"DROP TABLE IF EXISTS costos\.[a-z_]+ CASCADE", statement)
+    dropped = {statement.split("costos.")[1].split()[0] for statement in operations.executed}
+    assert dropped == {"categoria", "producto", "etapa", "material", "proveedor", "precio_material", "tipo_cambio",
+                       "parametro", "cotizacion", "cotizacion_linea", "marca_calidad"}
+    assert "alembic_version" not in "".join(operations.executed) and "public." not in "".join(operations.executed)
+
+
+def test_der_v3_downgrade_drops_children_before_parents_and_documents_v1_is_gone(monkeypatch):
+    operations, revision = load_revision(monkeypatch, "0003_der_v3.py")
+    revision["downgrade"]()
+    position = {name: index for index, name in enumerate(operations.dropped)}
+    for table in Base.metadata.tables.values():
+        for fk in table.foreign_keys:
+            parent = fk.target_fullname.split(".")[1]
+            if parent != table.name:
+                assert position[table.name] < position[parent]
+    assert "not supported" in revision["__doc__"] or "not recreated" in revision["__doc__"]
 
 
 def test_seed_revision_is_exact_sql_source_with_explicit_schema():

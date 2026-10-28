@@ -30,9 +30,40 @@ cd front
 corepack pnpm dev
 ```
 
-Open <http://localhost:3000>. The frontend defaults to `http://localhost:8000`; to use another API origin, set `NEXT_PUBLIC_API_URL` in the frontend environment before starting the dev server.
+Open <http://localhost:3000>. The frontend reads the API server-side from `API_URL` (default `http://127.0.0.1:8000` outside production); the browser never calls the API directly. See [Authentication](#authentication-and-environment-variables) for the variables the app needs to sign in.
 
 The API includes PostgreSQL connection/session support through `DATABASE_URL`. See [backend configuration and the internal connection check](backend/README.md#postgresql-connection). Demo endpoints still return fictional data; no DER tables or migrations have been added.
+
+## Authentication and environment variables
+
+Sign-in is handled by [Better Auth](https://better-auth.com) inside the Next.js app (email and password, session cookie, public sign-up disabled). Its four tables (`user`, `session`, `account`, `verification`) live in the `public` schema of the same Postgres database; Alembic only manages the `costos` schema and never touches them. The costing API trusts a request only if the Next.js app confirms the session.
+
+| Where | Variable | What it is |
+|---|---|---|
+| front | `DATABASE_URL` | Postgres for Better Auth. Plain `postgresql://` URL (no `+psycopg`). |
+| front | `BETTER_AUTH_SECRET` | Long random secret (`openssl rand -base64 32`). Never commit it. |
+| front | `BETTER_AUTH_URL` | Public URL of the frontend, no trailing slash. |
+| front | `API_URL` | Server-only base URL of the API. |
+| front | `SEED_USER_PASSWORD` | Only for `seed:user`; required by that script. |
+| backend | `AUTH_VERIFY_URL` | `<BETTER_AUTH_URL>/api/auth/get-session`. If unset, every protected route answers 401 (fail-closed). |
+| backend | `GOOGLE_SHEETS_SPREADSHEET_ID` | Optional. Id of the Google Sheet that receives the display copy (see [`docs/sheets-sync.md`](docs/sheets-sync.md)). |
+| backend | `GOOGLE_SERVICE_ACCOUNT_JSON` | Optional. Content of the service account key (JSON, not a path). Never commit it. Without both Google variables only dry runs work. |
+| backend | `ANTHROPIC_API_KEY` | Optional. Key of the model that interprets the voice screen (see [`docs/voz.md`](docs/voz.md)). Without it `/voz/interpretar` answers 503. Never commit it. |
+| backend | `VOZ_LLM_MODEL` | Optional. Default `claude-haiku-5-5`. (`VOZ_LLM_BASE_URL` exists only for tests.) |
+
+`front/.env.example` lists the frontend ones; copy it to `front/.env.local` for local work.
+
+```sh
+cd front
+corepack pnpm auth:migrate   # creates the Better Auth tables in `public` (needs DATABASE_URL, BETTER_AUTH_SECRET)
+SEED_USER_PASSWORD='choose-a-password' corepack pnpm seed:user   # creates contacto@agedrex.com (admin); safe to re-run
+```
+
+`auth:migrate` applies changes to whatever database `DATABASE_URL` points to, so check that variable before running it against a shared environment. The backend verifier forwards the `Cookie` (and `Authorization`) header to `AUTH_VERIFY_URL` with a 3 second timeout and answers `401 No autenticado.` on any failure.
+
+Roles (stored in `user.role`): `admin` (everything, plus the `/admin` area and user management), `cotizador` (quotes and loads data; may also create models and mark them as validated) and `consulta` (read only). New users get `consulta`; sign-up is disabled, an admin creates users in `/admin/usuarios`.
+
+The admin area (`/admin/*`: users, parameters, models, catalogs, people, taxes) is `admin` only at three levels: `proxy.ts` redirects everybody else, every server action re-checks the role, and the API answers 403 to the admin-only writes (see the table in [`backend/README.md`](backend/README.md#costing-api-t3b)). Users are never deleted, only deactivated; nobody can demote or deactivate themselves, and the last active admin can never lose the role (enforced inside Better Auth, so a direct call to `/api/auth/admin/*` is refused too).
 
 ## Checks
 

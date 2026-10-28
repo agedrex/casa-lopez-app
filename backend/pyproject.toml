@@ -9,6 +9,8 @@ dependencies = [
     "fastapi[standard]>=0.143.0",
     "sqlalchemy>=2,<3",
     "psycopg[binary]>=3,<4",
+    "httpx>=0.28.1",
+    "google-auth>=2.62.0",
 ]
 
 [build-system]
@@ -17,5 +19,6 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "cryptography>=50.0.2",
     "pytest>=9.1.1",
 ]

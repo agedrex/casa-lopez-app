@@ -36,13 +36,13 @@ def main(argv=None) -> int:
                     return 1
                 print(f"Alembic revision: {revision}")
                 print("Tables: " + ", ".join(tables))
-                checks = [("revision", revision == "0002_semillas"),
+                checks = [("revision", revision == "0004_semillas_v3"),
                           ("tables", set(tables) - {"alembic_version"} == DOMAIN_TABLES)]
                 for name, expected in SEED_COUNTS.items():
                     actual = result["counts"][name]
                     print(f"Seed count {name}: {actual}")
                     checks.append((name, actual == expected))
-                checks.append(("blocked_exotics_and_gg", result["seeds_valid"]))
+                checks.append(("seed_codes_and_blocked_exotics", result["seeds_valid"]))
                 if options.prueba_escritura:
                     checks.extend(run_write_probes(connection))
                 for name, passed in checks:
