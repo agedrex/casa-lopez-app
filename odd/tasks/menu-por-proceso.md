@@ -38,6 +38,8 @@ Observed exception: the frontend has no navigation test runner or existing focus
 - [ ] Capture 375 px and desktop screenshots for the PR; at 375 px confirm touch targets are at least 44 px and the page does not scroll horizontally (wide tables scroll within their container).
 - [ ] Record any skipped or failed check and every `SUPUESTO` in the PR.
 
+User direction (2026-10-28): open the PR now without local screenshots or a local database. List 375 px screenshots and local pytest as pending; CI will run pytest. Do not merge.
+
 ## Delivery and progress
 
 Forecast: 250–400 authored changed lines, excluding generated files. Strategy: `single-pr`, based on the user's request for one PR. Running authored line count: 363 in implementation commit `3d4bcdc`. Slice: one PR containing T1's work-unit commit. Native assessment: medium risk, `review_due=false`, `review_due_reason=under_budget` against `main`. Screenshots, PR URL, and final verification results: pending.
@@ -54,4 +56,4 @@ Verification observed:
 - `git diff --check` passed. The browser role check and 375 px / desktop screenshots remain pending because the browser control host is unavailable.
 - Scoped active-state correction: `node node_modules/@biomejs/biome/bin/biome format --write components/main-nav.tsx` completed; `node node_modules/@biomejs/biome/bin/biome check components/main-nav.tsx` passed (1 file, no fixes). A single direct installed Next build compiled and typechecked, generated all 31 pages, then exited 1 at the existing Next 16.4.0 `SecurityFatalError` upgrade reminder. No package change was made.
 
-Next step: restore a working local backend runner and frontend dependencies for the exact checks, inspect the three role menus at 375 px and desktop, capture screenshots, then open the PR against `main` without merging it. The implementation commit is reviewable, but T1 stays open until the missing verification is observed.
+Next step: push the feature branch and open the PR against `main`, explicitly listing the missing 375 px screenshots and local pytest evidence as pending. The implementation commit is reviewable; T1 stays open until the outstanding verification is observed.
