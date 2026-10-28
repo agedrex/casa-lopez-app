@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import type { NavItem } from "@/lib/nav";
+import type { NavGroup, NavItem } from "@/lib/nav";
 import { isActive } from "./main-nav";
 
 const ICONS: Record<string, string> = {
@@ -12,6 +12,8 @@ const ICONS: Record<string, string> = {
   "/materiales":
     "M12 3v18M16.5 7.5C16.5 6 14.5 5 12 5S7.5 6 7.5 8s2 2.5 4.5 3 4.5 1 4.5 3-2 3-4.5 3-4.5-1-4.5-2.5",
   "/fabricacion": "M3 20h18M5 20V9l5 3V9l5 3V5h4v15",
+  "/grilla": "M3 4h18v16H3zM3 10h18M3 15h18M9 4v16M15 4v16",
+  "/calidad": "M12 3 2 21h20L12 3zm0 6v5m0 3h.01",
   more: "M5 12h.01M12 12h.01M19 12h.01",
 };
 
@@ -38,12 +40,20 @@ const tabClass = (active: boolean) =>
   }`;
 
 /** Bottom tab bar for phones: four main sections plus a "Más" sheet. */
-export function MobileNav({ items }: { items: NavItem[] }) {
+export function MobileNav({
+  groups,
+  tabs,
+}: {
+  groups: NavGroup[];
+  tabs: NavItem[];
+}) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  const primary = items.filter((item) => item.primary);
-  const more = items.filter((item) => !item.primary);
-  const moreActive = more.some((item) => isActive(pathname, item.href));
+  const moreActive =
+    !tabs.some((item) => isActive(pathname, item.href)) &&
+    groups.some((group) =>
+      group.items.some((item) => isActive(pathname, item.href)),
+    );
 
   // Close the sheet whenever the route changes.
   // biome-ignore lint/correctness/useExhaustiveDependencies: pathname is the trigger
@@ -74,24 +84,35 @@ export function MobileNav({ items }: { items: NavItem[] }) {
             id="mas-secciones"
             className="fixed inset-x-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-40 max-h-[70dvh] overflow-y-auto rounded-t-2xl border-t border-line bg-surface p-3 shadow-card"
           >
-            <ul>
-              {more.map((item) => {
-                const active = isActive(pathname, item.href);
-                return (
-                  <li key={item.href}>
-                    <Link
-                      href={item.href}
-                      aria-current={active ? "page" : undefined}
-                      className={`flex min-h-12 items-center rounded-card px-4 text-base ${
-                        active ? "bg-ink text-white" : "text-ink-soft"
-                      }`}
-                    >
-                      {item.label}
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
+            {groups.map((group) => (
+              <section
+                key={group.title}
+                aria-label={group.title}
+                className="mb-3 last:mb-0"
+              >
+                <h2 className="px-4 pb-1 text-xs font-semibold uppercase tracking-caps-sm text-muted">
+                  {group.title}
+                </h2>
+                <ul>
+                  {group.items.map((item) => {
+                    const active = isActive(pathname, item.href);
+                    return (
+                      <li key={item.href}>
+                        <Link
+                          href={item.href}
+                          aria-current={active ? "page" : undefined}
+                          className={`flex min-h-12 items-center rounded-card px-4 text-base ${
+                            active ? "bg-ink text-white" : "text-ink-soft"
+                          }`}
+                        >
+                          {item.label}
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            ))}
           </div>
         </>
       ) : null}
@@ -99,7 +120,7 @@ export function MobileNav({ items }: { items: NavItem[] }) {
         aria-label="Secciones"
         className="fixed inset-x-0 bottom-0 z-50 flex border-t border-line bg-surface pb-[env(safe-area-inset-bottom)]"
       >
-        {primary.map((item) => {
+        {tabs.map((item) => {
           const active = isActive(pathname, item.href);
           return (
             <Link
@@ -113,18 +134,16 @@ export function MobileNav({ items }: { items: NavItem[] }) {
             </Link>
           );
         })}
-        {more.length > 0 ? (
-          <button
-            type="button"
-            aria-expanded={open}
-            aria-controls="mas-secciones"
-            onClick={() => setOpen((value) => !value)}
-            className={tabClass(open || moreActive)}
-          >
-            <Icon path={ICONS.more} />
-            <span>Más</span>
-          </button>
-        ) : null}
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls="mas-secciones"
+          onClick={() => setOpen((value) => !value)}
+          className={tabClass(open || moreActive)}
+        >
+          <Icon path={ICONS.more} />
+          <span>Más</span>
+        </button>
       </nav>
     </div>
   );

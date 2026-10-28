@@ -6,13 +6,13 @@ import { apiGet } from "@/lib/api";
 import { formatDate, formatRate } from "@/lib/format";
 import type { Dolar, ProductoResumen } from "@/lib/types";
 
-export const metadata: Metadata = { title: "Tablero" };
+export const metadata: Metadata = { title: "Panel del negocio" };
 
 // The API caps a page at 500 products; the dashboard counts what it receives.
 const PAGE_LIMIT = 500;
 const ATTENTION_ROWS = 8;
 
-export default async function TableroPage() {
+export default async function PanelPage() {
   const [productos, dolar] = await Promise.all([
     apiGet<ProductoResumen[]>(`/productos?limit=${PAGE_LIMIT}`),
     apiGet<Dolar[]>("/dolar"),
@@ -22,7 +22,7 @@ export default async function TableroPage() {
     <>
       <PageHeader
         eyebrow="Resumen"
-        title="Tablero"
+        title="Panel del negocio"
         description="Estado de los costos de un vistazo. Los montos los calcula siempre el sistema."
       />
 

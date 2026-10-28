@@ -47,7 +47,7 @@ function BackLink() {
         href="/fabricacion"
         className="text-muted underline decoration-gold underline-offset-4"
       >
-        ← Fabricación
+        ← Lotes
       </Link>
     </p>
   );
@@ -77,7 +77,7 @@ export default async function LotePage({
         <BackLink />
         {result.status === 404 ? (
           <Notice tone="info" title="No encontramos ese lote">
-            Revise el código o vuelva al listado de fabricación.
+            Revisá el código o volvé al listado de lotes.
           </Notice>
         ) : (
           <ErrorNotice message={result.message} />

@@ -46,7 +46,7 @@ export function LoteForm({
           <Field
             id="lote-taller"
             label="Taller"
-            hint="Sin taller, el lote queda marcado en Calidad de datos."
+            hint="Sin taller, el lote aparece en Alertas."
           >
             <select
               id="lote-taller"

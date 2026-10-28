@@ -3,8 +3,8 @@ import { MainNav } from "@/components/main-nav";
 import { MobileNav } from "@/components/mobile-nav";
 import { UserMenu } from "@/components/user-menu";
 import { Wordmark } from "@/components/wordmark";
-import { NAV_ITEMS } from "@/lib/nav";
-import { hasRole, parseRoles, ROLE_LABELS } from "@/lib/permissions";
+import { mobileTabs, navForRole } from "@/lib/nav";
+import { parseRoles, ROLE_LABELS } from "@/lib/permissions";
 import { requireSession } from "@/lib/session";
 
 // The session is request-time data: everything that depends on it streams in
@@ -19,9 +19,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
 async function AuthenticatedShell({ children }: { children: React.ReactNode }) {
   const { user } = await requireSession();
-  const isAdmin = hasRole(user.role, "admin");
-  const items = NAV_ITEMS.filter((item) => !item.adminOnly || isAdmin);
-  const [role] = parseRoles(user.role);
+  const roles = parseRoles(user.role);
+  const [role] = roles;
+  const groups = navForRole(roles);
+  const tabs = mobileTabs(groups, roles);
 
   return (
     <div className="min-h-screen">
@@ -35,13 +36,13 @@ async function AuthenticatedShell({ children }: { children: React.ReactNode }) {
       </header>
       <div className="lg:grid lg:grid-cols-[16rem_1fr]">
         <aside className="hidden border-r border-line bg-surface lg:block lg:min-h-[calc(100vh-4.5rem)]">
-          <MainNav items={items} />
+          <MainNav groups={groups} />
         </aside>
         <main className="min-w-0 px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-6 sm:px-10 sm:py-10 lg:px-14 lg:pb-10">
           {children}
         </main>
       </div>
-      <MobileNav items={items} />
+      <MobileNav groups={groups} tabs={tabs} />
     </div>
   );
 }
