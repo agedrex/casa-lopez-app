@@ -14,7 +14,8 @@ Branch: feat/der-v3 · Entrega: ask-on-risk · Runner: `uv run --directory backe
 ## Tasks
 - T1 (S1,S4,S5) Esquema v3: modelos SQLAlchemy + migración Alembic 0003 (reemplaza v1) + semillas desde la plantilla + tests · delegated (backstop de contexto) · HECHO · commit 173968c · aplicado en staging (123 passed, 13 skipped; migraciones verificadas en Postgres local descartable)
 - T2 (S1,S2) Motor de costeo v3 (función pura, tests por regla; SIN prueba de paridad, el usuario la descartó) · inline · HECHO (22 tests, 145 passed)
-- T3 (S2) API: lectura y carga por módulo · pendiente
+- T3a (S2) Generador de recetas y cotización a una fecha, en la app (receta.py, puro) · inline · HECHO (12 tests, 157 passed)
+- T3b (S2) Servicio con DB: armar receta desde modelo/producto/extras, persistir cotizaciones INICIAL/RECOTIZACION/FINAL y endpoints de lectura y carga · pendiente
 - T4 (S3,S7) Frontend base + Better Auth + usuario de prueba · pendiente
 - T5 (S7) Módulos consulta/carga + admin · pendiente
 - T6 (S2) Sync de lectura hacia Google Sheet · pendiente
@@ -28,3 +29,4 @@ Branch: feat/der-v3 · Entrega: ask-on-risk · Runner: `uv run --directory backe
 - L5: Rama feat/der-v3 pusheada. Staging despliega solo desde main, así que el código v3 se subió con `railway up` (raíz del repo; el servicio tiene root /backend) solo al servicio backend de staging. Deploy fc057a95 SUCCESS. `alembic upgrade head` en staging: 0002_semillas -> 0004_semillas_v3 (head), `alembic check` limpio, `verificar_db`: todo OK. Las 11 tablas v1 se borraron (datos de prueba). Evidencia S6 cumplida para staging.
 - Estrategia de PRs: feature-branch-chain (todos contra feat/der-v3, PR final a main).
 - L6 (2026-10-28): "hay una prueba de paridad. Necesito que solo esté funcionando la lógica, en realidad" -> T2 sin fixtures de paridad contra Excel; solo tests de cada regla de la plantilla (LEEME sec. 6).
+- L7 (2026-10-28): "esa receta y todo se debería generar directamente en la aplicación, ya no estar en el Excel... el Excel ya no sirva para hacer cálculos, sino solo para mostrar información" -> refuerza S2: la receta, las cotizaciones y todos los cálculos se hacen y persisten en la app; el Sheet solo muestra.
