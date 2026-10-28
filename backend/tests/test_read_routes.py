@@ -19,22 +19,24 @@ def read_client(monkeypatch):
 
 def test_database_state_reports_revision_and_domain_table_count(read_client):
     client, session = read_client
-    session.execute.return_value.one.return_value = ("0002_semillas", 11)
+    session.execute.return_value.one.return_value = ("0004_semillas_v3", 25)
     response = client.get("/db/estado")
     assert response.status_code == 200
-    assert response.json() == {"ok": True, "alembic_revision": "0002_semillas", "tablas_costos": 11}
+    assert response.json() == {"ok": True, "alembic_revision": "0004_semillas_v3", "tablas_costos": 25}
     session.commit.assert_not_called()
 
 
 def test_stages_are_ordered_and_expose_only_public_catalog_fields(read_client):
     client, session = read_client
-    stages = [{"codigo": "CUERO", "nombre": "Cuero (capa externa)", "grupo": "material exterior",
-               "orden": 1, "requiere_material": True}]
+    stages = [{"codigo": "CUERO", "orden": 1, "tipo": "MATERIAL", "va_siempre": True, "tratamiento": "VARIABLE"}]
     session.execute.return_value.mappings.return_value.all.return_value = stages
     response = client.get("/catalogo/etapas")
     assert response.status_code == 200
     assert response.json() == stages
-    assert "ORDER BY" in str(session.execute.call_args.args[0])
+    statement = str(session.execute.call_args.args[0])
+    assert "ORDER BY" in statement and "costos.etapa" in statement
+    selected = statement.split("FROM")[0]
+    assert "nota" not in selected and "que_es_y_de_donde_viene" not in selected
     session.commit.assert_not_called()
 
 

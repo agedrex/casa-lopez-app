@@ -41,12 +41,17 @@ uv lock --check --directory backend
 
 Tests replace or remove `DATABASE_URL` and use mocks or in-memory SQLite. They never connect to Railway or production.
 
-## DER v1 schema and migrations (WO 2)
+## DER v3 schema and migrations
 
-The eleven phase-one models are in `src/backend/models.py`. All application tables
+The 25 DER v3 models are in `src/backend/models.py` (summary in [`docs/der-v3.md`](../docs/der-v3.md); the v1 design in `docs/der.md` is superseded). All application tables
 and Alembic's version table live in `costos`; Alembic excludes `public`, reserved
-for Better Auth. Schema creation and seeds run only through the explicit revisions
-`0001_esquema_costos` and `0002_semillas`, never during application startup.
+for Better Auth. Revisions: `0001`/`0002` (v1, kept for history), `0003_der_v3`
+(drops the v1 tables with `IF EXISTS`, creates v3) and `0004_semillas_v3` (reference
+data from the plantilla). They run only explicitly, never at application startup.
+Downgrading `0003` drops v3 only; v1 is not recreated.
+
+The seeds come from `migrations/seed_data/seed_v3.json`, generated from the xlsx by
+`scripts/generate_seed_v3.py` (not run by migrations; see its docstring).
 
 After the project's declared dependencies are available, supply `DATABASE_URL`
 securely for an authorized disposable local PostgreSQL. From `backend/`:
@@ -60,39 +65,22 @@ uv run python -m backend.verificar_db
 uv run python -m backend.verificar_db --prueba-escritura
 ```
 
-The verification script checks revision, tables, seed counts, blocked exotic
-materials, and GG. Optional write probes use savepoints inside one transaction
-that always rolls back. It refuses Railway environments other than `staging`.
-No credentials or connection diagnostics are printed.
+The verification script checks revision, tables, seed counts and the seeded business
+keys (including the blocked exotic leathers). Optional write probes use savepoints
+inside one transaction that always rolls back. It refuses Railway environments other
+than `staging`. No credentials or connection diagnostics are printed.
 
 `GET /db/estado` returns the current revision and application table count;
-`GET /catalogo/etapas` returns the ordered public stage catalog. These endpoints
-only read and expose no prices. Database failures return a generic 503.
+`GET /catalogo/etapas` returns the ordered stage catalog (code, order, type, always-applies, treatment).
+These endpoints only read and expose no prices. Database failures return a generic 503.
 
 Run tests from the repository root with `uv run --directory backend pytest -q`.
-The fifteen PostgreSQL integration cases (thirteen constraints/seed checks and
-two supplier downgrade regressions) skip unless `TEST_DATABASE_URL` is
-explicitly supplied for a disposable local PostgreSQL. They apply Alembic head,
-then roll back each test's transaction; do not supply a valuable local database.
-Non-local database destinations and Railway environments are refused.
+The thirteen PostgreSQL integration cases (ten constraint probes, seed validation, head
+tables/counts and the seed downgrade) skip unless `TEST_DATABASE_URL` is explicitly
+supplied for a disposable local PostgreSQL. They apply Alembic head, then roll back each
+test's transaction; do not supply a valuable local database. Non-local database
+destinations and Railway environments are refused.
 
-To verify a complete local migration cycle, run `downgrade base` only in that
-disposable database and then `upgrade head` again. `downgrade -1` at head removes
-only the catalog seeds, subject to foreign-key protections.
-
-Local WO 2 evidence: 59 tests passed and 15 integration cases skipped; Python
-compilation and the offline lock consistency check passed. Initially Alembic was
-only resolved in the lock; dependency installation had not been authorized.
-After explicit authorization, the existing uv tool synchronized declared packages
-into the existing `backend/.venv`: Alembic 1.20.0 and Mako 1.4.3, with no new
-Python or infrastructure installation. The same venv successfully ran actual
-`alembic upgrade head --sql`, explicit-range offline downgrades, and `alembic heads`.
-The generated SQL contains eleven domain tables, four indexes, and exact seeds;
-the first statement creates `costos`, with no `public` operations. SQL generation
-does not apply migrations. Live upgrade/check/round-trip and PostgreSQL integration
-proof remain pending because no disposable local PostgreSQL was available.
-
-Future staging application is a separate, explicitly authorized SSH operation
-inside the backend container; do not run migrations against Railway from a local
-machine. See [staging procedure](../docs/wo2-staging.md) and
-[decisions and limitations](../docs/wo2-decisiones.md).
+Applying migrations to Railway staging is a separate, explicitly authorized operation
+(see [staging procedure](../docs/wo2-staging.md)); never run them against Railway from a
+local machine.

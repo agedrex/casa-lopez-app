@@ -6,75 +6,44 @@ import pytest
 from backend import verificar_db
 from backend.db_verification import expect_constraint
 from sqlalchemy.exc import IntegrityError
-from pathlib import Path
-from decimal import Decimal
-from datetime import date
-import re
 
 
-def exact_sql_seed_fixture():
-    """Decode literal VALUES rows from the unchanged SQL source, without executing SQL."""
-    source = (Path(__file__).parents[2] / "docs" / "der-borrador.sql").read_text(encoding="utf-8")
-    source = source.split("-- ---------- Datos semilla (los del Excel) ----------")[1].split("COMMIT;")[0]
-    data = {}
-    for statement in source.split(";"):
-        if not statement.strip():
-            continue
-        name = re.search(r"INSERT INTO (\w+)", statement).group(1)
-        literals = statement.split("VALUES", 1)[1].split(") AS v", 1)[0]
-        tokens = re.findall(r"'(?:''|[^'])*'|\(|\)|,|NULL|true|false|\d+(?:\.\d+)?", literals)
-        rows = []
-        row = None
-        for token in tokens:
-            if token == "(":
-                row = []
-            elif token == ")":
-                if row is not None:
-                    rows.append(tuple(row))
-                    row = None
-            elif token != "," and row is not None:
-                if token.startswith("'"):
-                    value = token[1:-1].replace("''", "'")
-                    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
-                        value = date.fromisoformat(value)
-                elif token == "NULL":
-                    value = None
-                elif token in ("true", "false"):
-                    value = token == "true"
-                else:
-                    value = Decimal(token)
-                row.append(value)
-        if name == "material":
-            rows = [row + (True,) for row in rows]
-        elif name == "proveedor":
-            rows = [row + (None, None, None, None, None, True) for row in rows]
-        elif name == "precio_material":
-            rows = [row[:-1] + ("excel_migracion", row[-1]) for row in rows]
-        elif name == "parametro":
-            rows = [row[:3] + ("supuesto",) + row[3:] for row in rows]
-        elif name == "categoria":
-            rows = [row + (True,) for row in rows]
-        data[name] = rows
-    return data
+SEED_CODES = {
+    "etapa": ["CUERO", "FORRO", "FLEX", "GOMA_EVA", "HERRAJES", "HILO_CEMENTO", "CORTE", "CONFECCION"],
+    "material": ["MAT-CU01", "MAT-CU02", "MAT-CU03", "MAT-CU04", "MAT-CU05", "MAT-CU06", "MAT-FO01",
+                 "MAT-FO02", "MAT-FL01", "MAT-GE01", "MAT-HE00", "MAT-HC01", "MAT-CA01"],
+    "persona": [f"PER-000{number}" for number in range(1, 8)],
+}
 
 
-@pytest.mark.parametrize("table, natural_key, field, value", [
-    ("precio_material", "cuero:5", 2, Decimal("1")),
-    ("tipo_cambio", date(2026, 9, 1), 1, Decimal("1")),
-    ("parametro", "GANANCIA_PCT", 1, Decimal("50")),
-    ("etapa", "CUERO", 1, "Wrong stage definition"),
-])
-def test_exact_seed_validation_rejects_same_count_corruption(table, natural_key, field, value):
+def test_seed_validation_accepts_the_expected_business_keys():
     from backend.db_verification import seed_rows_match
-    rows = exact_sql_seed_fixture()
-    assert seed_rows_match(rows)
-    changed = list(rows[table])
-    index = next(index for index, row in enumerate(changed) if row[0] == natural_key)
-    replacement = list(changed[index])
-    replacement[field] = value
-    changed[index] = tuple(replacement)
-    rows[table] = changed
-    assert not seed_rows_match(rows)
+    assert seed_rows_match(SEED_CODES, ["MAT-CU03", "MAT-CU04"])
+
+
+@pytest.mark.parametrize("table, replacement", [
+    ("etapa", "REB"), ("material", "MAT-CU99"), ("persona", "PER-0099"),
+])
+def test_seed_validation_rejects_same_count_corruption(table, replacement):
+    from backend.db_verification import seed_rows_match
+    codes = {name: list(values) for name, values in SEED_CODES.items()}
+    codes[table][0] = replacement
+    assert not seed_rows_match(codes, ["MAT-CU03", "MAT-CU04"])
+
+
+def test_seed_validation_rejects_duplicates_and_unblocked_exotics():
+    from backend.db_verification import seed_rows_match
+    codes = {name: list(values) for name, values in SEED_CODES.items()}
+    codes["etapa"][1] = "CUERO"
+    assert not seed_rows_match(codes, ["MAT-CU03", "MAT-CU04"])
+    assert not seed_rows_match(SEED_CODES, ["MAT-CU03"])
+
+
+def test_expected_seed_counts_cover_the_seeded_tables():
+    assert verificar_db.SEED_COUNTS["etapa"] == 8 and verificar_db.SEED_COUNTS["material"] == 13
+    assert verificar_db.SEED_COUNTS["modelo"] == 325
+    assert set(verificar_db.SEED_COUNTS) <= verificar_db.DOMAIN_TABLES
+    assert len(verificar_db.DOMAIN_TABLES) == 25
 
 
 @pytest.mark.parametrize("environment", ["production", "proto", "", "STAGING"])
@@ -104,10 +73,10 @@ def test_write_verification_always_rolls_back_one_outer_transaction(monkeypatch,
     transaction = connection.begin.return_value
     monkeypatch.setattr(verificar_db, "create_database_engine", lambda: engine)
     monkeypatch.setattr(verificar_db, "inspect_database", lambda conn: {
-        "revision": "0002_semillas", "tables": sorted(verificar_db.DOMAIN_TABLES),
+        "revision": "0004_semillas_v3", "tables": sorted(verificar_db.DOMAIN_TABLES),
         "counts": verificar_db.SEED_COUNTS, "seeds_valid": True,
     })
-    probes = MagicMock(return_value=[(str(index), True) for index in range(1, 13)])
+    probes = MagicMock(return_value=[(str(index), True) for index in range(1, 11)])
     if probe_fails:
         probes.side_effect = RuntimeError("sensitive details")
     monkeypatch.setattr(verificar_db, "run_write_probes", probes)
@@ -144,7 +113,7 @@ def test_cleanup_failure_returns_nonzero(monkeypatch):
     engine.dispose.side_effect = RuntimeError("hidden details")
     monkeypatch.setattr(verificar_db, "create_database_engine", lambda: engine)
     monkeypatch.setattr(verificar_db, "inspect_database", lambda conn: {
-        "revision": "0002_semillas", "tables": sorted(verificar_db.DOMAIN_TABLES),
+        "revision": "0004_semillas_v3", "tables": sorted(verificar_db.DOMAIN_TABLES),
         "counts": verificar_db.SEED_COUNTS, "seeds_valid": True,
     })
     assert verificar_db.main([]) == 1
