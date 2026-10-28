@@ -45,7 +45,22 @@
 
   body {
     min-height: 100vh;
+    min-height: 100dvh;
     line-height: 1.6;
+    overflow-wrap: break-word;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* Mobile-first touch behavior: no double-tap zoom delay, calm tap highlight. */
+  a,
+  button,
+  summary,
+  select,
+  input,
+  textarea,
+  label {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
   }
 
   h1,

@@ -79,7 +79,7 @@ export function VozPanel({ configured }: { configured: boolean }) {
               disabled={!dictation.supported}
               aria-pressed={dictation.listening}
               aria-describedby={micHelpId}
-              className="rounded-card border border-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-60 aria-pressed:bg-bordeaux aria-pressed:text-white"
+              className="inline-flex min-h-11 items-center justify-center sm:min-h-0 rounded-card border border-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-60 aria-pressed:bg-bordeaux aria-pressed:text-white"
             >
               {dictation.listening ? "Terminar de hablar" : "Hablar"}
             </button>

@@ -40,14 +40,14 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <div className="mb-10 flex flex-wrap items-end justify-between gap-4 border-b border-line pb-6">
+    <div className="mb-6 flex flex-wrap items-end justify-between gap-4 border-b border-line pb-5 sm:mb-10 sm:pb-6">
       <div>
         {eyebrow ? (
           <p className="mb-2 text-xs uppercase tracking-caps-md text-gold-deep">
             {eyebrow}
           </p>
         ) : null}
-        <h1 className="text-3xl sm:text-4xl">{title}</h1>
+        <h1 className="text-2xl sm:text-4xl">{title}</h1>
         {description ? (
           <p className="mt-3 max-w-2xl text-sm text-muted">{description}</p>
         ) : null}
@@ -66,7 +66,7 @@ export function Card({
 }) {
   return (
     <section
-      className={`rounded-card border border-line bg-surface p-6 shadow-card ${className}`}
+      className={`rounded-card border border-line bg-surface p-4 shadow-card sm:p-6 ${className}`}
     >
       {children}
     </section>
@@ -118,14 +118,45 @@ export function ErrorNotice({
 
 export function TableWrap({ children }: { children: ReactNode }) {
   return (
-    <div className="overflow-x-auto rounded-card border border-line bg-surface">
+    <div className="overflow-x-auto overscroll-x-contain rounded-card border border-line bg-surface">
       {children}
     </div>
   );
 }
 
 export const tableClass = "w-full min-w-max border-collapse text-left text-sm";
+
+/**
+ * Phone layout for list pages: a stack of cards below `md`, the table from `md` up.
+ * Render both and let CSS pick, so there is no hydration or width sniffing.
+ */
+export function ResponsiveTable({
+  table,
+  cards,
+}: {
+  table: ReactNode;
+  cards: ReactNode;
+}) {
+  return (
+    <>
+      <div className="md:hidden">{cards}</div>
+      <div className="hidden md:block">{table}</div>
+    </>
+  );
+}
+
+export function CardList({ children }: { children: ReactNode }) {
+  return <ul className="space-y-3">{children}</ul>;
+}
+
+export function CardItem({ children }: { children: ReactNode }) {
+  return (
+    <li className="rounded-card border border-line bg-surface p-4 shadow-card">
+      {children}
+    </li>
+  );
+}
 export const thClass =
-  "border-b border-line bg-paper-mid px-4 py-3 text-xs font-normal uppercase tracking-caps-sm text-muted";
-export const tdClass = "border-b border-line/70 px-4 py-3 align-top";
+  "border-b border-line bg-paper-mid px-3 py-3 text-xs font-normal uppercase tracking-caps-sm text-muted sm:px-4";
+export const tdClass = "border-b border-line/70 px-3 py-3 align-top sm:px-4";
 export const numClass = "text-right tabular-nums";

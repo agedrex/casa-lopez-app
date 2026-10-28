@@ -78,7 +78,7 @@ export function LoginForm() {
           type="email"
           autoComplete="username"
           required
-          className="w-full rounded-card border border-line bg-surface px-4 py-3 text-sm outline-none focus:border-gold"
+          className="w-full rounded-card border border-line bg-surface min-h-12 px-4 py-3 text-base outline-none focus:border-gold sm:text-sm"
         />
       </div>
       <div>
@@ -94,13 +94,13 @@ export function LoginForm() {
           type="password"
           autoComplete="current-password"
           required
-          className="w-full rounded-card border border-line bg-surface px-4 py-3 text-sm outline-none focus:border-gold"
+          className="w-full rounded-card border border-line bg-surface min-h-12 px-4 py-3 text-base outline-none focus:border-gold sm:text-sm"
         />
       </div>
       <button
         type="submit"
         disabled={pending}
-        className="w-full rounded-card bg-ink px-4 py-3 text-sm uppercase tracking-caps-sm text-white transition-colors hover:bg-ink-soft disabled:opacity-60"
+        className="min-h-12 w-full rounded-card bg-ink px-4 py-3 text-sm uppercase tracking-caps-sm text-white transition-colors hover:bg-ink-soft disabled:opacity-60"
       >
         {pending ? "Ingresando…" : "Ingresar"}
       </button>

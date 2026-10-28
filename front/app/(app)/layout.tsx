@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { MainNav } from "@/components/main-nav";
+import { MobileNav } from "@/components/mobile-nav";
 import { UserMenu } from "@/components/user-menu";
 import { Wordmark } from "@/components/wordmark";
 import { NAV_ITEMS } from "@/lib/nav";
@@ -24,7 +25,7 @@ async function AuthenticatedShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen">
-      <header className="flex items-center justify-between border-b border-line bg-surface px-4 py-3 sm:px-8">
+      <header className="sticky top-0 z-20 flex items-center justify-between border-b border-line bg-surface px-4 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:px-8 sm:py-3">
         <Wordmark />
         <UserMenu
           name={user.name}
@@ -33,11 +34,14 @@ async function AuthenticatedShell({ children }: { children: React.ReactNode }) {
         />
       </header>
       <div className="lg:grid lg:grid-cols-[16rem_1fr]">
-        <aside className="border-b border-line bg-surface lg:min-h-[calc(100vh-4.5rem)] lg:border-b-0 lg:border-r">
+        <aside className="hidden border-r border-line bg-surface lg:block lg:min-h-[calc(100vh-4.5rem)]">
           <MainNav items={items} />
         </aside>
-        <main className="min-w-0 px-4 py-10 sm:px-10 lg:px-14">{children}</main>
+        <main className="min-w-0 px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-6 sm:px-10 sm:py-10 lg:px-14 lg:pb-10">
+          {children}
+        </main>
       </div>
+      <MobileNav items={items} />
     </div>
   );
 }

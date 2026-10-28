@@ -60,7 +60,7 @@ export default async function FabricacionPage({
           canWrite(user.role) ? (
             <Link
               href="/fabricacion/nuevo"
-              className="rounded-card bg-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm text-white hover:bg-ink-soft"
+              className="inline-flex min-h-11 items-center justify-center sm:min-h-0 rounded-card bg-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm text-white hover:bg-ink-soft"
             >
               Nuevo lote
             </Link>
@@ -130,7 +130,7 @@ function Filters({
         action="/fabricacion"
         className="flex flex-wrap items-end gap-4"
       >
-        <div className="min-w-44">
+        <div className="w-full sm:w-auto sm:min-w-44">
           <label
             htmlFor="filtro-estado"
             className="mb-1.5 block text-xs uppercase tracking-caps-sm text-muted"
@@ -151,7 +151,7 @@ function Filters({
             ))}
           </select>
         </div>
-        <div className="min-w-44">
+        <div className="w-full sm:w-auto sm:min-w-44">
           <label
             htmlFor="filtro-donde"
             className="mb-1.5 block text-xs uppercase tracking-caps-sm text-muted"
@@ -172,7 +172,7 @@ function Filters({
             ))}
           </select>
         </div>
-        <div className="min-w-52">
+        <div className="w-full sm:w-auto sm:min-w-52">
           <label
             htmlFor="filtro-taller"
             className="mb-1.5 block text-xs uppercase tracking-caps-sm text-muted"
@@ -195,7 +195,7 @@ function Filters({
         </div>
         <button
           type="submit"
-          className="rounded-card border border-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm hover:bg-ink hover:text-white"
+          className="inline-flex min-h-11 items-center justify-center sm:min-h-0 rounded-card border border-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm hover:bg-ink hover:text-white"
         >
           Filtrar
         </button>

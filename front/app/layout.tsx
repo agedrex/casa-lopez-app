@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Lato, Playfair_Display } from "next/font/google";
 import "./globals.css";
 
@@ -22,6 +22,13 @@ export const metadata: Metadata = {
   },
   description: "Costos y cotizaciones de Casa López, marroquinería desde 1939.",
   robots: { index: false, follow: false },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#faf8f5",
 };
 
 export default function RootLayout({

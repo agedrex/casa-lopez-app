@@ -74,7 +74,7 @@ export default async function ModelosPage({
         actions={
           <Link
             href="/admin/modelos/nuevo"
-            className="rounded-card bg-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm text-white hover:bg-ink-soft"
+            className="inline-flex min-h-11 items-center justify-center sm:min-h-0 rounded-card bg-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm text-white hover:bg-ink-soft"
           >
             Nuevo modelo
           </Link>
@@ -189,7 +189,7 @@ function Filters({
         action="/admin/modelos"
         className="flex flex-wrap items-end gap-4"
       >
-        <div className="min-w-56 flex-1">
+        <div className="w-full sm:w-auto sm:min-w-56 sm:flex-1">
           <label htmlFor="filtro-q" className={label}>
             Buscar
           </label>
@@ -203,7 +203,7 @@ function Filters({
             className={inputClass}
           />
         </div>
-        <div className="min-w-44">
+        <div className="w-full sm:w-auto sm:min-w-44">
           <label htmlFor="filtro-categoria" className={label}>
             Categoría
           </label>
@@ -221,7 +221,7 @@ function Filters({
             ))}
           </select>
         </div>
-        <div className="min-w-36">
+        <div className="w-full sm:w-auto sm:min-w-36">
           <label htmlFor="filtro-tamano" className={label}>
             Tamaño
           </label>
@@ -239,7 +239,7 @@ function Filters({
             ))}
           </select>
         </div>
-        <div className="min-w-36">
+        <div className="w-full sm:w-auto sm:min-w-36">
           <label htmlFor="filtro-validado" className={label}>
             Validación
           </label>
@@ -256,7 +256,7 @@ function Filters({
         </div>
         <button
           type="submit"
-          className="rounded-card border border-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm hover:bg-ink hover:text-white"
+          className="inline-flex min-h-11 items-center justify-center sm:min-h-0 rounded-card border border-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm hover:bg-ink hover:text-white"
         >
           Filtrar
         </button>

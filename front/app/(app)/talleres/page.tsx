@@ -33,7 +33,7 @@ export default async function TalleresPage() {
           canWrite(user.role) ? (
             <Link
               href="/talleres/nuevo"
-              className="rounded-card bg-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm text-white hover:bg-ink-soft"
+              className="inline-flex min-h-11 items-center justify-center sm:min-h-0 rounded-card bg-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm text-white hover:bg-ink-soft"
             >
               Nuevo taller
             </Link>

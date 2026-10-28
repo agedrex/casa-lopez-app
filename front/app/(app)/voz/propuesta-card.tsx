@@ -287,7 +287,7 @@ export function PropuestaCard({ propuesta }: { propuesta: VozPropuesta }) {
               type="button"
               onClick={() => setDiscarded(true)}
               disabled={pending}
-              className="rounded-card border border-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm hover:bg-ink hover:text-white disabled:opacity-60"
+              className="inline-flex min-h-11 items-center justify-center sm:min-h-0 rounded-card border border-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm hover:bg-ink hover:text-white disabled:opacity-60"
             >
               Descartar
             </button>

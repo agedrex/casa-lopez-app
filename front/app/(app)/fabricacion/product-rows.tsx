@@ -86,7 +86,7 @@ export function ProductRows({
                 onClick={() => setRows(rows.filter((r) => r !== row))}
                 disabled={rows.length <= min}
                 aria-label={`Quitar el producto ${index + 1}`}
-                className="rounded-card border border-line px-3 py-2 text-sm text-muted hover:border-ink hover:text-ink disabled:opacity-40"
+                className="inline-flex min-h-11 items-center sm:min-h-0 rounded-card border border-line px-3 py-2 text-sm text-muted hover:border-ink hover:text-ink disabled:opacity-40"
               >
                 Quitar
               </button>
@@ -101,7 +101,7 @@ export function ProductRows({
             setRows([...rows, next.current]);
             next.current += 1;
           }}
-          className="rounded-card border border-ink px-4 py-2 text-sm uppercase tracking-caps-sm hover:bg-ink hover:text-white"
+          className="inline-flex min-h-11 items-center justify-center sm:min-h-0 rounded-card border border-ink px-4 py-2 text-sm uppercase tracking-caps-sm hover:bg-ink hover:text-white"
         >
           Agregar otro producto
         </button>

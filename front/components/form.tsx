@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import type { FormState } from "@/lib/action-state";
 
 export const inputClass =
-  "w-full rounded-card border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-gold disabled:opacity-60";
+  "min-h-11 w-full rounded-card border border-line bg-surface px-3 py-2 text-base outline-none focus:border-gold disabled:opacity-60 sm:min-h-0 sm:text-sm";
 
 export function Field({
   id,
@@ -50,7 +50,7 @@ export function PrimaryButton({
       name={name}
       value={value}
       disabled={pending}
-      className="rounded-card bg-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm text-white transition-colors hover:bg-ink-soft disabled:opacity-60"
+      className="min-h-11 w-full rounded-card bg-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm text-white transition-colors hover:bg-ink-soft disabled:opacity-60 sm:min-h-0 sm:w-auto"
     >
       {children}
     </button>
@@ -74,7 +74,7 @@ export function SecondaryButton({
       name={name}
       value={value}
       disabled={pending}
-      className="rounded-card border border-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm hover:bg-ink hover:text-white disabled:opacity-60"
+      className="min-h-11 w-full rounded-card border border-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm hover:bg-ink hover:text-white disabled:opacity-60 sm:min-h-0 sm:w-auto"
     >
       {children}
     </button>

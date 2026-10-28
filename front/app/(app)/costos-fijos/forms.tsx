@@ -119,7 +119,7 @@ export function GastoForm({
           id="gasto-ficticio"
           name="ficticio"
           type="checkbox"
-          className="mt-1 size-4 accent-ink"
+          className="mt-0.5 size-5 accent-ink"
         />
         <label htmlFor="gasto-ficticio" className="text-sm">
           Monto ficticio
@@ -151,7 +151,7 @@ export function MontoForm({
       key={formKey}
       onSubmit={onSubmit}
       aria-label={`Cargar el monto de ${concepto}`}
-      className="flex min-w-56 flex-col gap-2"
+      className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-56"
     >
       <div className="flex items-end gap-2">
         <div className="flex-1">

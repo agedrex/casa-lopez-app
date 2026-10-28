@@ -115,7 +115,7 @@ function PeriodSelector({
         action="/costos-fijos"
         className="flex flex-wrap items-end gap-4"
       >
-        <div className="min-w-48">
+        <div className="w-full sm:w-auto sm:min-w-48">
           <label
             htmlFor="periodo"
             className="mb-1.5 block text-xs uppercase tracking-caps-sm text-muted"
@@ -137,7 +137,7 @@ function PeriodSelector({
         </div>
         <button
           type="submit"
-          className="rounded-card border border-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm hover:bg-ink hover:text-white"
+          className="inline-flex min-h-11 items-center justify-center sm:min-h-0 rounded-card border border-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm hover:bg-ink hover:text-white"
         >
           Ver período
         </button>

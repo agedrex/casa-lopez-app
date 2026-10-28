@@ -127,7 +127,7 @@ function Report({
           action="/calidad"
           className="flex flex-wrap items-end gap-4"
         >
-          <div className="min-w-44">
+          <div className="w-full sm:w-auto sm:min-w-44">
             <label
               htmlFor="filtro-severidad"
               className="mb-1.5 block text-xs uppercase tracking-caps-sm text-muted"
@@ -148,7 +148,7 @@ function Report({
               ))}
             </select>
           </div>
-          <div className="min-w-64">
+          <div className="w-full sm:w-auto sm:min-w-64">
             <label
               htmlFor="filtro-grupo"
               className="mb-1.5 block text-xs uppercase tracking-caps-sm text-muted"
@@ -169,7 +169,7 @@ function Report({
               ))}
             </select>
           </div>
-          <div className="min-w-56 flex-1">
+          <div className="w-full sm:w-auto sm:min-w-56 sm:flex-1">
             <label
               htmlFor="filtro-q"
               className="mb-1.5 block text-xs uppercase tracking-caps-sm text-muted"
@@ -188,7 +188,7 @@ function Report({
           </div>
           <button
             type="submit"
-            className="rounded-card border border-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm hover:bg-ink hover:text-white"
+            className="inline-flex min-h-11 items-center justify-center sm:min-h-0 rounded-card border border-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm hover:bg-ink hover:text-white"
           >
             Filtrar
           </button>

@@ -145,7 +145,7 @@ export function ProductoForm({
           id="producto-kit"
           name="es_kit"
           type="checkbox"
-          className="mt-1 size-4 accent-ink"
+          className="mt-0.5 size-5 accent-ink"
         />
         <label htmlFor="producto-kit" className="text-sm">
           Es un kit

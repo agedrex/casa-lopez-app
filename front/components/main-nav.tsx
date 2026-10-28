@@ -4,19 +4,17 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { NavItem } from "@/lib/nav";
 
-function isActive(pathname: string, href: string) {
+export function isActive(pathname: string, href: string) {
   return href === "/"
     ? pathname === "/"
     : pathname === href || pathname.startsWith(`${href}/`);
 }
 
+/** Desktop sidebar. On small screens the bottom bar (MobileNav) takes over. */
 export function MainNav({ items }: { items: NavItem[] }) {
   const pathname = usePathname();
   return (
-    <nav
-      aria-label="Secciones"
-      className="flex gap-1 overflow-x-auto px-4 py-3 lg:flex-col lg:overflow-visible lg:px-6 lg:py-8"
-    >
+    <nav aria-label="Secciones" className="flex flex-col gap-1 px-6 py-8">
       {items.map((item) => {
         const active = isActive(pathname, item.href);
         return (

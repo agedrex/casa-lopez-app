@@ -18,7 +18,7 @@ export default function ErrorPage({
       <button
         type="button"
         onClick={reset}
-        className="mt-6 rounded-card border border-ink px-4 py-2 text-sm hover:bg-ink hover:text-white"
+        className="inline-flex min-h-11 items-center mt-6 rounded-card border border-ink px-4 py-2 text-sm hover:bg-ink hover:text-white"
       >
         Reintentar
       </button>
