@@ -117,13 +117,13 @@ def require_user(request: Request, verificador: Verificador | None = Depends(get
 def require_role(*roles: str) -> Callable[..., Usuario]:
     """Dependency factory: the signed-in user must hold at least one of `roles` (else 403).
 
-    Usage: `Depends(require_role("admin"))`. Not attached to any route yet.
+    Usage: `Depends(require_role("admin", "cotizador"))`. The writes of `api.py` use it (see ESCRITURA there).
     """
     allowed = frozenset(roles)
 
     def dependency(usuario: Usuario = Depends(require_user)) -> Usuario:
         if not allowed & usuario.roles:
-            raise HTTPException(status_code=403, detail="No tiene permiso para esta acción.")
+            raise HTTPException(status_code=403, detail="No tenés permiso para esta acción.")
         return usuario
 
     return dependency

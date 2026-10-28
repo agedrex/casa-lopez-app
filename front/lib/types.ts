@@ -88,3 +88,57 @@ export type Dolar = {
   tipo: string | null;
   nota: string | null;
 };
+
+export type Material = {
+  codigo: string;
+  nombre: string;
+  nombre_corto: string | null;
+  etapa: string;
+  unidad_de_consumo: string;
+  cotizable: boolean;
+  controla_inventario: boolean;
+  desperdicio_manual: string | null;
+};
+
+export type Precio = {
+  codigo: string;
+  material: string;
+  color: string | null;
+  proveedor: string | null;
+  precio: string;
+  moneda: string;
+  unidad_del_precio: string;
+  iva_incluido: boolean;
+  vigente_desde: string;
+  nota_fuente: string | null;
+  vigente: boolean;
+  // Percent change against the previous price of the same material, color and
+  // currency, calculated by the API (null for the first price of a series).
+  variacion_pct: string | null;
+  salto_grande: boolean;
+};
+
+export type PrecioChequeo = {
+  anterior: string | null;
+  variacion_pct: string | null;
+  salto_grande: boolean;
+};
+
+export type Catalogos = {
+  colores: string[];
+  categorias: string[];
+};
+
+export type Conteo = { total: number };
+
+export type Modelo = {
+  codigo: string;
+  nombre_del_modelo: string;
+  categoria: string | null;
+};
+
+export type EtapaCatalogo = {
+  codigo: string;
+  orden: number;
+  tipo: string;
+};

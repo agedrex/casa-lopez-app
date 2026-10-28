@@ -17,8 +17,8 @@ Branch: feat/der-v3 · Entrega: ask-on-risk · Runner: `uv run --directory backe
 - T3a (S2) Generador de recetas y cotización a una fecha, en la app (receta.py, puro) · inline · HECHO (12 tests, 157 passed)
 - T3b (S2) Servicio con DB + endpoints de lectura y carga, todos tras `require_user` fail-closed (401 hasta T4) · delegated (backstop de contexto) · HECHO (226 passed; 257 con Postgres local)
 - T4 (S3,S7) Frontend base + Better Auth + usuario de prueba + verificador en backend · delegated (backstop) · HECHO · desplegado en staging (front 3b60b1bc, backend a65ff0b7)
-- T5a (S2,S7) Dólar y precios (consulta + carga) y permisos de escritura por rol en el backend · delegated · pendiente
-- T5b (S2,S7) Productos: crear, extras, cotizar INICIAL/RECOTIZACION/FINAL desde pantalla · pendiente
+- T5a (S2,S7) Dólar y precios (consulta + carga) y permisos de escritura por rol en el backend · delegated · HECHO (326 passed; 363 con Postgres local)
+- T5b (S2,S7) Productos: crear, extras, cotizar INICIAL/RECOTIZACION/FINAL desde pantalla · HECHO (misma corrida)
 - T5c (S3,S7) Panel admin: usuarios/roles y parámetros · pendiente
 - T5d (S7) Fabricación, talleres, costos fijos, calidad de datos · pendiente
 - T6 (S2) Sync de lectura hacia Google Sheet · pendiente
@@ -37,3 +37,4 @@ Branch: feat/der-v3 · Entrega: ask-on-risk · Runner: `uv run --directory backe
 - L9: T4 hecho. Decisiones del worker: roles admin|cotizador|consulta (default consulta, supuesto), sign-up deshabilitado, el navegador nunca llama al backend (el front reenvía la cookie), backend verifica llamando a AUTH_VERIFY_URL (get-session). Riesgo: `next build` de Next 16.4.0 falla la 1ª vez por un aviso de seguridad de npm y pasa en el reintento; decisión de actualizar Next pendiente del usuario.
 - L10 (2026-10-28): T4 en staging: variables seteadas (front: BETTER_AUTH_SECRET [sellado, regenerado], DATABASE_URL=ref Postgres, API_URL; backend: AUTH_VERIFY_URL=<front>/api/auth/get-session). Tablas Better Auth ya existían en public ("No migrations needed"). Usuario contacto@agedrex.com (admin) creado con contraseña generada, entregada al usuario por chat y no guardada en el repo. E2E staging: login 200, credencial mala 401, front /productos 200 y backend 200 con la cookie reenviada. Variables viejas AUTH_INTERNAL_SECRET, AUTH_BACKEND_URL, AUTH_DATABASE_URL, NEXT_PUBLIC_API_URL quedan sin uso (no se borraron).
 - L11 (2026-10-28): tras 'que falta' el usuario aprobó seguir con T5 en este orden: dólar y precios -> productos y cotizar -> panel admin.
+- L12: T5a/T5b hechos. Escrituras exigen rol admin|cotizador (consulta -> 403). Hueco cerrado: el bloqueo de materiales no cotizables también se valida en la server action. Pendientes del worker: no hay pantalla para crear colores (tabla color vacía), GET /precios sin paginar, componente de kit por código sin buscador, el costo hoy no distingue tipo de dólar (VENDEDOR/COMPRADOR). Sin probar en navegador real.

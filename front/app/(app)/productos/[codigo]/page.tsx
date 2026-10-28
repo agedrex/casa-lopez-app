@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Avisos } from "@/components/avisos";
+import { ReadOnlyNote } from "@/components/form";
 import {
   Badge,
   Card,
@@ -24,22 +25,22 @@ import {
   formatUsd,
   lifecycleLabel,
   quoteTypeLabel,
+  STAGE_ORDER,
   stageLabel,
 } from "@/lib/format";
-import type { Desglose, Ficha } from "@/lib/types";
+import { canWrite } from "@/lib/permissions";
+import { requireSession } from "@/lib/session";
+import type {
+  Catalogos,
+  Desglose,
+  EtapaCatalogo,
+  Ficha,
+  Material,
+} from "@/lib/types";
+import { Comparison } from "./comparison";
+import { ComponenteForm, CotizacionForm, ExtraForm } from "./forms";
 
 export const metadata: Metadata = { title: "Ficha de producto" };
-
-const STAGE_ORDER = [
-  "CUERO",
-  "FORRO",
-  "FLEX",
-  "GOMA_EVA",
-  "HERRAJES",
-  "HILO_CEMENTO",
-  "CORTE",
-  "CONFECCION",
-];
 
 function decodeCode(raw: string): string | null {
   try {
@@ -54,6 +55,7 @@ export default async function FichaPage({
 }: {
   params: Promise<{ codigo: string }>;
 }) {
+  const { user } = await requireSession();
   const code = decodeCode((await params).codigo);
   if (code === null) notFound();
 
@@ -98,8 +100,79 @@ export default async function FichaPage({
         <Recipe ficha={ficha} />
         {ficha.componentes.length > 0 ? <Components ficha={ficha} /> : null}
         <StoredQuotes ficha={ficha} />
+        <Comparison ficha={ficha} />
+        <Actions ficha={ficha} writer={canWrite(user.role)} />
       </div>
     </>
+  );
+}
+
+async function Actions({ ficha, writer }: { ficha: Ficha; writer: boolean }) {
+  if (!writer) {
+    return (
+      <section>
+        <SectionTitle>Acciones</SectionTitle>
+        <ReadOnlyNote />
+      </section>
+    );
+  }
+  const [materiales, etapas, catalogos] = await Promise.all([
+    apiGet<Material[]>("/materiales"),
+    apiGet<EtapaCatalogo[]>("/catalogo/etapas"),
+    apiGet<Catalogos>("/catalogos"),
+  ]);
+  // An extra recipe line takes a quotable material of a material stage (the API checks it too).
+  const materialStages = new Set(
+    etapas.ok
+      ? etapas.data.filter((e) => e.tipo === "MATERIAL").map((e) => e.codigo)
+      : [],
+  );
+  const options = materiales.ok
+    ? materiales.data
+        .filter((m) => m.cotizable && materialStages.has(m.etapa))
+        .map((m) => ({
+          codigo: m.codigo,
+          label: `${m.nombre} (${m.codigo})`,
+          group: stageLabel(m.etapa),
+        }))
+    : [];
+
+  return (
+    <section>
+      <SectionTitle>Acciones</SectionTitle>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <h3 className="mb-4 font-display text-lg">Guardar cotización</h3>
+          <CotizacionForm codigo={ficha.codigo} />
+        </Card>
+        <Card>
+          <h3 className="mb-4 font-display text-lg">Agregar extra</h3>
+          {materiales.ok && etapas.ok ? (
+            <ExtraForm
+              codigo={ficha.codigo}
+              materials={options}
+              colores={catalogos.ok ? catalogos.data.colores : []}
+            />
+          ) : (
+            <ErrorNotice
+              message={
+                materiales.ok
+                  ? etapas.ok
+                    ? ""
+                    : etapas.message
+                  : materiales.message
+              }
+            />
+          )}
+        </Card>
+        {ficha.es_kit ? (
+          <Card>
+            <h3 className="mb-4 font-display text-lg">Agregar componente</h3>
+            <ComponenteForm codigo={ficha.codigo} />
+          </Card>
+        ) : null}
+      </div>
+    </section>
   );
 }
 
@@ -195,6 +268,10 @@ function CostToday({ ficha }: { ficha: Ficha }) {
   return (
     <section>
       <SectionTitle>Costo hoy</SectionTitle>
+      <p className="mb-4 text-sm text-muted">
+        Lo calcula la API con el dólar y los precios vigentes; se actualiza solo
+        al agregar extras o componentes.
+      </p>
       <div className="space-y-4">
         <RecotizarNotice recotizar={ficha.recotizar} />
         {costo === null ? (

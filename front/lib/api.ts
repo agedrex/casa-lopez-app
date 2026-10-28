@@ -28,12 +28,57 @@ function failure(
   return { ok: false, status, message, avisos };
 }
 
+type Method = "GET" | "POST";
+
+function describeInvalidBody(detail: unknown[]): string {
+  // FastAPI sends a list of {loc, msg} when the body does not validate.
+  const fields = detail
+    .map((item) => {
+      const loc = (item as { loc?: unknown })?.loc;
+      return Array.isArray(loc) ? String(loc[loc.length - 1]) : null;
+    })
+    .filter((field): field is string => field !== null);
+  return fields.length > 0
+    ? `Revise los datos ingresados (${[...new Set(fields)].join(", ")}).`
+    : "Revise los datos ingresados.";
+}
+
+async function readFailure(response: Response): Promise<ApiFailure> {
+  let detail = "";
+  let avisos: string[] = [];
+  try {
+    const body: unknown = await response.json();
+    if (body && typeof body === "object") {
+      const record = body as { detail?: unknown; avisos?: unknown };
+      if (typeof record.detail === "string") detail = record.detail;
+      else if (Array.isArray(record.detail))
+        detail = describeInvalidBody(record.detail);
+      if (Array.isArray(record.avisos)) {
+        avisos = record.avisos.filter(
+          (item): item is string => typeof item === "string",
+        );
+      }
+    }
+  } catch {
+    // Non-JSON error body: fall back to the generic message below.
+  }
+  const fallback =
+    response.status === 404
+      ? "No se encontró lo que buscaba."
+      : "La API respondió con un error.";
+  return failure(response.status, detail || fallback, avisos);
+}
+
 /**
- * Server-side GET to the costing API. The browser never talks to the backend:
+ * Server-side call to the costing API. The browser never talks to the backend:
  * the visitor's `cookie` header is forwarded so the backend can verify the same
  * Better Auth session. A 401 sends the visitor to /login.
  */
-export async function apiGet<T>(path: string): Promise<ApiResult<T>> {
+async function apiRequest<T>(
+  method: Method,
+  path: string,
+  body?: unknown,
+): Promise<ApiResult<T>> {
   const base = apiBaseUrl();
   if (!base) return failure(0, "La dirección de la API no está configurada.");
 
@@ -41,11 +86,14 @@ export async function apiGet<T>(path: string): Promise<ApiResult<T>> {
   const forwarded: Record<string, string> = { accept: "application/json" };
   const cookie = incoming.get("cookie");
   if (cookie) forwarded.cookie = cookie;
+  if (body !== undefined) forwarded["content-type"] = "application/json";
 
   let response: Response;
   try {
     response = await fetch(`${base}${path}`, {
+      method,
       headers: forwarded,
+      body: body === undefined ? undefined : JSON.stringify(body),
       cache: "no-store",
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
@@ -54,34 +102,20 @@ export async function apiGet<T>(path: string): Promise<ApiResult<T>> {
   }
 
   if (response.status === 401) redirect("/login");
-
-  if (!response.ok) {
-    let detail = "";
-    let avisos: string[] = [];
-    try {
-      const body: unknown = await response.json();
-      if (body && typeof body === "object") {
-        const record = body as { detail?: unknown; avisos?: unknown };
-        if (typeof record.detail === "string") detail = record.detail;
-        if (Array.isArray(record.avisos)) {
-          avisos = record.avisos.filter(
-            (item): item is string => typeof item === "string",
-          );
-        }
-      }
-    } catch {
-      // Non-JSON error body: fall back to the generic message below.
-    }
-    const fallback =
-      response.status === 404
-        ? "No se encontró lo que buscaba."
-        : "La API respondió con un error.";
-    return failure(response.status, detail || fallback, avisos);
-  }
+  if (!response.ok) return readFailure(response);
 
   try {
     return { ok: true, data: (await response.json()) as T };
   } catch {
     return failure(502, "La API devolvió una respuesta inválida.");
   }
+}
+
+export function apiGet<T>(path: string): Promise<ApiResult<T>> {
+  return apiRequest<T>("GET", path);
+}
+
+/** Writes go through server actions only; amounts travel as decimal strings. */
+export function apiPost<T>(path: string, body: unknown): Promise<ApiResult<T>> {
+  return apiRequest<T>("POST", path, body);
 }

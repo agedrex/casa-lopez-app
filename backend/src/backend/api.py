@@ -1,6 +1,7 @@
 """Costing API: read and load endpoints. Routers only validate input and call `servicios`.
 
-Every route requires a signed-in user (see auth.py; fail-closed until T4 wires the verifier).
+Every route requires a signed-in user (see auth.py; fail-closed without a verifier). Reads are open to
+any signed-in role; every POST also needs the role `admin` or `cotizador` (`consulta` gets 403).
 Calculated values (names, categories, totals, costs) are never accepted from the client:
 request models forbid unknown fields. Money leaves as strings because the response models
 keep Decimal and pydantic serializes it as text in JSON.
@@ -16,11 +17,13 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from backend import servicios
-from backend.auth import require_user
+from backend.auth import require_role, require_user
 from backend.database import get_session
 from backend.models import ARS_USD, LOT_STATES, UNITS, WHERE_MADE
 
 router = APIRouter(dependencies=[Depends(require_user)])
+# Roles that may write. `require_role` builds on `require_user`, so no session still answers 401, not 403.
+ESCRITURA = [Depends(require_role("admin", "cotizador"))]
 Sesion = Annotated[Session, Depends(get_session)]
 
 PERIODO = r"^[0-9]{4}-(0[1-9]|1[0-2])$"
@@ -238,6 +241,23 @@ class PrecioOut(Salida):
     vigente_desde: date
     nota_fuente: str | None
     vigente: bool
+    variacion_pct: Decimal | None
+    salto_grande: bool
+
+
+class PrecioChequeoOut(Salida):
+    anterior: Decimal | None
+    variacion_pct: Decimal | None
+    salto_grande: bool
+
+
+class CatalogosOut(Salida):
+    colores: list[str]
+    categorias: list[str]
+
+
+class ConteoOut(Salida):
+    total: int
 
 
 class DolarOut(Salida):
@@ -313,8 +333,17 @@ class OrdenOut(Salida):
 # --- Read ----------------------------------------------------------------------------------------------------
 
 @router.get("/productos", response_model=list[ProductoResumen])
-def productos(session: Sesion, limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0)):
-    return servicios.listar_productos(session, limit, offset)
+def productos(
+    session: Sesion, limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0),
+    q: str | None = Query(None, max_length=100), categoria: str | None = None,
+):
+    return servicios.listar_productos(session, limit, offset, q, categoria)
+
+
+# Declared before `/productos/{codigo}` so "conteo" is not read as a product code.
+@router.get("/productos/conteo", response_model=ConteoOut)
+def productos_conteo(session: Sesion, q: str | None = Query(None, max_length=100), categoria: str | None = None):
+    return {"total": servicios.contar_productos(session, q, categoria)}
 
 
 @router.get("/productos/{codigo}", response_model=FichaOut)
@@ -335,6 +364,20 @@ def materiales(session: Sesion):
 @router.get("/precios", response_model=list[PrecioOut])
 def precios(session: Sesion, material: str | None = None, a_fecha: date | None = None):
     return servicios.listar_precios(session, material, a_fecha)
+
+
+@router.get("/precios/chequeo", response_model=PrecioChequeoOut)
+def precio_chequeo(
+    session: Sesion, material: str, precio: Annotated[Decimal, Query(ge=0, max_digits=14, decimal_places=4)],
+    moneda: Literal[*ARS_USD], vigente_desde: date, color: str | None = None,
+):
+    """How far a price about to be loaded is from the previous one. Reads only; saves nothing."""
+    return servicios.chequear_precio(session, material, color, precio, moneda, vigente_desde)
+
+
+@router.get("/catalogos", response_model=CatalogosOut)
+def catalogos(session: Sesion):
+    return servicios.listar_catalogos(session)
 
 
 @router.get("/dolar", response_model=list[DolarOut])
@@ -359,42 +402,42 @@ def costos_fijos(session: Sesion, periodo: Annotated[str | None, Query(pattern=P
 
 # --- Write ----------------------------------------------------------------------------------------------------
 
-@router.post("/productos", response_model=FichaOut, status_code=201)
+@router.post("/productos", dependencies=ESCRITURA, response_model=FichaOut, status_code=201)
 def crear_producto(cuerpo: ProductoIn, session: Sesion):
     return servicios.crear_producto(session, **cuerpo.model_dump())
 
 
-@router.post("/productos/{codigo}/extras", response_model=FichaOut, status_code=201)
+@router.post("/productos/{codigo}/extras", dependencies=ESCRITURA, response_model=FichaOut, status_code=201)
 def agregar_extra(codigo: str, cuerpo: ExtraIn, session: Sesion):
     return servicios.agregar_extra(session, codigo, **cuerpo.model_dump())
 
 
-@router.post("/productos/{codigo}/componentes", response_model=FichaOut, status_code=201)
+@router.post("/productos/{codigo}/componentes", dependencies=ESCRITURA, response_model=FichaOut, status_code=201)
 def agregar_componente(codigo: str, cuerpo: ComponenteIn, session: Sesion):
     return servicios.agregar_componente(session, codigo, **cuerpo.model_dump())
 
 
-@router.post("/productos/{codigo}/cotizaciones", response_model=CotizacionOut, status_code=201)
+@router.post("/productos/{codigo}/cotizaciones", dependencies=ESCRITURA, response_model=CotizacionOut, status_code=201)
 def guardar_cotizacion(codigo: str, cuerpo: CotizacionIn, session: Sesion):
     return servicios.guardar_cotizacion(session, codigo, cuerpo.tipo, cuerpo.fecha)
 
 
-@router.post("/precios", response_model=PrecioOut, status_code=201)
+@router.post("/precios", dependencies=ESCRITURA, response_model=PrecioOut, status_code=201)
 def crear_precio(cuerpo: PrecioIn, session: Sesion):
     return servicios.crear_precio(session, **cuerpo.model_dump())
 
 
-@router.post("/dolar", response_model=DolarOut, status_code=201)
+@router.post("/dolar", dependencies=ESCRITURA, response_model=DolarOut, status_code=201)
 def crear_dolar(cuerpo: DolarIn, session: Sesion):
     return servicios.crear_dolar(session, **cuerpo.model_dump())
 
 
-@router.post("/costos-fijos", response_model=CostosFijosOut, status_code=201)
+@router.post("/costos-fijos", dependencies=ESCRITURA, response_model=CostosFijosOut, status_code=201)
 def crear_gasto(cuerpo: GastoIn, session: Sesion):
     return servicios.crear_gasto(session, **cuerpo.model_dump())
 
 
-@router.post("/ordenes", response_model=OrdenOut, status_code=201)
+@router.post("/ordenes", dependencies=ESCRITURA, response_model=OrdenOut, status_code=201)
 def crear_orden(cuerpo: OrdenIn, session: Sesion):
     datos = cuerpo.model_dump()
     return servicios.crear_orden(session, **datos)

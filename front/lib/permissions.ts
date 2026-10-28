@@ -39,3 +39,11 @@ export function parseRoles(value: string | null | undefined): Role[] {
 export function hasRole(value: string | null | undefined, role: Role): boolean {
   return parseRoles(value).includes(role);
 }
+
+// Mirrors the backend: only these roles may write (every POST needs one of them).
+// The UI hides the forms from everybody else; the backend still answers 403.
+export const WRITE_ROLES: readonly Role[] = ["admin", "cotizador"];
+
+export function canWrite(value: string | null | undefined): boolean {
+  return parseRoles(value).some((role) => WRITE_ROLES.includes(role));
+}

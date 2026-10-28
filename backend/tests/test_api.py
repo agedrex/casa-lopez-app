@@ -27,10 +27,10 @@ def sin_base(monkeypatch):
     app.dependency_overrides.clear()
 
 
-def con_usuario():
+def con_usuario(role: str | None = "cotizador"):
     session = MagicMock()
     app.dependency_overrides[get_session] = lambda: session
-    app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="usuario-de-prueba"))
+    app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="usuario-de-prueba", role=role))
     return TestClient(app), session
 
 
@@ -125,3 +125,77 @@ def test_invalid_period_is_rejected():
     client, _ = con_usuario()
     assert client.get("/costos-fijos", params={"periodo": "2026-13"}).status_code == 422
     assert client.get("/costos-fijos", params={"periodo": "octubre"}).status_code == 422
+
+
+# --- Roles: every write needs admin or cotizador; reads stay open to any signed-in user ----------------------
+
+ESCRITURAS = [(m, r) for m, r in RUTAS if m == "POST"]
+LECTURAS = [(m, r) for m, r in RUTAS if m == "GET"]
+SIN_PERMISO = {"detail": "No tenés permiso para esta acción."}
+
+
+def test_every_write_route_is_covered_by_the_role_tests():
+    assert len(ESCRITURAS) == 8 and {r for _, r in ESCRITURAS} >= {"/productos", "/precios", "/dolar", "/ordenes"}
+
+
+@pytest.mark.parametrize("metodo, ruta", ESCRITURAS)
+@pytest.mark.parametrize("role", ["consulta", None, "otro"])
+def test_a_user_without_a_writing_role_gets_403_on_every_post(monkeypatch, metodo, ruta, role):
+    client, session = con_usuario(role)
+    monkeypatch.setattr(servicios, "crear_producto", lambda *a, **k: pytest.fail("the service must not be called"))
+    response = client.request(metodo, ruta.replace("{codigo}", "PRD-0001"), json={})
+    assert response.status_code == 403
+    assert response.json() == SIN_PERMISO
+    session.commit.assert_not_called()
+
+
+@pytest.mark.parametrize("metodo, ruta", ESCRITURAS)
+@pytest.mark.parametrize("role", ["admin", "cotizador", "consulta,cotizador"])
+def test_admin_and_cotizador_pass_the_role_gate_on_every_post(metodo, ruta, role):
+    client, _ = con_usuario(role)
+    response = client.request(metodo, ruta.replace("{codigo}", "PRD-0001"), json={})
+    assert response.status_code == 422  # past the gate: the empty body is what is refused
+
+
+@pytest.mark.parametrize("metodo, ruta", ESCRITURAS)
+def test_posts_without_a_session_stay_401_not_403(metodo, ruta):
+    app.dependency_overrides[get_verifier] = lambda: (lambda request: None)
+    with TestClient(app) as client:
+        response = client.request(metodo, ruta.replace("{codigo}", "PRD-0001"), json={})
+    assert response.status_code == 401
+    assert response.json() == {"detail": "No autenticado."}
+
+
+@pytest.mark.parametrize("metodo, ruta", [(m, r) for m, r in LECTURAS if "{" not in r and r != "/productos/conteo"])
+def test_reads_are_open_to_the_consulta_role(monkeypatch, metodo, ruta):
+    client, session = con_usuario("consulta")
+    session.execute.return_value.all.return_value = []
+    session.execute.return_value.one.return_value = (0,)
+    session.scalars.return_value = []
+    session.scalar.return_value = "2026-10"
+    response = client.get(ruta)
+    assert response.status_code != 403 and response.status_code != 401
+
+
+def test_the_new_reads_are_declared():
+    assert {("GET", "/catalogos"), ("GET", "/productos/conteo"), ("GET", "/precios/chequeo")} <= set(RUTAS)
+
+
+def test_the_product_search_reaches_the_service(monkeypatch):
+    client, _ = con_usuario("consulta")
+    visto = {}
+
+    def listar(session, limit, offset, q=None, categoria=None):
+        visto.update(limit=limit, offset=offset, q=q, categoria=categoria)
+        return []
+    monkeypatch.setattr(servicios, "listar_productos", listar)
+    assert client.get("/productos", params={"q": "cartera", "categoria": "Carteras", "limit": 5}).json() == []
+    assert visto == {"limit": 5, "offset": 0, "q": "cartera", "categoria": "Carteras"}
+    assert client.get("/productos").status_code == 200
+    assert visto == {"limit": 100, "offset": 0, "q": None, "categoria": None}
+
+
+def test_the_count_is_a_separate_route_so_the_list_keeps_its_shape(monkeypatch):
+    client, _ = con_usuario("consulta")
+    monkeypatch.setattr(servicios, "contar_productos", lambda session, q=None, categoria=None: 7)
+    assert client.get("/productos/conteo", params={"q": "x"}).json() == {"total": 7}

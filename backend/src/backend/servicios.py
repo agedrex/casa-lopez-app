@@ -7,9 +7,9 @@ Money is Decimal end to end; the API layer serializes it as strings.
 
 from dataclasses import dataclass, field, replace
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
-from sqlalchemy import Integer, cast, func, select
+from sqlalchemy import Integer, cast, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, aliased
 
@@ -34,6 +34,9 @@ STAGE_COLUMNS = {
     "HILO_CEMENTO": "hilo_cemento", "CORTE": "corte", "CONFECCION": "confeccion",
 }
 UNIQUE_VIOLATION = "23505"
+# SUPUESTO: validar. A price more than this many percent away from the previous one of the same material,
+# color and currency is flagged (never blocked). The 50 comes from the task, not from the plantilla.
+SALTO_PRECIO_PCT = Decimal("50")
 
 
 class DatosInvalidos(ValueError):
@@ -226,8 +229,30 @@ def cargar_contexto(session: Session) -> Contexto:
     )
 
 
+def _patron(palabra: str) -> str:
+    """LIKE pattern that finds `palabra` anywhere, with the wildcards of the visitor's text escaped."""
+    escapada = palabra.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escapada}%"
+
+
+def _filtrar_productos(consulta, cuero, q: str | None, categoria: str | None):
+    """Search: every word of `q` must appear in the code or in a part of the computed name."""
+    for palabra in (q or "").split():
+        patron = _patron(palabra)
+        consulta = consulta.where(or_(
+            *(columna.ilike(patron, escape="\\") for columna in (
+                Producto.codigo, Producto.nombre_propio, Modelo.codigo, Modelo.nombre_del_modelo,
+                cuero.nombre_corto, Color.nombre,
+            ))
+        ))
+    if categoria:
+        consulta = consulta.where(Categoria.nombre == categoria)
+    return consulta
+
+
 def cargar_productos(
     session: Session, codigos: list[str] | None = None, limit: int | None = None, offset: int = 0,
+    q: str | None = None, categoria: str | None = None,
 ) -> list[DatosProducto]:
     cuero, forro = aliased(Material), aliased(Material)
     consulta = (
@@ -241,6 +266,7 @@ def cargar_productos(
     )
     if codigos is not None:
         consulta = consulta.where(Producto.codigo.in_(codigos))
+    consulta = _filtrar_productos(consulta, cuero, q, categoria)
     if limit is not None:
         consulta = consulta.limit(limit).offset(offset)
     filas = session.execute(consulta).all()
@@ -388,8 +414,22 @@ def _costo_hoy_seguro(datos, ctx, catalogo) -> tuple[ResultadoCotizacion | None,
     return resultado, list(resultado.cotizado.avisos)
 
 
-def listar_productos(session: Session, limit: int = 100, offset: int = 0) -> list[dict]:
-    base = cargar_productos(session, limit=limit, offset=offset)
+def contar_productos(session: Session, q: str | None = None, categoria: str | None = None) -> int:
+    cuero = aliased(Material)
+    consulta = (
+        select(func.count(Producto.id)).select_from(Producto)
+        .outerjoin(Modelo, Modelo.id == Producto.modelo_id)
+        .outerjoin(Categoria, Categoria.id == Modelo.categoria_id)
+        .outerjoin(cuero, cuero.id == Producto.cuero_id)
+        .outerjoin(Color, Color.id == Producto.color_id)
+    )
+    return session.scalar(_filtrar_productos(consulta, cuero, q, categoria)) or 0
+
+
+def listar_productos(
+    session: Session, limit: int = 100, offset: int = 0, q: str | None = None, categoria: str | None = None,
+) -> list[dict]:
+    base = cargar_productos(session, limit=limit, offset=offset, q=q, categoria=categoria)
     catalogo = expandir_kits(session, base)
     ctx = cargar_contexto(session)
     filas = []
@@ -463,8 +503,20 @@ def listar_materiales(session: Session) -> list[dict]:
     } for m, etapa in filas]
 
 
+def variacion_de_precio(anterior: Decimal | None, nuevo: Decimal) -> tuple[Decimal | None, bool]:
+    """Percent change against the previous price and whether it is a big jump; (None, False) if not comparable."""
+    if anterior is None or anterior <= 0:
+        return None, False
+    cambio = (nuevo - anterior) / anterior * 100
+    return cambio.quantize(Decimal("0.01"), ROUND_HALF_UP), abs(cambio) > SALTO_PRECIO_PCT
+
+
 def listar_precios(session: Session, material: str | None = None, a_fecha: date | None = None) -> list[dict]:
-    """Price history, newest first; `vigente` marks the row in force at `a_fecha` per material and color."""
+    """Price history, newest first; `vigente` marks the row in force at `a_fecha` per material and color.
+
+    `variacion_pct` / `salto_grande` compare each price with the previous one of the same material, color
+    and currency (the first price of a series has nothing to compare with).
+    """
     a_fecha = a_fecha or date.today()
     consulta = (
         select(PrecioMaterial, Material.codigo, Color.nombre)
@@ -479,12 +531,44 @@ def listar_precios(session: Session, material: str | None = None, a_fecha: date 
     for p, codigo, color in filas:  # newest first: the first one not after `a_fecha` is the one in force
         if p.vigente_desde <= a_fecha:
             vigentes.setdefault((p.material_id, p.color_id), p.id)
+    saltos: dict[int, tuple[Decimal | None, bool]] = {}
+    previo: dict[tuple, Decimal] = {}
+    for p, _, _ in reversed(filas):  # oldest first, so `previo` is the price just before this one
+        clave = (p.material_id, p.color_id, p.moneda)
+        saltos[p.id] = variacion_de_precio(previo.get(clave), p.precio)
+        previo[clave] = p.precio
     return [{
         "codigo": p.codigo, "material": codigo, "color": color, "proveedor": p.proveedor, "precio": p.precio,
         "moneda": p.moneda, "unidad_del_precio": p.unidad_del_precio, "iva_incluido": p.iva_incluido,
         "vigente_desde": p.vigente_desde, "nota_fuente": p.nota_fuente,
         "vigente": vigentes.get((p.material_id, p.color_id)) == p.id,
+        "variacion_pct": saltos[p.id][0], "salto_grande": saltos[p.id][1],
     } for p, codigo, color in filas]
+
+
+def chequear_precio(
+    session: Session, material: str, color: str | None, precio: Decimal, moneda: str, vigente_desde: date,
+) -> dict:
+    """Compare a price that is about to be loaded with the latest earlier one; stores nothing."""
+    material_fila = session.scalar(select(Material).where(Material.codigo == material))
+    if material_fila is None:
+        raise DatosInvalidos(f"No existe el material {material}.")
+    color_id = _color_id(session, color)
+    consulta = select(PrecioMaterial.precio).where(
+        PrecioMaterial.material_id == material_fila.id, PrecioMaterial.moneda == moneda,
+        PrecioMaterial.vigente_desde <= vigente_desde,
+        PrecioMaterial.color_id.is_(None) if color_id is None else PrecioMaterial.color_id == color_id,
+    ).order_by(PrecioMaterial.vigente_desde.desc(), PrecioMaterial.id.desc()).limit(1)
+    anterior = session.scalar(consulta)
+    variacion, salto = variacion_de_precio(anterior, precio)
+    return {"anterior": anterior, "variacion_pct": variacion, "salto_grande": salto}
+
+
+def listar_catalogos(session: Session) -> dict:
+    return {
+        "colores": list(session.scalars(select(Color.nombre).order_by(Color.nombre))),
+        "categorias": list(session.scalars(select(Categoria.nombre).order_by(Categoria.nombre))),
+    }
 
 
 def listar_dolar(session: Session) -> list[dict]:

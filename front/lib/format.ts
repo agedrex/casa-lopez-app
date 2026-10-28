@@ -65,6 +65,54 @@ export function formatDate(value: string | null | undefined): string {
   return match ? `${match[3]}/${match[2]}/${match[1]}` : value;
 }
 
+const percent = new Intl.NumberFormat("es-AR", {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 2,
+});
+
+/** The API sends the percentage already calculated (`"53.33"`); this only formats it. */
+export function formatPercent(value: string | null | undefined): string {
+  const decimal = asDecimal(value);
+  return decimal === null ? NONE : `${percent.format(decimal)} %`;
+}
+
+/** Money in its own currency, as the API stores it. */
+export function formatMoney(
+  value: string | null | undefined,
+  currency: string,
+): string {
+  return currency === "USD" ? formatUsd(value) : formatArs(value);
+}
+
+/**
+ * Turns what a person types in an amount field into a plain decimal string for the API,
+ * or null. `1545,5` and `1545.5` are accepted; thousands separators (`1.545,50`) are not.
+ * Pure text handling: the amount is never converted to a number.
+ */
+export function parseDecimalInput(raw: string): string | null {
+  const text = raw.trim().replace(",", ".");
+  return /^\d+(\.\d+)?$/.test(text) ? text : null;
+}
+
+/** Today in Buenos Aires as `YYYY-MM-DD` (the server runs in UTC). */
+export function todayIso(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Argentina/Buenos_Aires",
+  }).format(new Date());
+}
+
+/** Stage order of the quote, shared by the pages. */
+export const STAGE_ORDER = [
+  "CUERO",
+  "FORRO",
+  "FLEX",
+  "GOMA_EVA",
+  "HERRAJES",
+  "HILO_CEMENTO",
+  "CORTE",
+  "CONFECCION",
+];
+
 const STAGE_LABELS: Record<string, string> = {
   CUERO: "Cuero",
   FORRO: "Forro",

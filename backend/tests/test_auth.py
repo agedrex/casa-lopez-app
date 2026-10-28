@@ -147,7 +147,7 @@ def test_require_role_rejects_the_wrong_role_with_403():
     client, _ = build_app(lambda request: httpx.Response(200, json=body), roles=("admin",))
     response = client.get("/solo", headers={"cookie": COOKIE})
     assert response.status_code == 403
-    assert response.json() == {"detail": "No tiene permiso para esta acción."}
+    assert response.json() == {"detail": "No tenés permiso para esta acción."}
 
 
 def test_require_role_still_answers_401_when_not_signed_in():

@@ -89,21 +89,26 @@ local machine.
 
 `servicios.py` loads rows and delegates every rule to the pure `costeo.py` / `receta.py`; `api.py` only validates input and calls it. The recipe, the quotes and all calculations live in the app; the Google Sheet only displays. Calculated values (name, category, totals, costs) are never accepted from the client: request bodies reject unknown fields with 422. Money is `Decimal` in the service and a string in JSON.
 
-**Authentication is fail-closed.** Every route below depends on `require_user` (`auth.py`), which answers `401 {"detail": "No autenticado."}` while no verifier is configured, so today all of them are closed. The Better Auth check is task T4: implement it in `auth.get_verifier` (marked `# T4:`) or inject it with `app.dependency_overrides[get_verifier]`. The older public routes are unchanged.
+**Authentication is fail-closed.** Every route below depends on `require_user` (`auth.py`), which answers `401 {"detail": "No autenticado."}` when there is no valid Better Auth session (or no verifier is configured). The verifier calls `AUTH_VERIFY_URL` (the front's `get-session`) with the caller's cookie.
 
-| Method and path | What it does |
-|---|---|
-| `GET /productos` | List: code, name, category, lifecycle state, cost today in ARS/USD (null if not computable) and warnings. `limit`, `offset`. |
-| `GET /productos/{codigo}` | Sheet: recipe lines, cost today, saved quotes, `recotizar` flag, warnings. |
-| `GET /modelos`, `/materiales`, `/parametros`, `/talleres`, `/dolar` | Catalogs; the dollar is newest first. |
-| `GET /precios?material=&a_fecha=` | Price history, newest first; `vigente` marks the price in force at `a_fecha` (default today). |
-| `GET /costos-fijos?periodo=AAAA-MM` | Fixed costs of the month (default `PERIODO_VIGENTE`) with factory and store totals. |
-| `POST /productos` | Create a product (`modelo`, `cuero`, `color`, `quien_lo_confecciona`, `fecha_de_alta`, `nombre_propio`, `es_kit`); the server assigns `PRD-nnnn`. |
-| `POST /productos/{codigo}/extras` | Add an EXTRA recipe line (`material`, `color`, `consumo_neto_por_unidad`). |
-| `POST /productos/{codigo}/componentes` | Add a component to a kit; kit cycles are refused. |
-| `POST /productos/{codigo}/cotizaciones` | Save a quote `{tipo, fecha?}`: INICIAL uses `fecha_de_alta`, RECOTIZACION `fecha_de_recotizacion`, FINAL `fecha_de_cierre` (or the explicit date). Incomplete or dateless: 422 with the warnings; repeated (product, date, type): 409; never an UPDATE. |
-| `POST /precios`, `/dolar`, `/costos-fijos`, `/ordenes` | Append-only loads. A price for the same material, color and date, or a dollar for the same date, type and source, is 409. |
+**Roles.** Reads (`GET`) are open to any signed-in user. Every `POST` also needs the role `admin` or `cotizador` (`ESCRITURA` in `api.py`, built with `require_role`); a `consulta` user gets `403 {"detail": "No tenés permiso para esta acción."}`. No session is still `401`, never `403`.
 
-Errors: 401 not signed in, 404 missing product, 409 already there, 422 refused (`detail` in Spanish). Lot status history (`orden_estado`) is not written yet.
+| Method and path | Roles | What it does |
+|---|---|---|
+| `GET /productos` | any signed-in | List: code, name, category, lifecycle state, cost today in ARS/USD (null if not computable) and warnings. `limit`, `offset`, `q` (every word must appear in the code, model, own name, leather or color) and `categoria` (exact name). The response is still a plain list. |
+| `GET /productos/conteo?q=&categoria=` | any signed-in | `{"total": n}` for the same filters, so the UI can paginate without changing the list shape. |
+| `GET /productos/{codigo}` | any signed-in | Sheet: recipe lines, cost today, saved quotes, `recotizar` flag, warnings. |
+| `GET /modelos`, `/materiales`, `/parametros`, `/talleres`, `/dolar` | any signed-in | Catalogs; the dollar is newest first. |
+| `GET /catalogos` | any signed-in | `{"colores": [...], "categorias": [...]}` names for the forms' selects. |
+| `GET /precios?material=&a_fecha=` | any signed-in | Price history, newest first; `vigente` marks the price in force at `a_fecha` (default today). `variacion_pct` and `salto_grande` compare each price with the previous one of the same material, color and currency. |
+| `GET /precios/chequeo?material=&color=&precio=&moneda=&vigente_desde=` | any signed-in | `{anterior, variacion_pct, salto_grande}` for a price about to be loaded. Saves nothing. A jump is more than `SALTO_PRECIO_PCT` (50 %, `SUPUESTO: validar`) and is only a warning: the load is never blocked. |
+| `GET /costos-fijos?periodo=AAAA-MM` | any signed-in | Fixed costs of the month (default `PERIODO_VIGENTE`) with factory and store totals. |
+| `POST /productos` | admin, cotizador | Create a product (`modelo`, `cuero`, `color`, `quien_lo_confecciona`, `fecha_de_alta`, `nombre_propio`, `es_kit`); the server assigns `PRD-nnnn`. |
+| `POST /productos/{codigo}/extras` | admin, cotizador | Add an EXTRA recipe line (`material`, `color`, `consumo_neto_por_unidad`). |
+| `POST /productos/{codigo}/componentes` | admin, cotizador | Add a component to a kit; kit cycles are refused. |
+| `POST /productos/{codigo}/cotizaciones` | admin, cotizador | Save a quote `{tipo, fecha?}`: INICIAL uses `fecha_de_alta`, RECOTIZACION `fecha_de_recotizacion`, FINAL `fecha_de_cierre` (or the explicit date). Incomplete or dateless: 422 with the warnings; repeated (product, date, type): 409; never an UPDATE. |
+| `POST /precios`, `/dolar`, `/costos-fijos`, `/ordenes` | admin, cotizador | Append-only loads. A price for the same material, color and date, or a dollar for the same date, type and source, is 409. |
+
+Errors: 401 not signed in, 403 role without write permission, 404 missing product, 409 already there, 422 refused (`detail` in Spanish). Lot status history (`orden_estado`) is not written yet.
 
 The integration cases of the API (`tests/test_api_integration.py`) also need `TEST_DATABASE_URL`; each one runs inside a transaction that is rolled back, so the seeded database is left untouched.

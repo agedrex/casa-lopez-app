@@ -26,7 +26,7 @@ def api(local_postgres, monkeypatch):
     outer = connection.begin()
     session = Session(bind=connection, join_transaction_mode="create_savepoint")
     app.dependency_overrides[get_session] = lambda: session
-    app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="usuario-de-prueba"))
+    app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="usuario-de-prueba", role="cotizador"))
     try:
         with TestClient(app) as client:
             yield client
@@ -237,3 +237,61 @@ def test_fixed_costs_default_to_the_current_period_and_add_up(api):
     assert nuevo.status_code == 201
     assert nuevo.json()["periodo"] == "2026-11" and D(nuevo.json()["total_tienda"]) == D("1000") and nuevo.json()["pendientes"] == 0
     assert api.get("/costos-fijos", params={"periodo": "2030-01"}).json()["gastos"] == []
+
+
+def test_search_filters_by_code_name_and_category_and_counts_without_changing_the_list(api):
+    codigo = producto(api)["codigo"]
+    producto(api, color=None)
+    todos = api.get("/productos").json()
+    assert isinstance(todos, list) and api.get("/productos/conteo").json() == {"total": 2}
+    assert [p["codigo"] for p in api.get("/productos", params={"q": codigo.lower()}).json()] == [codigo]
+    por_nombre = api.get("/productos", params={"q": "portafolio simple"}).json()
+    assert len(por_nombre) == 2 and api.get("/productos/conteo", params={"q": "portafolio simple"}).json() == {"total": 2}
+    assert api.get("/productos", params={"q": "portafolio zzz-no-existe"}).json() == []
+    assert api.get("/productos", params={"categoria": "Portafolios"}).json() == todos
+    assert api.get("/productos/conteo", params={"categoria": "Billeteras"}).json() == {"total": 0}
+    assert len(api.get("/productos", params={"limit": 1, "offset": 1}).json()) == 1
+
+
+def test_search_treats_percent_and_underscore_as_plain_text(api):
+    producto(api)
+    for texto in ("%", "_", "PRD_0001", "PRD%"):
+        assert api.get("/productos", params={"q": texto}).json() == [], texto
+        assert api.get("/productos/conteo", params={"q": texto}).json() == {"total": 0}, texto
+
+
+def test_catalogos_lists_colors_and_categories(api):
+    catalogo = api.get("/catalogos").json()
+    assert "Portafolios" in catalogo["categorias"] and len(catalogo["categorias"]) > 1
+    assert isinstance(catalogo["colores"], list)  # the seeds carry no colors yet, so the list may be empty
+    assert all(isinstance(nombre, str) for nombre in catalogo["colores"] + catalogo["categorias"])
+
+
+def test_a_price_far_from_the_previous_one_is_flagged_but_still_saved(api):
+    base = {"material": "MAT-CU01", "moneda": "USD", "unidad_del_precio": "m2"}
+    cerca = api.post("/precios", json={**base, "precio": "30", "vigente_desde": "2026-10-01"}).json()
+    assert cerca["salto_grande"] is False and cerca["variacion_pct"] == "25.00"  # 24 -> 30
+    lejos = api.post("/precios", json={**base, "precio": "46", "vigente_desde": "2026-10-02"})
+    assert lejos.status_code == 201 and lejos.json()["salto_grande"] is True and lejos.json()["variacion_pct"] == "53.33"
+    historia = api.get("/precios", params={"material": "MAT-CU01"}).json()
+    assert [(p["precio"], p["salto_grande"]) for p in historia[:3]] == [("46.0000", True), ("30.0000", False), ("24.0000", False)]
+    assert historia[-1]["variacion_pct"] is None  # the first price has nothing to compare with
+
+
+def test_the_price_check_warns_before_saving_and_saves_nothing(api):
+    consulta = {"material": "MAT-CU01", "precio": "60", "moneda": "USD", "vigente_desde": "2026-10-01"}
+    chequeo = api.get("/precios/chequeo", params=consulta).json()
+    assert chequeo == {"anterior": "24.0000", "variacion_pct": "150.00", "salto_grande": True}
+    assert api.get("/precios/chequeo", params={**consulta, "precio": "25"}).json()["salto_grande"] is False
+    assert api.get("/precios/chequeo", params={**consulta, "moneda": "ARS"}).json() == {
+        "anterior": None, "variacion_pct": None, "salto_grande": False}  # other currency: not comparable
+    assert api.get("/precios/chequeo", params={**consulta, "vigente_desde": "2020-01-01"}).json()["anterior"] is None
+    assert api.get("/precios/chequeo", params={**consulta, "material": "MAT-NOPE"}).status_code == 422
+    assert len(api.get("/precios", params={"material": "MAT-CU01"}).json()) == 1
+
+
+def test_consulta_cannot_write_but_can_read(api):
+    app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="u", role="consulta"))
+    assert api.post("/dolar", json={"fecha": "2026-10-01", "ars_por_usd": "1700"}).status_code == 403
+    assert api.get("/dolar").status_code == 200
+    assert len(api.get("/dolar").json()) == 1  # nothing was stored by the refused POST
