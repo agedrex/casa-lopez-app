@@ -22,7 +22,7 @@ Branch: feat/der-v3 · Entrega: ask-on-risk · Runner: `uv run --directory backe
 - T5c (S3,S7) Panel admin: usuarios/roles, parámetros, modelos, catálogos, personas/impuestos · delegated · HECHO (571 passed; 663 con Postgres local; E2E HTTP 125 chequeos)
 - T5d (S7) Fabricación, talleres, costos fijos, calidad de datos · delegated · HECHO (423 passed; 479 con Postgres local; E2E HTTP 49 chequeos)
 - T8 (S2) Dólar: carga inicial pendiente (el usuario no define el valor todavía) y automatización de scraping del BNA · pendiente
-- T6 (S2) Sync de lectura hacia Google Sheet · pendiente
+- T6 (S2) Sync de la app hacia Google Sheet (solo vista, 15 pestañas, simulación por defecto sin credenciales) · delegated · HECHO en código (698 passed; 794 con Postgres local); FALTA conectar el Sheet real (necesita Sheet + cuenta de servicio del usuario)
 - T7 (S7) Módulo de voz · pendiente
 
 ## Log
@@ -42,3 +42,4 @@ Branch: feat/der-v3 · Entrega: ask-on-risk · Runner: `uv run --directory backe
 - L13 (2026-10-28): ante '¿qué dólar cargo?' el usuario respondió: "Dejalo como pendiente y despues vamos a armar la automatizacion para scrapearlo"; y eligió seguir con "fabricación, talleres, costos fijos y calidad de datos" antes que el panel admin.
 - L14: T5d hecho. Límites: el precio del taller se edita en el lugar (sin historial: orden_estado no guarda precios; no se agregaron tablas); se pueden agregar items a un lote cerrado; severidades de calidad y 'taller de ejemplo' por prefijo de nota son supuestos; sin pantalla de modelos (apunta a /admin). Sin probar en navegador real (hidratación, server actions, filas dinámicas).
 - L15: T5c hecho. Guards de usuarios en hooks.before de Better Auth (no auto-degradarse/banearse, último admin protegido; mutex solo por proceso). Rol admin sin delete/update/set-email/impersonate. Parámetros sin historial (el valor anterior se loguea en uvicorn.error y no se guarda). Colores/categorías sin activo (no se desactivan). Sin probar en navegador real. Pendiente: unit tests del front para user-guards/password (no hay runner).
+- L16: T6 hecho sin llamadas reales a Google. Env: GOOGLE_SHEETS_SPREADSHEET_ID y GOOGLE_SERVICE_ACCOUNT_JSON. Runbook en docs/sheets-sync.md. Supuestos: resumen/lock en memoria por proceso; clear+write no atómico; Talleres publica CUIT/teléfono/dirección (revisar si debe ir al Sheet); con env cargadas y sin simular el default es push real.

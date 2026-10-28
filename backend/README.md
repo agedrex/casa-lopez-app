@@ -163,3 +163,43 @@ Groups (`clave`): `productos`, `recotizar`, `modelos_sin_validar`, `modelos`, `m
 `SUPUESTO: validar` (the sheet has no severity column): **alta** = the product, lot or material cannot be quoted or closed (missing price, dollar, leather, workshop or delivery date); **media** = it can, but something is off (jumps, VAT included, repeated names, unconfirmed parameters of the "pendiente / propuesta" kind, pending or example workshops in use); **baja** = informative (models not validated, fictitious amounts, a parameter without a "confirmed" mark). Without any dollar on record a single `alta` finding asks for it instead of one per product. A price is "vigente" for the material check when it starts on or before today; non-quotable materials (lagarto, yacaré) show as `baja`. Models point at `/admin/modelos` and parameters at `/admin/parametros`.
 
 The integration cases of the API (`tests/test_api_integration.py`) also need `TEST_DATABASE_URL`; each one runs inside a transaction that is rolled back, so the seeded database is left untouched.
+
+## Google Sheet display copy (T6)
+
+**The Sheet is display only.** The app calculates everything (costing stays in `costeo.py` / `receta.py`, reached through `servicios.py`); it pushes plain values to a Google Sheet and **nothing is ever read back**. Editing the Sheet changes nothing in the app and is overwritten on the next sync. No formulas, no migrations, no new tables. Runbook for the people who set it up (Spanish): [`docs/sheets-sync.md`](../docs/sheets-sync.md).
+
+Design: the FastAPI backend writes through the Google Sheets API v4 with a service account. No n8n in the data path (n8n may later just call `POST /sync/sheets`).
+
+| Endpoint | Who | What it does |
+|---|---|---|
+| `POST /sync/sheets` | **admin** | Body `{"simular": bool}` (optional; unknown fields are 422). Builds every tab and, unless it is a dry run, replaces their values in the Sheet. `simular` left out = dry run while the Google variables are missing, real push once they are set. Returns `{simulacion, configurado, iniciado, finalizado, duracion_ms, total_filas, pestanas: [{nombre, filas}]}`. **409** while another run is in progress (process-level lock), **422** for a real push without the variables (the message names them), **502** with a fixed Spanish message when Google fails (never Google's own text or the credential). |
+| `GET /sync/sheets/estado` | any signed-in | `{configurado, variables, faltantes, pestanas, en_curso, ultima}`: yes/no and the variable **names**, never the values or the Sheet id; `ultima` is the summary of the last run (also failed ones, with `ok` and `error`). |
+| `GET /sync/sheets/vista/{pestana}` | **admin** | The first 50 rows of one tab as JSON (every cell as text, money as an exact decimal string) for the preview screen; 404 for a name that is not ours. Reads only, never calls Google. |
+
+### Environment variables (read only from the environment)
+
+| Variable | What it is |
+|---|---|
+| `GOOGLE_SHEETS_SPREADSHEET_ID` | The id in the Sheet's URL (`/d/<id>/edit`). |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | The **content** of the service account's JSON key (never a path). Never logged, never in a repr, never returned by an endpoint. |
+
+Without both, `configurado` is false and only dry runs work. `.env.example` files carry no values for these.
+
+### Tabs (the fixed list the app owns)
+
+`Info` (generated-at timestamp, app version, row counts and the note "Vista generada por la app. No editar: se pisa en cada sincronización."), `Catalogo`, `Costos_Variables`, `Cotizaciones`, `Productos`, `Modelos`, `Precios`, `Dolar`, `Lotes`, `Lote_Productos`, `Costos_Fijos` (each row repeats the factory / store totals of its period), `Talleres`, `Parametros`, `Materiales`, `Calidad` (the findings of `GET /calidad`).
+
+Headers are the column names of the plantilla v4.1 (sheet `Diccionario`). `Catalogo` and `Costos_Variables` are views the plantilla does not sync; here the app computes them with the existing services (`servicios.productos_costeados`), without reimplementing any cost. Cells: exact `Decimal` (no `float` inside the app), dates `YYYY-MM-DD`, booleans `SI` / `NO`, `None` as an empty string, text starting with `= + - @` (or tab / CR) gets a leading `'`, and a cell is cut at 50,000 characters.
+
+### What the client does (`sheets_client.py`)
+
+Per run: one read of the existing tabs, one `spreadsheets.batchUpdate` (`addSheet` for a missing tab, `updateSheetProperties` to resize and freeze the header row of the others; at least 2 rows, because Sheets refuses to freeze every row), one `values:batchClear` of the whole tabs and one `values:batchUpdate` with `valueInputOption: RAW`. It **never touches a tab outside the fixed list and never deletes a tab**. Retries with exponential backoff (1 s doubling, max 30 s, `Retry-After` honoured up to 60 s, 5 attempts) on 429 / 500 / 502 / 503 / 504 and network errors; other errors are mapped to a fixed Spanish message. Authentication uses `google-auth` (JWT signing and token exchange) with an `httpx` transport; scope `https://www.googleapis.com/auth/spreadsheets` only. Tests play Google with `httpx.MockTransport`; nothing in the suite calls a real Google endpoint.
+
+### SUPUESTOS (`validar`)
+
+- The only place where a `Decimal` becomes a JSON number is the final write to Google (written from its exact digits, never through `float`); the Sheet is display only, so Google's own double precision is accepted there.
+- The last-run summary and the lock live in memory: lost on restart, and each replica has its own. No table was added.
+- Clear and write are two calls: a failure between them leaves the app's tabs empty until the next sync.
+- "Today" for the price in force and the quality report is the Argentine date (fixed UTC-3, no daylight saving).
+- The tabs hold CUIT / phone / address of workshops: anyone with access to the Sheet sees them.
+- `POST /sync/sheets` has no service-token path yet; an n8n schedule would need one (future work).

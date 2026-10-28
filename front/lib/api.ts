@@ -78,6 +78,7 @@ async function apiRequest<T>(
   method: Method,
   path: string,
   body?: unknown,
+  timeoutMs: number = TIMEOUT_MS,
 ): Promise<ApiResult<T>> {
   const base = apiBaseUrl();
   if (!base) return failure(0, "La dirección de la API no está configurada.");
@@ -95,7 +96,7 @@ async function apiRequest<T>(
       headers: forwarded,
       body: body === undefined ? undefined : JSON.stringify(body),
       cache: "no-store",
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch {
     return failure(0, "No se pudo conectar con la API de costos.");
@@ -115,7 +116,14 @@ export function apiGet<T>(path: string): Promise<ApiResult<T>> {
   return apiRequest<T>("GET", path);
 }
 
-/** Writes go through server actions only; amounts travel as decimal strings. */
-export function apiPost<T>(path: string, body: unknown): Promise<ApiResult<T>> {
-  return apiRequest<T>("POST", path, body);
+/**
+ * Writes go through server actions only; amounts travel as decimal strings.
+ * `timeoutMs` is for the few calls that legitimately take longer than a read.
+ */
+export function apiPost<T>(
+  path: string,
+  body: unknown,
+  timeoutMs?: number,
+): Promise<ApiResult<T>> {
+  return apiRequest<T>("POST", path, body, timeoutMs);
 }

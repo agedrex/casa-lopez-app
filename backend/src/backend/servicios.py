@@ -1854,3 +1854,82 @@ def calidad_de_datos(session: Session, hoy: date | None = None) -> dict:
         "grupos": [{"clave": clave, "titulo": titulo, "total": len(hallazgos), "hallazgos": hallazgos}
                    for clave, titulo, hallazgos in grupos],
     }
+
+
+# --- Loaders for the Google Sheet display copy (T6) ------------------------------------------------------------
+# Read only. They reuse the loaders and the engine above; nothing is calculated again here.
+
+def productos_costeados(session: Session) -> list[dict]:
+    """Every product with its cost today, its latest INICIAL / FINAL quotes and the RECOTIZAR flag (Catalogo, Costos_Variables)."""
+    base = cargar_productos(session)
+    catalogo = expandir_kits(session, base)
+    ctx = cargar_contexto(session)
+    guardadas: dict[int, list[tuple]] = {}
+    for producto_id, tipo, fecha, total, dolar in session.execute(
+        select(Cotizacion.producto_id, Cotizacion.tipo, Cotizacion.fecha, Cotizacion.total_ars, Cotizacion.dolar)
+        .order_by(Cotizacion.fecha.desc(), Cotizacion.id.desc())
+    ):
+        guardadas.setdefault(producto_id, []).append((tipo, fecha, total, dolar))  # newest first
+    filas = []
+    for datos in base:
+        resultado, avisos = _costo_hoy_seguro(datos, ctx, catalogo)
+        costo = _desglose_a_dict(resultado)
+        propias = guardadas.get(datos.id, [])
+        ultima = propias[0] if propias else None
+        por_tipo = {}
+        for tipo, _, total, _ in reversed(propias):  # oldest first, so the newest of each type wins
+            por_tipo[tipo] = total
+        filas.append({
+            "codigo": datos.codigo, "nombre": datos.nombre, "categoria": datos.categoria,
+            "estado_del_ciclo": datos.estado_del_ciclo, "quien_lo_confecciona": datos.quien, "es_kit": datos.es_kit,
+            "fecha_de_alta": datos.fecha_de_alta, "costo": costo, "avisos": avisos,
+            "recotizar": marca_recotizar(
+                resultado.cotizado.desglose if costo and resultado else None,
+                ultima[2] if ultima else None, ultima[3] if ultima else None, ctx.parametros),
+            "inicial_ars": por_tipo.get("INICIAL"), "final_ars": por_tipo.get("FINAL"),
+            "ultima_ars": ultima[2] if ultima else None, "ultima_fecha": ultima[1] if ultima else None,
+        })
+    return filas
+
+
+def cotizaciones_guardadas(session: Session, nombres: dict[str, str] | None = None) -> list[dict]:
+    """Every stored quote, by product code and date. `nombres` maps product code -> name (empty when not given)."""
+    nombres = nombres or {}
+    filas = session.execute(
+        select(Cotizacion, Producto.codigo).join(Producto, Producto.id == Cotizacion.producto_id)
+        .order_by(Producto.codigo, Cotizacion.fecha, Cotizacion.id)
+    ).all()
+    return [{**_cotizacion_a_dict(c, codigo), "producto_nombre": nombres.get(codigo, "")} for c, codigo in filas]
+
+
+def productos_para_exportar(session: Session) -> list[dict]:
+    """The load columns of Productos plus the computed name and category."""
+    propios = dict(session.execute(select(Producto.codigo, Producto.nombre_propio)).all())
+    return [{
+        "codigo": d.codigo, "modelo": d.modelo_codigo, "cuero": d.cuero, "color": d.color,
+        "quien_lo_confecciona": d.quien, "estado_del_ciclo": d.estado_del_ciclo, "fecha_de_alta": d.fecha_de_alta,
+        "fecha_de_recotizacion": d.fecha_de_recotizacion, "fecha_de_cierre": d.fecha_de_cierre,
+        "nombre_propio": propios.get(d.codigo), "es_kit": d.es_kit, "nota": d.nota, "nombre": d.nombre,
+        "categoria": d.categoria,
+    } for d in cargar_productos(session)]
+
+
+def modelos_para_exportar(session: Session) -> list[dict]:
+    """All models in sheet order, with the fields `listar_modelos` leaves out and the number of products that use each."""
+    forro = aliased(Material)
+    usados = dict(session.execute(select(Producto.modelo_id, func.count(Producto.id)).group_by(Producto.modelo_id)).all())
+    filas = session.execute(
+        select(Modelo, Categoria.nombre, forro.codigo)
+        .outerjoin(Categoria, Categoria.id == Modelo.categoria_id)
+        .outerjoin(forro, forro.id == Modelo.forro_id).order_by(Modelo.id)
+    ).all()
+    return [{
+        **_modelo_a_dict(m, categoria, forro_codigo), "horas_de_confeccion": m.horas_de_confeccion, "nota": m.nota,
+        "modelo_excel_viejo": m.modelo_excel_viejo, "fila_excel_viejo": m.fila_excel_viejo,
+        "productos": usados.get(m.id, 0),
+    } for m, categoria, forro_codigo in filas]
+
+
+def costos_fijos_de_todos_los_periodos(session: Session) -> list[dict]:
+    """`costos_fijos` of every period that has rows (newest first), each with its factory / store totals."""
+    return [costos_fijos(session, periodo) for periodo in periodos_de_costos_fijos(session)["periodos"]]

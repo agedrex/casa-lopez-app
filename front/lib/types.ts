@@ -366,3 +366,38 @@ export type Calidad = {
   resumen: { alta: number; media: number; baja: number; total: number };
   grupos: GrupoCalidad[];
 };
+
+// Google Sheet display copy (GET/POST /sync/sheets). Counts only: no money crosses this API.
+
+export type SyncPestana = { nombre: string; filas: number };
+
+export type SyncResultado = {
+  simulacion: boolean;
+  configurado: boolean;
+  iniciado: string;
+  finalizado: string;
+  duracion_ms: number;
+  total_filas: number;
+  pestanas: SyncPestana[];
+};
+
+export type SyncUltima = SyncResultado & { ok: boolean; error: string | null };
+
+export type SyncEstado = {
+  configurado: boolean;
+  /** Names of the two environment variables, never their values. */
+  variables: string[];
+  faltantes: string[];
+  pestanas: string[];
+  en_curso: boolean;
+  ultima: SyncUltima | null;
+};
+
+/** The first rows of one tab exactly as the Sheet would get them: every cell is text. */
+export type SyncVista = {
+  pestana: string;
+  encabezados: string[];
+  filas: string[][];
+  total_filas: number;
+  mostradas: number;
+};

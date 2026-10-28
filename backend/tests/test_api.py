@@ -130,8 +130,9 @@ def test_invalid_period_is_rejected():
 # --- Roles: every write needs admin or cotizador; reads stay open to any signed-in user ----------------------
 
 # The admin area (T5c) writes are admin only; test_admin.py covers their gate. Every other POST is admin or cotizador.
+# POST /sync/sheets (T6) is admin only too; test_sheets_api.py covers its gate.
 SOLO_ADMIN = {"/parametros/{codigo}", "/personas", "/personas/{codigo}/activo", "/colores", "/categorias",
-              "/modelos/{codigo}/consumos"}
+              "/modelos/{codigo}/consumos", "/sync/sheets"}
 ESCRITURAS = [(m, r) for m, r in RUTAS if m == "POST" and r not in SOLO_ADMIN]
 LECTURAS = [(m, r) for m, r in RUTAS if m == "GET"]
 SIN_PERMISO = {"detail": "No tenés permiso para esta acción."}

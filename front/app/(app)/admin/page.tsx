@@ -11,6 +11,7 @@ import type {
   ModeloLista,
   Parametro,
   Persona,
+  SyncEstado,
 } from "@/lib/types";
 
 export const metadata: Metadata = { title: "Administración" };
@@ -31,7 +32,7 @@ function plural(n: number, one: string, many: string): string {
 export default async function AdminPage() {
   // Defense in depth: proxy.ts already redirects non-admins before rendering.
   await requireRole("admin");
-  const [users, parametros, modelos, catalogos, personas, impuestos] =
+  const [users, parametros, modelos, catalogos, personas, impuestos, sync] =
     await Promise.all([
       listAdminUsers(),
       apiGet<Parametro[]>("/parametros"),
@@ -39,6 +40,7 @@ export default async function AdminPage() {
       apiGet<Catalogos>("/catalogos"),
       apiGet<Persona[]>("/personas"),
       apiGet<Impuesto[]>("/impuestos"),
+      apiGet<SyncEstado>("/sync/sheets/estado"),
     ]);
 
   const sections: Section[] = [
@@ -110,6 +112,21 @@ export default async function AdminPage() {
         : null,
       detail: impuestos.ok
         ? `${impuestos.data.filter((i) => i.es_costo_del_producto).length} cuentan como costo`
+        : "",
+    },
+    {
+      href: "/admin/sync",
+      title: "Google Sheets",
+      text: "Copia para ver y consultar: simular o sincronizar las pestañas con el Sheet. Nada vuelve del Sheet a la app.",
+      count: sync.ok
+        ? sync.data.configurado
+          ? "Configurado"
+          : "Sin configurar"
+        : null,
+      detail: sync.ok
+        ? sync.data.ultima
+          ? `Última: ${sync.data.ultima.ok ? (sync.data.ultima.simulacion ? "simulación" : "sincronización") : "con error"}`
+          : "Sin ejecuciones desde el último reinicio"
         : "",
     },
   ];

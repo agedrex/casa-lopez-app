@@ -65,6 +65,13 @@ export function formatDate(value: string | null | undefined): string {
   return match ? `${match[3]}/${match[2]}/${match[1]}` : value;
 }
 
+/** `2026-10-28T15:30:05.123-03:00` -> `28/10/2026 15:30:05`, read as written (no timezone shifts). */
+export function formatDateTime(value: string | null | undefined): string {
+  if (!value) return NONE;
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}:\d{2}:\d{2})/.exec(value);
+  return match ? `${match[3]}/${match[2]}/${match[1]} ${match[4]}` : value;
+}
+
 const percent = new Intl.NumberFormat("es-AR", {
   minimumFractionDigits: 0,
   maximumFractionDigits: 2,
