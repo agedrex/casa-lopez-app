@@ -27,7 +27,7 @@ from backend.auth import Usuario, require_role, require_user
 from backend.database import get_session
 from backend.models import ARS_USD, LOT_STATES, UNITS, WHERE_MADE
 from backend.sheets_client import ErrorDeSheets, SheetsClient
-from backend.sheets_export import NOMBRES_DE_PESTANAS, Fuente, FuenteSQL, construir_tab, construir_tabs
+from backend.sheets_export import NOMBRES_DE_PESTANAS, Fuente, FuenteSQL, _catalogo, _costos_variables, construir_tab, construir_tabs
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -954,6 +954,18 @@ class VistaOut(Salida):
     mostradas: int
 
 
+class FilaGrillaOut(Salida):
+    codigo: str
+    catalogo: list[str]
+    costos_variables: list[str]
+
+
+class GrillaOut(Salida):
+    encabezados_catalogo: list[str]
+    encabezados_costos_variables: list[str]
+    filas: list[FilaGrillaOut]
+
+
 @lru_cache(maxsize=1)
 def version_de_la_app() -> str:
     try:
@@ -977,6 +989,37 @@ def get_cliente_sheets() -> SheetsClient | None:
 
 def _texto_de_celda(valor: object) -> str:
     return format(valor, "f") if isinstance(valor, Decimal) else str(valor)
+
+
+@router.get("/grilla", response_model=GrillaOut)
+def obtener_grilla(
+    fuente: Annotated[Fuente, Depends(get_fuente_sheets)],
+    texto: str = "",
+    categoria: str = "",
+):
+    hoy = ahora().date()
+    catalogo = _catalogo(fuente, hoy)
+    costos = _costos_variables(fuente, hoy)
+    costos_por_codigo = {fila[0]: fila for fila in costos.rows}
+    texto_buscado = texto.strip().casefold()
+    categoria_buscada = categoria.strip().casefold()
+    filas = []
+    for fila in catalogo.rows:
+        codigo, nombre, categoria_producto = (_texto_de_celda(celda) for celda in fila[:3])
+        if texto_buscado and texto_buscado not in codigo.casefold() and texto_buscado not in nombre.casefold():
+            continue
+        if categoria_buscada and categoria_producto.casefold() != categoria_buscada:
+            continue
+        filas.append({
+            "codigo": codigo,
+            "catalogo": [_texto_de_celda(celda) for celda in fila],
+            "costos_variables": [_texto_de_celda(celda) for celda in costos_por_codigo[codigo]],
+        })
+    return {
+        "encabezados_catalogo": list(catalogo.headers),
+        "encabezados_costos_variables": list(costos.headers),
+        "filas": filas,
+    }
 
 
 @router.get("/sync/sheets/estado", response_model=EstadoSincronizacionOut)

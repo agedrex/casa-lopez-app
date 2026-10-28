@@ -12,7 +12,7 @@ from backend import api as api_module
 from backend.auth import Usuario, get_verifier
 from backend.main import app
 from backend.sheets_client import ErrorDeSheets
-from backend.sheets_export import NOMBRES_DE_PESTANAS
+from backend.sheets_export import NOMBRES_DE_PESTANAS, Tab
 from sheets_datos import FuenteEnMemoria, producto_costeado
 
 ID = "1AbCdEfGhIjKlMnOpQrStUvWxYz_0123456789-abc"
@@ -64,8 +64,38 @@ def limpiar():
 
 # --- Access -----------------------------------------------------------------------------------------------------
 
+def test_grilla_joins_export_tabs_by_code_and_filters_for_read_only_role(monkeypatch):
+    source = FuenteEnMemoria(productos_costeados_=[
+        producto_costeado(),
+        producto_costeado(codigo="PRD-0002", nombre="Billetera", categoria="Billeteras", costo=None,
+                          avisos=["Falta el precio del cuero"]),
+    ])
+    original = api_module._costos_variables
+
+    def reversed_costs(source, today):
+        tab = original(source, today)
+        return Tab(tab.name, tab.headers, tuple(reversed(tab.rows)))
+
+    monkeypatch.setattr(api_module, "_costos_variables", reversed_costs)
+    with cliente_http("consulta", fuente=source) as http:
+        response = http.get("/grilla")
+        assert response.status_code == 200, response.text
+        data = response.json()
+        assert data["encabezados_catalogo"][0] == "Código"
+        assert data["encabezados_costos_variables"][0] == "Código"
+        assert [row["codigo"] for row in data["filas"]] == ["PRD-0001", "PRD-0002"]
+        assert all(row["codigo"] == row["costos_variables"][0] for row in data["filas"])
+        assert data["filas"][0]["catalogo"][7] == "20760.6"
+        assert data["filas"][0]["costos_variables"][15] == "13.4375"
+        assert data["filas"][1]["catalogo"][7] == ""
+        assert [row["codigo"] for row in http.get("/grilla", params={"texto": "bIlLe"}).json()["filas"]] == ["PRD-0002"]
+        assert [row["codigo"] for row in http.get("/grilla", params={"categoria": "portafolios"}).json()["filas"]] == ["PRD-0001"]
+        assert http.get("/grilla", params={"texto": "ausente"}).json()["filas"] == []
+
+
 @pytest.mark.parametrize("metodo, ruta", [
     ("post", "/sync/sheets"), ("get", "/sync/sheets/estado"), ("get", "/sync/sheets/vista/Dolar"),
+    ("get", "/grilla"),
 ])
 def test_everything_needs_a_session(metodo, ruta, entorno):
     app.dependency_overrides[get_verifier] = lambda: (lambda request: None)
