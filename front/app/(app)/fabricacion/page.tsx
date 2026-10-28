@@ -11,7 +11,7 @@ import { requireSession } from "@/lib/session";
 import type { OrdenResumen, Taller } from "@/lib/types";
 import { CasaVsTallerSection } from "./casa-vs-taller";
 
-export const metadata: Metadata = { title: "Fabricación" };
+export const metadata: Metadata = { title: "Lotes" };
 
 type Search = Promise<{
   estado?: string | string[];
@@ -54,7 +54,7 @@ export default async function FabricacionPage({
     <>
       <PageHeader
         eyebrow="Producción"
-        title="Fabricación"
+        title="Lotes"
         description="Lotes en casa o en taller con sus cantidades, fechas y precios. El costo de cada lote lo calcula la aplicación: materiales de hoy más lo que cobra el taller."
         actions={
           canWrite(user.role) ? (

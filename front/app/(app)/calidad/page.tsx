@@ -17,7 +17,7 @@ import { safeNext } from "@/lib/redirect";
 import { requireSession } from "@/lib/session";
 import type { Calidad, GrupoCalidad, Hallazgo, Severidad } from "@/lib/types";
 
-export const metadata: Metadata = { title: "Calidad de datos" };
+export const metadata: Metadata = { title: "Alertas" };
 
 const SEVERIDADES: Severidad[] = ["alta", "media", "baja"];
 const SEVERITY_LABELS: Record<Severidad, string> = {
@@ -60,7 +60,7 @@ export default async function CalidadPage({
     <>
       <PageHeader
         eyebrow="Control"
-        title="Calidad de datos"
+        title="Alertas"
         description="Datos que faltan, se contradicen o son de prueba, con el lugar donde corregirlos. La gravedad es una propuesta: alta = no se puede cotizar o cerrar; media = se puede, pero hay algo raro; baja = informativo."
       />
       {result.ok ? (

@@ -23,11 +23,11 @@ export default async function NuevoLotePage() {
           href="/fabricacion"
           className="text-muted underline decoration-gold underline-offset-4"
         >
-          ← Fabricación
+          ← Lotes
         </Link>
       </p>
       <PageHeader
-        eyebrow="Fabricación"
+        eyebrow="Lotes"
         title="Nuevo lote"
         description="Elija dónde se hace, a quién se le manda y qué productos lleva. Los costos los calcula la aplicación."
       />
