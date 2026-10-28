@@ -135,7 +135,10 @@ SIN_PERMISO = {"detail": "No tenés permiso para esta acción."}
 
 
 def test_every_write_route_is_covered_by_the_role_tests():
-    assert len(ESCRITURAS) == 8 and {r for _, r in ESCRITURAS} >= {"/productos", "/precios", "/dolar", "/ordenes"}
+    assert len(ESCRITURAS) == 14 and {r for _, r in ESCRITURAS} >= {
+        "/productos", "/precios", "/dolar", "/ordenes", "/talleres", "/talleres/{codigo}/activo",
+        "/ordenes/{codigo}/estado", "/ordenes/{codigo}/items", "/ordenes/{codigo}/items/{item}/precios",
+        "/costos-fijos/{codigo}/monto"}
 
 
 @pytest.mark.parametrize("metodo, ruta", ESCRITURAS)
@@ -169,6 +172,12 @@ def test_posts_without_a_session_stay_401_not_403(metodo, ruta):
 @pytest.mark.parametrize("metodo, ruta", [(m, r) for m, r in LECTURAS if "{" not in r and r != "/productos/conteo"])
 def test_reads_are_open_to_the_consulta_role(monkeypatch, metodo, ruta):
     client, session = con_usuario("consulta")
+    # The heavy reads are covered against PostgreSQL; here only the gate matters, so the service answers an empty body.
+    monkeypatch.setattr(servicios, "listar_ordenes", lambda *a, **k: [])
+    monkeypatch.setattr(servicios, "casa_vs_taller", lambda *a, **k: {"talleres": [], "meses": []})
+    monkeypatch.setattr(servicios, "periodos_de_costos_fijos", lambda *a, **k: {"vigente": None, "periodos": []})
+    monkeypatch.setattr(servicios, "calidad_de_datos", lambda *a, **k: {
+        "resumen": {"alta": 0, "media": 0, "baja": 0, "total": 0}, "grupos": []})
     session.execute.return_value.all.return_value = []
     session.execute.return_value.one.return_value = (0,)
     session.scalars.return_value = []
@@ -179,6 +188,35 @@ def test_reads_are_open_to_the_consulta_role(monkeypatch, metodo, ruta):
 
 def test_the_new_reads_are_declared():
     assert {("GET", "/catalogos"), ("GET", "/productos/conteo"), ("GET", "/precios/chequeo")} <= set(RUTAS)
+    assert {
+        ("GET", "/ordenes"), ("GET", "/ordenes/{codigo}"), ("GET", "/fabricacion/casa-vs-taller"),
+        ("GET", "/talleres/{codigo}"), ("GET", "/personas"), ("GET", "/costos-fijos/periodos"), ("GET", "/calidad"),
+        ("GET", "/productos/{codigo}/precios-talleres"),
+    } <= set(RUTAS)
+
+
+@pytest.mark.parametrize("ruta, cuerpo", [
+    ("/talleres", {"nombre": "X", "codigo": "TAL-0099"}),
+    ("/talleres", {"nombre": "X", "lotes": 3}),
+    ("/ordenes/LOT-0001/estado", {"estado": "LISTA", "fecha": "2026-10-06", "periodo": "2026-10"}),
+    ("/ordenes/LOT-0001/estado", {"estado": "LISTA"}),
+    ("/ordenes/LOT-0001/items/LIT-0001/precios", {}),
+    ("/ordenes/LOT-0001/items/LIT-0001/precios", {"pagado": "-1"}),
+    ("/ordenes/LOT-0001/items/LIT-0001/precios", {"pagado": "1", "total_linea": "1"}),
+    ("/costos-fijos/GF-0001/monto", {"monto_ars_del_mes": "-1"}),
+    ("/costos-fijos/GF-0001/monto", {"monto_ars_del_mes": "1", "total_fabrica": "1"}),
+])
+def test_new_bodies_reject_calculated_or_invalid_fields_before_the_service(monkeypatch, ruta, cuerpo):
+    client, _ = con_usuario()
+    for nombre in ("crear_taller", "registrar_estado", "registrar_precios_item", "cargar_monto_de_gasto"):
+        monkeypatch.setattr(servicios, nombre, lambda *a, **k: pytest.fail("the service must not be called"))
+    assert client.post(ruta, json=cuerpo).status_code == 422
+
+
+def test_invalid_months_are_rejected_on_the_new_reads():
+    client, _ = con_usuario()
+    assert client.get("/fabricacion/casa-vs-taller", params={"hasta": "2026-13"}).status_code == 422
+    assert client.get("/ordenes", params={"estado": "NADA"}).status_code == 422
 
 
 def test_the_product_search_reaches_the_service(monkeypatch):

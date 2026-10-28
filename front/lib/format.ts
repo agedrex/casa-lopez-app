@@ -149,3 +149,48 @@ const QUOTE_TYPE_LABELS: Record<string, string> = {
 export function quoteTypeLabel(code: string): string {
   return QUOTE_TYPE_LABELS[code] ?? code;
 }
+
+const LOT_STATE_LABELS: Record<string, string> = {
+  PLANIFICADA: "Planificada",
+  EN_CORTE: "En corte",
+  CORTADA: "Cortada",
+  EN_CONFECCION: "En confección",
+  LISTA: "Lista",
+  CERRADA: "Cerrada",
+};
+
+/** Lot states in the order of the cycle (the API accepts any of them except after CERRADA). */
+export const LOT_STATES = Object.keys(LOT_STATE_LABELS);
+
+export function lotStateLabel(code: string): string {
+  return LOT_STATE_LABELS[code] ?? code;
+}
+
+export function whereLabel(code: string): string {
+  return code === "EXTERNA"
+    ? "En taller"
+    : code === "INTERNA"
+      ? "En casa"
+      : code;
+}
+
+const EXPENSE_CATEGORY_LABELS: Record<string, string> = {
+  SUELDOS: "Sueldos",
+  CARGAS_SOCIALES: "Cargas sociales",
+  ALQUILER: "Alquiler",
+  SERVICIOS: "Servicios",
+  IMPUESTOS_FIJOS: "Impuestos fijos",
+  OTROS: "Otros",
+};
+
+export const EXPENSE_CATEGORIES = Object.keys(EXPENSE_CATEGORY_LABELS);
+
+export function expenseCategoryLabel(code: string): string {
+  return EXPENSE_CATEGORY_LABELS[code] ?? code;
+}
+
+/** `2026-10` -> `10/2026`. */
+export function formatPeriod(value: string | null | undefined): string {
+  const match = /^(\d{4})-(\d{2})$/.exec(value ?? "");
+  return match ? `${match[2]}/${match[1]}` : (value ?? NONE);
+}

@@ -5,11 +5,12 @@ re-implemented here: this file loads plain data, calls them and stores the resul
 Money is Decimal end to end; the API layer serializes it as strings.
 """
 
+from collections import Counter
 from dataclasses import dataclass, field, replace
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
-from sqlalchemy import Integer, cast, func, or_, select
+from sqlalchemy import Integer, and_, cast, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, aliased
 
@@ -18,7 +19,8 @@ from backend.costeo import (
 )
 from backend.models import (
     Categoria, Color, Cotizacion, Etapa, GastoPeriodo, Impuesto, KitComponente, Material, Modelo,
-    OrdenFabricacion, OrdenItem, Parametro, Persona, PrecioMaterial, Producto, RecetaLinea, Taller, TipoCambio,
+    OrdenEstado, OrdenFabricacion, OrdenItem, Parametro, Persona, PrecioMaterial, Producto, RecetaLinea, Taller,
+    TipoCambio,
 )
 from backend.receta import (
     Cotizado, Extra, ModeloReceta, ProductoReceta, Receta, cotizar_producto, generar_receta,
@@ -98,6 +100,7 @@ class DatosProducto:
     extras: list[Extra] = field(default_factory=list)
     lotes: list[ItemLote] = field(default_factory=list)
     componentes: list[tuple[str, Decimal]] = field(default_factory=list)
+    tamano: str | None = None
 
     @property
     def producto(self) -> ProductoReceta:
@@ -314,7 +317,7 @@ def cargar_productos(
             nota=producto.nota, fecha_de_alta=producto.fecha_de_alta,
             fecha_de_recotizacion=producto.fecha_de_recotizacion, fecha_de_cierre=producto.fecha_de_cierre,
             modelo=receta_modelo, extras=extras.get(producto.id, []), lotes=lotes.get(producto.id, []),
-            componentes=componentes.get(producto.id, []),
+            componentes=componentes.get(producto.id, []), tamano=modelo.tamano if modelo else None,
         ))
     return resultado
 
@@ -585,11 +588,9 @@ def listar_parametros(session: Session) -> list[dict]:
     } for p in session.scalars(select(Parametro).order_by(Parametro.id))]
 
 
-def listar_talleres(session: Session) -> list[dict]:
-    return [{
-        "codigo": t.codigo, "nombre": t.nombre, "cuit": t.cuit, "telefono": t.telefono, "direccion": t.direccion,
-        "contacto": t.contacto, "activo": t.activo, "nota": t.nota,
-    } for t in session.scalars(select(Taller).order_by(Taller.id))]
+def listar_personas(session: Session) -> list[dict]:
+    return [{"codigo": p.codigo, "nombre": p.nombre, "rol": p.rol, "activo": p.activo}
+            for p in session.scalars(select(Persona).order_by(Persona.id))]
 
 
 def costos_fijos(session: Session, periodo: str | None = None) -> dict:
@@ -607,6 +608,7 @@ def costos_fijos(session: Session, periodo: str | None = None) -> dict:
         totales[g.fabrica_o_tienda] += g.monto_ars_del_mes or ZERO
     return {
         "periodo": periodo, "total_fabrica": totales["FABRICA"], "total_tienda": totales["TIENDA"],
+        "total": totales["FABRICA"] + totales["TIENDA"],  # Costos_Fijos!L3: the screen must not add money itself
         "pendientes": sum(1 for g, _ in filas if g.monto_ars_del_mes is None),
         "incluye_ficticios": any(g.ficticio for g, _ in filas),
         "gastos": [{
@@ -774,7 +776,7 @@ def crear_orden(
     session: Session, *, donde_se_hace: str, taller: str | None, persona: str | None, fecha_de_envio: date | None,
     fecha_de_entrega: date | None, estado: str, nota: str | None, items: list[dict],
 ) -> dict:
-    """A lot with its items. The v3 tables hold no unit-cost rule for lots, so none is applied here."""
+    """A lot with its items and the first row of its state history (costs are derived on read, never stored)."""
     taller_fila = _por_codigo(session, Taller, taller, "el taller")
     persona_fila = _por_codigo(session, Persona, persona, "la persona")
     productos = {}
@@ -790,6 +792,9 @@ def crear_orden(
         fecha_de_envio=fecha_de_envio, fecha_de_entrega=fecha_de_entrega, estado=estado, nota=nota,
     )
     _insertar(session, orden, "No se pudo asignar el código del lote; intentá de nuevo.")
+    # SUPUESTO: validar. The first history row is dated on the shipping date, else on the day it was loaded.
+    _insertar(session, OrdenEstado(orden_fabricacion_id=orden.id, estado=estado, fecha=fecha_de_envio or date.today()),
+              "No se pudo registrar el estado del lote; intentá de nuevo.")
     primero = _siguiente_numero(session, OrdenItem.codigo, "LIT")
     for posicion, item in enumerate(items):
         _insertar(session, OrdenItem(
@@ -803,4 +808,761 @@ def crear_orden(
         "codigo": orden.codigo, "donde_se_hace": orden.donde_se_hace, "taller": taller, "persona": persona,
         "fecha_de_envio": orden.fecha_de_envio, "fecha_de_entrega": orden.fecha_de_entrega, "estado": orden.estado,
         "nota": orden.nota, "items": [{**item, "codigo": f"LIT-{primero + i:04d}"} for i, item in enumerate(items)],
+    }
+
+
+# --- Fabricación: lots, workshops, house vs workshop ---------------------------------------------------------
+# Plantilla sheets Lotes, Lote_Productos, Lote_Estados, Talleres, Casa_vs_Taller and Precios_Talleres. A lot's money is
+# never stored: it is derived on every read from the item prices and the product cost of today.
+
+AVISO_SIN_TALLER = "Falta el taller"
+AVISO_SIN_ENVIO = "Falta la fecha de envío"
+AVISO_SIN_PRODUCTOS = "Sin productos: agregá al menos uno"
+AVISO_SIN_ENTREGA = "Falta la fecha de entrega (cierra la cotización final)"
+AVISO_RENGLONES = "Hay productos con problemas"
+AVISO_SIN_CANTIDAD = "Falta la cantidad"
+AVISO_SIN_PRECIO_TALLER = "Falta el precio del taller"
+AVISO_SIN_FECHA = "El lote no tiene fecha"
+# Not in the sheet: its blank cost would silently drop the line from the lot total, so the app says it.
+AVISO_SIN_COSTO = "No se puede calcular el costo de hoy del producto"
+SEVERIDAD_DE_AVISO_DE_LOTE = {
+    AVISO_SIN_TALLER: "alta", AVISO_SIN_ENTREGA: "alta", AVISO_SIN_ENVIO: "media", AVISO_SIN_PRODUCTOS: "media",
+    AVISO_SIN_CANTIDAD: "media", AVISO_SIN_PRECIO_TALLER: "media", AVISO_SIN_COSTO: "media",
+}
+MESES_CASA_VS_TALLER = 12
+# SUPUESTO: validar. The sheet lists the last 10 workshop prices of the category; the app lists the latest price per
+# (workshop, similar product) instead, up to this many rows.
+MAX_PARECIDOS = 20
+CENTAVOS = Decimal("0.01")
+
+
+@dataclass(frozen=True)
+class LoteDatos:
+    id: int
+    codigo: str
+    donde: str
+    taller: str | None
+    taller_nombre: str | None
+    persona: str | None
+    persona_nombre: str | None
+    envio: date | None
+    entrega: date | None
+    estado: str
+    nota: str | None
+
+    @property
+    def fecha(self) -> date | None:
+        """The date a lot counts on: delivery, else shipping (Lotes!T)."""
+        return self.entrega or self.envio
+
+
+@dataclass(frozen=True)
+class ItemDatos:
+    id: int
+    codigo: str
+    lote: str  # codigo of the lot
+    producto: str  # codigo of the product
+    cantidad: Decimal
+    cotizado: Decimal | None
+    pagado: Decimal | None
+    nota: str | None
+
+
+@dataclass(frozen=True)
+class InfoProducto:
+    nombre: str
+    categoria: str | None
+    tamano: str | None
+    materiales: Decimal | None  # materials per unit at today's prices; None when the cost cannot be computed
+
+
+@dataclass(frozen=True)
+class PrecioDeTaller:
+    fecha: date
+    orden: int  # tie-break on the same date: the newest item wins
+    producto: str
+    nombre: str
+    categoria: str | None
+    tamano: str | None
+    taller: str
+    taller_nombre: str | None
+    cantidad: Decimal
+    precio: Decimal
+    lote: str
+
+
+def confeccion_de_renglon(donde: str, fecha: date | None, cotizado: Decimal | None, pagado: Decimal | None) -> Decimal | None:
+    """Sewing per unit of a lot line (Lote_Productos!P): in house 0; at a workshop what it charged, else what it quoted."""
+    if fecha is None:
+        return None
+    if donde == "INTERNA":
+        return ZERO
+    if donde == "EXTERNA":
+        if pagado is not None and pagado > 0:
+            return pagado
+        if cotizado is not None and cotizado > 0:
+            return cotizado
+    return None
+
+
+def avisos_de_renglon(
+    donde: str, fecha: date | None, cantidad: Decimal, cotizado: Decimal | None, pagado: Decimal | None, costo_ok: bool,
+) -> list[str]:
+    """Lote_Productos!AA. The sheet shows the first problem; the app lists all of them, in the same order."""
+    avisos = []
+    if cantidad <= 0:
+        avisos.append(AVISO_SIN_CANTIDAD)
+    if donde == "EXTERNA" and not (cotizado or 0) > 0 and not (pagado or 0) > 0:
+        avisos.append(AVISO_SIN_PRECIO_TALLER)
+    if fecha is None:
+        avisos.append(AVISO_SIN_FECHA)
+    if not costo_ok:
+        avisos.append(AVISO_SIN_COSTO)
+    return avisos
+
+
+def avisos_de_lote(
+    donde: str, taller: str | None, fecha: date | None, n_items: int, estado: str, entrega: date | None,
+    n_renglones_con_problema: int,
+) -> list[str]:
+    """Lotes!Q, same order as the sheet but listing every problem."""
+    avisos = []
+    if donde == "EXTERNA" and taller is None:
+        avisos.append(AVISO_SIN_TALLER)
+    if fecha is None:
+        avisos.append(AVISO_SIN_ENVIO)
+    if n_items == 0:
+        avisos.append(AVISO_SIN_PRODUCTOS)
+    if estado == "CERRADA" and entrega is None:
+        avisos.append(AVISO_SIN_ENTREGA)
+    if n_renglones_con_problema > 0:
+        avisos.append(AVISO_RENGLONES)
+    return avisos
+
+
+def es_taller_de_ejemplo(nota: str | None) -> bool:
+    # SUPUESTO: validar. The three seeded workshops carry a note that starts with "Ejemplo"; nothing else marks them.
+    return (nota or "").strip().lower().startswith("ejemplo")
+
+
+def mes_de(fecha: date) -> str:
+    return f"{fecha.year:04d}-{fecha.month:02d}"
+
+
+def ultimos_meses(hasta: str, cantidad: int = MESES_CASA_VS_TALLER) -> list[str]:
+    """`cantidad` periods AAAA-MM ending at `hasta`, newest first."""
+    año, mes = int(hasta[:4]), int(hasta[5:7])
+    indices = [año * 12 + (mes - 1) - atras for atras in range(cantidad)]
+    return [f"{i // 12:04d}-{i % 12 + 1:02d}" for i in indices]
+
+
+def resumen_casa_vs_taller(
+    lotes: list[LoteDatos], items: list[ItemDatos], talleres: list[tuple[str, str]], meses: list[str],
+) -> list[dict]:
+    """Casa_vs_Taller: per month, lots and units made in house vs at a workshop, what was paid and units per workshop."""
+    filas = {m: {
+        "periodo": m, "lotes_casa": 0, "lotes_taller": 0, "unidades_casa": ZERO, "unidades_taller": ZERO,
+        "pagado_a_talleres": ZERO, "unidades_por_taller": {codigo: ZERO for codigo, _ in talleres},
+    } for m in meses}
+    por_lote = {lote.codigo: lote for lote in lotes}
+    for lote in lotes:
+        fila = filas.get(mes_de(lote.fecha)) if lote.fecha else None
+        if fila is not None:
+            fila["lotes_taller" if lote.donde == "EXTERNA" else "lotes_casa"] += 1
+    for item in items:
+        lote = por_lote.get(item.lote)
+        fila = filas.get(mes_de(lote.fecha)) if lote and lote.fecha else None
+        if fila is None:
+            continue
+        if lote.donde == "EXTERNA":
+            fila["unidades_taller"] += item.cantidad
+            fila["pagado_a_talleres"] += item.cantidad * (item.pagado or ZERO)  # only what was paid, not what was quoted
+            if lote.taller in fila["unidades_por_taller"]:
+                fila["unidades_por_taller"][lote.taller] += item.cantidad
+        else:
+            fila["unidades_casa"] += item.cantidad
+    for fila in filas.values():
+        total = fila["unidades_casa"] + fila["unidades_taller"]
+        fila["porcentaje_taller"] = (fila["unidades_taller"] / total * 100).quantize(CENTAVOS, ROUND_HALF_UP) if total else None
+    return list(filas.values())
+
+
+def _por_fecha(precio: PrecioDeTaller) -> tuple[date, int]:
+    return precio.fecha, precio.orden
+
+
+def precios_por_taller(precios: list[PrecioDeTaller], producto: str, talleres: list[tuple[str, str]]) -> list[dict]:
+    """Precios_Talleres, block 1: per workshop, the latest price of this product, the one before it and the change."""
+    filas = []
+    for codigo, nombre in talleres:
+        hechos = sorted((p for p in precios if p.producto == producto and p.taller == codigo), key=_por_fecha)
+        if not hechos:
+            filas.append({"taller": codigo, "taller_nombre": nombre, "hizo": False, "precio": None, "fecha": None,
+                          "lote": None, "cantidad": None, "veces": 0, "precio_anterior": None, "variacion_pct": None})
+            continue
+        ultimo = hechos[-1]
+        anterior = hechos[-2].precio if len(hechos) > 1 else None
+        variacion, _ = variacion_de_precio(anterior, ultimo.precio)
+        filas.append({"taller": codigo, "taller_nombre": nombre, "hizo": True, "precio": ultimo.precio,
+                      "fecha": ultimo.fecha, "lote": ultimo.lote, "cantidad": ultimo.cantidad, "veces": len(hechos),
+                      "precio_anterior": anterior, "variacion_pct": variacion})
+    return filas
+
+
+def precios_parecidos(
+    precios: list[PrecioDeTaller], producto: str, categoria: str | None, tamano: str | None, mismo_tamano: bool,
+    limite: int = MAX_PARECIDOS,
+) -> list[dict]:
+    """Precios_Talleres, block 2: same category (and size, if asked); the latest price per (workshop, product)."""
+    if categoria is None:
+        return []
+    ultimo: dict[tuple[str, str], PrecioDeTaller] = {}
+    for p in sorted((p for p in precios if p.categoria == categoria and (not mismo_tamano or p.tamano == tamano)), key=_por_fecha):
+        ultimo[(p.taller, p.producto)] = p
+    return [{
+        "fecha": p.fecha, "producto": p.producto, "nombre": p.nombre, "tamano": p.tamano, "taller": p.taller,
+        "taller_nombre": p.taller_nombre, "cantidad": p.cantidad, "precio": p.precio, "lote": p.lote,
+        "es_mismo_producto": p.producto == producto,
+    } for p in sorted(ultimo.values(), key=_por_fecha, reverse=True)[:limite]]
+
+
+# --- Lots: loading and costing -----------------------------------------------------------------------------
+
+def _dia_del_lote():
+    return func.coalesce(OrdenFabricacion.fecha_de_entrega, OrdenFabricacion.fecha_de_envio)
+
+
+def _cargar_lotes(
+    session: Session, codigo: str | None = None, estado: str | None = None, donde: str | None = None,
+    taller: str | None = None,
+) -> list[LoteDatos]:
+    """Newest first (by the date a lot counts on, undated last), then newest code."""
+    consulta = (
+        select(OrdenFabricacion, Taller.codigo, Taller.nombre, Persona.codigo, Persona.nombre)
+        .outerjoin(Taller, Taller.id == OrdenFabricacion.taller_id)
+        .outerjoin(Persona, Persona.id == OrdenFabricacion.persona_id)
+        .order_by(_dia_del_lote().desc().nulls_last(), OrdenFabricacion.id.desc())
+    )
+    for columna, valor in ((OrdenFabricacion.codigo, codigo), (OrdenFabricacion.estado, estado),
+                           (OrdenFabricacion.donde_se_hace, donde), (Taller.codigo, taller)):
+        if valor:
+            consulta = consulta.where(columna == valor)
+    return [LoteDatos(
+        id=o.id, codigo=o.codigo, donde=o.donde_se_hace, taller=t_codigo, taller_nombre=t_nombre, persona=p_codigo,
+        persona_nombre=p_nombre, envio=o.fecha_de_envio, entrega=o.fecha_de_entrega, estado=o.estado, nota=o.nota,
+    ) for o, t_codigo, t_nombre, p_codigo, p_nombre in session.execute(consulta).all()]
+
+
+def _cargar_items(session: Session, lote_ids: list[int]) -> list[ItemDatos]:
+    if not lote_ids:
+        return []
+    filas = session.execute(
+        select(OrdenItem, OrdenFabricacion.codigo, Producto.codigo)
+        .join(OrdenFabricacion, OrdenFabricacion.id == OrdenItem.orden_fabricacion_id)
+        .join(Producto, Producto.id == OrdenItem.producto_id)
+        .where(OrdenItem.orden_fabricacion_id.in_(lote_ids)).order_by(OrdenItem.id)
+    ).all()
+    return [ItemDatos(
+        id=i.id, codigo=i.codigo, lote=lote, producto=producto, cantidad=i.cantidad,
+        cotizado=i.taller_precio_cotizado_por_unidad_ars, pagado=i.taller_precio_pagado_por_unidad_ars, nota=i.nota,
+    ) for i, lote, producto in filas]
+
+
+def _info_productos(session: Session, codigos: set[str], con_costo: bool = True) -> dict[str, InfoProducto]:
+    """Name, category, size and (optionally) materials per unit at today's prices: total cost minus its sewing stage."""
+    if not codigos:
+        return {}
+    base = cargar_productos(session, sorted(codigos))
+    catalogo = expandir_kits(session, base) if con_costo else {}
+    ctx = cargar_contexto(session) if con_costo else None
+    info = {}
+    for datos in base:
+        materiales = None
+        if con_costo:
+            costo = _desglose_a_dict(_costo_hoy_seguro(datos, ctx, catalogo)[0])
+            if costo is not None:
+                materiales = costo["total_ars"] - costo["etapas"]["CONFECCION"]
+        info[datos.codigo] = InfoProducto(datos.nombre, datos.categoria, datos.tamano, materiales)
+    return info
+
+
+def _armar_lote(lote: LoteDatos, items: list[ItemDatos], info: dict[str, InfoProducto]) -> dict:
+    renglones = []
+    for item in items:
+        producto = info.get(item.producto)
+        materiales = producto.materiales if producto else None
+        confeccion = confeccion_de_renglon(lote.donde, lote.fecha, item.cotizado, item.pagado)
+        costo = None if materiales is None or item.cantidad == 0 else materiales + (confeccion or ZERO)
+        renglones.append({
+            "codigo": item.codigo, "producto": item.producto, "producto_nombre": producto.nombre if producto else item.producto,
+            "categoria": producto.categoria if producto else None, "tamano": producto.tamano if producto else None,
+            "cantidad": item.cantidad, "cotizado": item.cotizado, "pagado": item.pagado, "nota": item.nota,
+            "confeccion_por_unidad": confeccion, "materiales_por_unidad": materiales, "costo_por_unidad": costo,
+            "total_linea": None if costo is None else costo * item.cantidad,
+            "avisos": avisos_de_renglon(lote.donde, lote.fecha, item.cantidad, item.cotizado, item.pagado, materiales is not None),
+        })
+    unidades = sum((r["cantidad"] for r in renglones), ZERO)
+    con_costo = [r["total_linea"] for r in renglones if r["total_linea"] is not None]
+    costo_total = sum(con_costo, ZERO) if con_costo else None
+    return {
+        "id": lote.id, "codigo": lote.codigo, "donde_se_hace": lote.donde, "taller": lote.taller,
+        "taller_nombre": lote.taller_nombre, "persona": lote.persona, "persona_nombre": lote.persona_nombre,
+        "fecha_de_envio": lote.envio, "fecha_de_entrega": lote.entrega, "periodo": mes_de(lote.fecha) if lote.fecha else None,
+        "estado": lote.estado, "nota": lote.nota, "productos": len(renglones), "unidades": unidades,
+        "total_cotizado": sum((r["cantidad"] * (r["cotizado"] or ZERO) for r in renglones), ZERO),
+        "total_cobrado": sum((r["cantidad"] * (r["pagado"] or ZERO) for r in renglones), ZERO),
+        "costo_total": costo_total,
+        "costo_promedio_por_unidad": costo_total / unidades if costo_total is not None and unidades > 0 else None,
+        "avisos": avisos_de_lote(lote.donde, lote.taller, lote.fecha, len(renglones), lote.estado, lote.entrega,
+                                 sum(1 for r in renglones if r["avisos"])),
+        "items": renglones,
+    }
+
+
+def _armar_lotes(session: Session, **filtros) -> list[dict]:
+    lotes = _cargar_lotes(session, **filtros)
+    items = _cargar_items(session, [lote.id for lote in lotes])
+    info = _info_productos(session, {item.producto for item in items})
+    por_lote: dict[str, list[ItemDatos]] = {}
+    for item in items:
+        por_lote.setdefault(item.lote, []).append(item)
+    return [_armar_lote(lote, por_lote.get(lote.codigo, []), info) for lote in lotes]
+
+
+def listar_ordenes(
+    session: Session, estado: str | None = None, donde: str | None = None, taller: str | None = None,
+) -> list[dict]:
+    return _armar_lotes(session, estado=estado, donde=donde, taller=taller)
+
+
+def detalle_orden(session: Session, codigo: str) -> dict:
+    armados = _armar_lotes(session, codigo=codigo)
+    if not armados:
+        raise NoEncontrado(f"No existe el lote {codigo}.")
+    lote = armados[0]
+    lote["estados"] = [{
+        "estado": e.estado, "fecha": e.fecha, "quien": p_codigo, "quien_nombre": p_nombre,
+    } for e, p_codigo, p_nombre in session.execute(
+        select(OrdenEstado, Persona.codigo, Persona.nombre).outerjoin(Persona, Persona.id == OrdenEstado.quien_id)
+        .where(OrdenEstado.orden_fabricacion_id == lote["id"]).order_by(OrdenEstado.fecha, OrdenEstado.id)
+    ).all()]
+    return lote
+
+
+def _orden_por_codigo(session: Session, codigo: str, bloquear: bool = False) -> OrdenFabricacion:
+    consulta = select(OrdenFabricacion).where(OrdenFabricacion.codigo == codigo)
+    orden = session.scalar(consulta.with_for_update() if bloquear else consulta)
+    if orden is None:
+        raise NoEncontrado(f"No existe el lote {codigo}.")
+    return orden
+
+
+def registrar_estado(
+    session: Session, codigo: str, *, estado: str, fecha: date, quien: str | None, fecha_de_entrega: date | None,
+) -> dict:
+    """Append a history row and set the lot's state. A closed lot never changes state again."""
+    orden = _orden_por_codigo(session, codigo, bloquear=True)
+    if orden.estado == "CERRADA":
+        raise Conflicto(f"El lote {codigo} ya está cerrado: no se puede cambiar su estado.")
+    if estado == orden.estado:
+        # SUPUESTO: validar. Repeating the current state is refused so a double click leaves one history row.
+        raise Conflicto(f"El lote {codigo} ya está en estado {estado}.")
+    quien_fila = _por_codigo(session, Persona, quien, "la persona")
+    if estado == "CERRADA":
+        entrega = fecha_de_entrega or orden.fecha_de_entrega
+        if entrega is None:
+            raise DatosInvalidos("Para cerrar el lote hace falta la fecha de entrega: es la que cierra la cotización final.")
+        orden.fecha_de_entrega = entrega
+    _insertar(session, OrdenEstado(orden_fabricacion_id=orden.id, estado=estado, fecha=fecha,
+                                   quien_id=quien_fila.id if quien_fila else None),
+              "No se pudo registrar el estado del lote; intentá de nuevo.")
+    orden.estado = estado
+    session.commit()
+    return detalle_orden(session, codigo)
+
+
+def agregar_item_a_orden(
+    session: Session, codigo: str, *, producto: str, cantidad: Decimal, cotizado: Decimal | None,
+    pagado: Decimal | None, nota: str | None = None,
+) -> dict:
+    orden = _orden_por_codigo(session, codigo)
+    producto_fila = session.scalar(select(Producto).where(Producto.codigo == producto))
+    if producto_fila is None:
+        raise DatosInvalidos(f"No existe el producto {producto}.")
+    _insertar(session, OrdenItem(
+        codigo=f"LIT-{_siguiente_numero(session, OrdenItem.codigo, 'LIT'):04d}", orden_fabricacion_id=orden.id,
+        producto_id=producto_fila.id, cantidad=cantidad, taller_precio_cotizado_por_unidad_ars=cotizado,
+        taller_precio_pagado_por_unidad_ars=pagado, nota=nota,
+    ), "No se pudo asignar el código del renglón; intentá de nuevo.")
+    session.commit()
+    return detalle_orden(session, codigo)
+
+
+def registrar_precios_item(
+    session: Session, codigo_lote: str, codigo_item: str, *, cotizado: Decimal | None, pagado: Decimal | None,
+) -> dict:
+    """Record what the workshop quoted / charged. The one in-place edit of the lots: the price arrives after the
+    lot is sent. SUPUESTO: validar. `orden_estado` cannot hold prices and no table may be added, so the previous
+    value is not kept anywhere (no audit trail)."""
+    _orden_por_codigo(session, codigo_lote)
+    item = session.scalar(
+        select(OrdenItem).join(OrdenFabricacion, OrdenFabricacion.id == OrdenItem.orden_fabricacion_id)
+        .where(OrdenItem.codigo == codigo_item, OrdenFabricacion.codigo == codigo_lote).with_for_update()
+    )
+    if item is None:
+        raise NoEncontrado(f"El lote {codigo_lote} no tiene el renglón {codigo_item}.")
+    if cotizado is not None:
+        item.taller_precio_cotizado_por_unidad_ars = cotizado
+    if pagado is not None:
+        item.taller_precio_pagado_por_unidad_ars = pagado
+    session.commit()
+    return detalle_orden(session, codigo_lote)
+
+
+def casa_vs_taller(session: Session, hasta: str | None = None) -> dict:
+    """The last 12 months up to `hasta` (default: the current month), newest first."""
+    meses = ultimos_meses(hasta or mes_de(date.today()))
+    talleres = [(t["codigo"], t["nombre"]) for t in listar_talleres(session)]
+    lotes = _cargar_lotes(session)
+    items = _cargar_items(session, [lote.id for lote in lotes])
+    return {
+        "talleres": [{"codigo": c, "nombre": n} for c, n in talleres],
+        "meses": resumen_casa_vs_taller(lotes, items, talleres, meses),
+    }
+
+
+def _precios_de_taller(session: Session) -> list[PrecioDeTaller]:
+    lotes = {lote.codigo: lote for lote in _cargar_lotes(session)}
+    items = _cargar_items(session, [lote.id for lote in lotes.values()])
+    info = _info_productos(session, {item.producto for item in items}, con_costo=False)
+    precios = []
+    for item in items:
+        lote = lotes[item.lote]
+        precio = confeccion_de_renglon(lote.donde, lote.fecha, item.cotizado, item.pagado)
+        if lote.donde != "EXTERNA" or lote.taller is None or not precio or precio <= 0:
+            continue
+        producto = info[item.producto]
+        precios.append(PrecioDeTaller(
+            fecha=lote.fecha, orden=item.id, producto=item.producto, nombre=producto.nombre, categoria=producto.categoria,
+            tamano=producto.tamano, taller=lote.taller, taller_nombre=lote.taller_nombre, cantidad=item.cantidad,
+            precio=precio, lote=lote.codigo,
+        ))
+    return precios
+
+
+def precios_de_talleres(session: Session, codigo: str, mismo_tamano: bool = True) -> dict:
+    """What each workshop charged for this product and for similar ones (same category and, by default, size)."""
+    datos, _ = _cargar_uno(session, codigo)
+    precios = _precios_de_taller(session)
+    talleres = [(t["codigo"], t["nombre"]) for t in listar_talleres(session)]
+    por_taller = precios_por_taller(precios, codigo, talleres)
+    return {
+        "producto": datos.codigo, "nombre": datos.nombre, "categoria": datos.categoria, "tamano": datos.tamano,
+        "veces_en_taller": sum(fila["veces"] for fila in por_taller), "por_taller": por_taller,
+        "parecidos": precios_parecidos(precios, codigo, datos.categoria, datos.tamano, mismo_tamano),
+    }
+
+
+# --- Workshops ------------------------------------------------------------------------------------------------
+
+def _agregados_de_talleres(session: Session) -> dict[int, tuple]:
+    """Per workshop: lots, units, last lot date and what it charged in total (Talleres!J:M)."""
+    filas = session.execute(
+        select(
+            OrdenFabricacion.taller_id, func.count(func.distinct(OrdenFabricacion.id)),
+            func.coalesce(func.sum(OrdenItem.cantidad), ZERO),
+            func.coalesce(func.sum(OrdenItem.cantidad * func.coalesce(OrdenItem.taller_precio_pagado_por_unidad_ars, ZERO)), ZERO),
+            func.max(_dia_del_lote()),
+        ).select_from(OrdenFabricacion)
+        .outerjoin(OrdenItem, OrdenItem.orden_fabricacion_id == OrdenFabricacion.id)
+        .where(OrdenFabricacion.taller_id.is_not(None)).group_by(OrdenFabricacion.taller_id)
+    ).all()
+    return {taller_id: (lotes, unidades, cobro, ultimo) for taller_id, lotes, unidades, cobro, ultimo in filas}
+
+
+def _taller_a_dict(t: Taller, agregados: dict[int, tuple]) -> dict:
+    lotes, unidades, cobro, ultimo = agregados.get(t.id, (0, ZERO, ZERO, None))
+    return {
+        "codigo": t.codigo, "nombre": t.nombre, "cuit": t.cuit, "telefono": t.telefono, "direccion": t.direccion,
+        "contacto": t.contacto, "activo": t.activo, "nota": t.nota, "ejemplo": es_taller_de_ejemplo(t.nota),
+        "lotes": lotes, "unidades": unidades, "ultimo_lote": ultimo, "cobro_total_ars": cobro,
+    }
+
+
+def listar_talleres(session: Session) -> list[dict]:
+    agregados = _agregados_de_talleres(session)
+    return [_taller_a_dict(t, agregados) for t in session.scalars(select(Taller).order_by(Taller.id))]
+
+
+def detalle_taller(session: Session, codigo: str) -> dict:
+    taller = session.scalar(select(Taller).where(Taller.codigo == codigo))
+    if taller is None:
+        raise NoEncontrado(f"No existe el taller {codigo}.")
+    return {**_taller_a_dict(taller, _agregados_de_talleres(session)), "ordenes": listar_ordenes(session, taller=codigo)}
+
+
+def _texto_o_nada(valor: str | None) -> str | None:
+    limpio = (valor or "").strip()
+    return limpio or None
+
+
+def crear_taller(
+    session: Session, *, nombre: str, cuit: str | None, telefono: str | None, direccion: str | None,
+    contacto: str | None, nota: str | None,
+) -> dict:
+    nombre = nombre.strip()
+    cuit = _texto_o_nada(cuit)
+    if not nombre:
+        raise DatosInvalidos("Falta el nombre del taller.")
+    if session.scalar(select(Taller.id).where(Taller.nombre == nombre)):
+        raise Conflicto(f"Ya hay un taller con el nombre {nombre}.")
+    if cuit and session.scalar(select(Taller.id).where(Taller.cuit == cuit)):
+        raise Conflicto(f"Ya hay un taller con el CUIT {cuit}.")
+    fila = Taller(
+        codigo=f"TAL-{_siguiente_numero(session, Taller.codigo, 'TAL'):04d}", nombre=nombre, cuit=cuit,
+        telefono=_texto_o_nada(telefono), direccion=_texto_o_nada(direccion), contacto=_texto_o_nada(contacto),
+        nota=_texto_o_nada(nota),
+    )
+    _insertar(session, fila, "Ya hay un taller con ese nombre o ese CUIT, o no se pudo asignar el código; intentá de nuevo.")
+    session.commit()
+    return detalle_taller(session, fila.codigo)
+
+
+def cambiar_activo_taller(session: Session, codigo: str, activo: bool) -> dict:
+    """Deactivating hides nothing and deletes nothing: the lots of the workshop keep pointing at it."""
+    taller = session.scalar(select(Taller).where(Taller.codigo == codigo))
+    if taller is None:
+        raise NoEncontrado(f"No existe el taller {codigo}.")
+    taller.activo = activo
+    session.commit()
+    return detalle_taller(session, codigo)
+
+
+# --- Fixed costs: periods and pending amounts -----------------------------------------------------------------
+
+def periodos_de_costos_fijos(session: Session) -> dict:
+    cargados = set(session.scalars(select(GastoPeriodo.periodo).distinct()))
+    vigente = session.scalar(select(Parametro.valor_texto).where(Parametro.codigo == "PERIODO_VIGENTE"))
+    return {"vigente": vigente, "periodos": sorted(cargados | ({vigente} if vigente else set()), reverse=True)}
+
+
+def cargar_monto_de_gasto(session: Session, codigo: str, monto: Decimal) -> dict:
+    """Set the amount of a pending row (monto NULL). Anything already filled in is corrected with a new row."""
+    cargado = session.execute(
+        update(GastoPeriodo).where(GastoPeriodo.codigo == codigo, GastoPeriodo.monto_ars_del_mes.is_(None))
+        .values(monto_ars_del_mes=monto).returning(GastoPeriodo.periodo).execution_options(synchronize_session=False)
+    ).first()
+    if cargado is None:
+        if session.scalar(select(GastoPeriodo.id).where(GastoPeriodo.codigo == codigo)) is None:
+            raise NoEncontrado(f"No existe el gasto {codigo}.")
+        raise Conflicto(f"El gasto {codigo} ya tiene monto: para corregirlo cargá un gasto nuevo.")
+    session.commit()
+    return costos_fijos(session, cargado[0])
+
+
+# --- Data quality ------------------------------------------------------------------------------------------------
+# One list of findings. Product, lot and price rules are the ones that already live above (quote warnings, the sheet's
+# Control columns, price jumps): this section only gathers and classifies them, it does not decide anything new.
+
+SEVERIDADES = ("alta", "media", "baja")
+AVISOS_ALTOS = (
+    "Sin precio", "Falta el dólar", "Falta elegir", "Falta cuero", "El kit no tiene", "El componente", "Hay un ciclo",
+    "Hay kits",
+)
+
+
+def severidad_de_aviso(texto: str) -> str:
+    # SUPUESTO: validar. High = the product cannot be quoted at all; medium = it is quoted but something is off.
+    return "alta" if texto.startswith(AVISOS_ALTOS) else "media"
+
+
+def _hallazgo(severidad: str, entidad: str, mensaje: str, ruta: str) -> dict:
+    return {"severidad": severidad, "entidad": entidad, "mensaje": mensaje, "ruta": ruta}
+
+
+def controles_de_producto(datos: DatosProducto, nombre_repetido: bool) -> list[str]:
+    """Productos!T, the part that is not already a quote warning (leather, sewing and kit components are)."""
+    avisos = []
+    if nombre_repetido:
+        avisos.append("Nombre repetido: cambiá el color o poné un nombre propio")
+    if datos.modelo_codigo is None and not datos.es_kit:
+        avisos.append("Falta el modelo")
+    if datos.fecha_de_alta is None:
+        avisos.append("Falta la fecha de alta")
+    if datos.fecha_de_alta and datos.fecha_de_recotizacion and datos.fecha_de_recotizacion < datos.fecha_de_alta:
+        avisos.append("La recotización es anterior al alta")
+    if datos.fecha_de_alta and datos.fecha_de_cierre and datos.fecha_de_cierre < datos.fecha_de_alta:
+        avisos.append("El cierre es anterior al alta")
+    if datos.estado_del_ciclo == "PRODUCIDO" and datos.fecha_de_cierre is None:
+        avisos.append("Falta la fecha de cierre")
+    return avisos
+
+
+def hallazgos_de_precios(filas: list[dict]) -> list[dict]:
+    """Precios!L over the price history rows of `listar_precios`."""
+    repetidos = Counter((f["material"], f["color"], f["vigente_desde"]) for f in filas)
+    hallazgos = []
+    for f in filas:
+        codigo, material, ruta = f["codigo"], f["material"], "/materiales"
+        if f["salto_grande"]:
+            hallazgos.append(_hallazgo(
+                "media", codigo, f"Salto grande de precio: {f['variacion_pct']} % contra el anterior de {material}", ruta))
+        if f["precio"] <= 0:
+            hallazgos.append(_hallazgo("alta", codigo, f"Precio en cero: {material} el {f['vigente_desde'].isoformat()}", ruta))
+        if f["iva_incluido"]:
+            hallazgos.append(_hallazgo("media", codigo, f"Cargar sin IVA: el precio de {material} tiene el IVA incluido", ruta))
+        if repetidos[(material, f["color"], f["vigente_desde"])] > 1:
+            hallazgos.append(_hallazgo(
+                "media", codigo, f"Fecha repetida: hay más de un precio de {material} para el {f['vigente_desde'].isoformat()}", ruta))
+    return hallazgos
+
+
+def estado_de_parametro(fuente_estado: str | None) -> tuple[str, str] | None:
+    """None when the parameter is confirmed; otherwise (severity, message). SUPUESTO: validar. The sheet has no list of
+    values for this column: "confirmad..." counts as confirmed, "pendiente / propuesta / a confirmar" as open."""
+    texto = (fuente_estado or "").strip()
+    minusculas = texto.lower()
+    if minusculas.startswith("confirmad"):
+        return None
+    if minusculas.startswith(("pendiente", "propuesta")) or "confirmar" in minusculas:
+        return "media", f"Sin confirmar: {texto}"
+    return "baja", f"Sin marca de confirmación (fuente: {texto})" if texto else "Sin fuente ni confirmación"
+
+
+def _ultimas_cotizaciones(session: Session) -> dict[int, tuple[Decimal, Decimal]]:
+    """Newest saved quote of each product: (total ARS, dollar)."""
+    ultimas: dict[int, tuple[Decimal, Decimal]] = {}
+    for producto_id, total, dolar in session.execute(
+        select(Cotizacion.producto_id, Cotizacion.total_ars, Cotizacion.dolar)
+        .order_by(Cotizacion.fecha.desc(), Cotizacion.id.desc())
+    ).all():
+        ultimas.setdefault(producto_id, (total, dolar))
+    return ultimas
+
+
+def _hallazgos_de_productos(session: Session) -> tuple[list[dict], list[dict]]:
+    base = cargar_productos(session)
+    ctx = cargar_contexto(session)
+    catalogo = expandir_kits(session, base)
+    nombres = Counter(d.nombre for d in base if d.nombre)
+    ultimas = _ultimas_cotizaciones(session)
+    productos, recotizar = [], []
+    if not ctx.dolares:
+        # One finding instead of one per product: without a dollar nothing can be quoted.
+        productos.append(_hallazgo("alta", "dolar", "Falta cargar el dólar: sin él no se puede calcular ningún costo", "/dolar"))
+    for datos in base:
+        ruta = f"/productos/{datos.codigo}"
+        resultado, avisos = _costo_hoy_seguro(datos, ctx, catalogo) if ctx.dolares else (None, [])
+        for texto in dict.fromkeys([*avisos, *controles_de_producto(datos, nombres[datos.nombre] > 1)]):
+            productos.append(_hallazgo(severidad_de_aviso(texto), datos.codigo, texto, ruta))
+        completo = _desglose_a_dict(resultado) is not None
+        ultima = ultimas.get(datos.id)
+        if marca_recotizar(resultado.cotizado.desglose if completo else None,
+                           ultima[0] if ultima else None, ultima[1] if ultima else None, ctx.parametros):
+            recotizar.append(_hallazgo(
+                "media", datos.codigo,
+                "Conviene recotizar: el costo de hoy o el dólar se movieron más que la tolerancia desde la última cotización", ruta))
+    return productos, recotizar
+
+
+def _hallazgos_de_modelos(session: Session) -> tuple[list[dict], list[dict]]:
+    # SUPUESTO: validar. There is no screen to edit models yet (admin panel, T5c), so they point at /admin.
+    sin_validar, con_problemas = [], []
+    filas = session.execute(
+        select(Modelo.codigo, Modelo.nombre_del_modelo, Modelo.categoria_id, Modelo.cuero_m2_por_unidad, Modelo.forro_id,
+               Modelo.forro_m2_por_unidad, Modelo.validado).order_by(Modelo.id)
+    ).all()
+    for codigo, nombre, categoria_id, cuero, forro_id, forro_m2, validado in filas:
+        if not validado:
+            sin_validar.append(_hallazgo("baja", codigo, f"Modelo sin validar: {nombre}", "/admin"))
+        for falla in (
+            "Falta la categoría" if categoria_id is None else None,
+            "Falta el consumo de cuero" if cuero is None else None,
+            "Falta elegir el forro" if (forro_m2 or 0) > 0 and forro_id is None else None,
+        ):
+            if falla:
+                con_problemas.append(_hallazgo("media", codigo, f"{falla}: {nombre}", "/admin"))
+    return sin_validar, con_problemas
+
+
+def _hallazgos_de_materiales(session: Session, hoy: date) -> list[dict]:
+    filas = session.execute(
+        select(Material.codigo, Material.nombre, Material.cotizable, func.count(PrecioMaterial.id))
+        .outerjoin(PrecioMaterial, and_(PrecioMaterial.material_id == Material.id, PrecioMaterial.vigente_desde <= hoy))
+        .group_by(Material.id).order_by(Material.id)
+    ).all()
+    return [
+        _hallazgo("alta" if cotizable else "baja", codigo,
+                  f"Sin precio vigente: {nombre}" + ("" if cotizable else " (no es cotizable)"), "/materiales")
+        for codigo, nombre, cotizable, precios in filas if precios == 0
+    ]
+
+
+def _hallazgos_de_lotes(session: Session) -> list[dict]:
+    hallazgos = []
+    for lote in _armar_lotes(session):
+        ruta = f"/fabricacion/{lote['codigo']}"
+        for aviso in lote["avisos"]:
+            if aviso != AVISO_RENGLONES:  # the lines are listed one by one below
+                hallazgos.append(_hallazgo(SEVERIDAD_DE_AVISO_DE_LOTE.get(aviso, "media"), lote["codigo"], aviso, ruta))
+        for renglon in lote["items"]:
+            for aviso in renglon["avisos"]:
+                if aviso != AVISO_SIN_FECHA:  # already said once for the whole lot
+                    hallazgos.append(_hallazgo(
+                        SEVERIDAD_DE_AVISO_DE_LOTE.get(aviso, "media"), renglon["codigo"], f"{aviso} (lote {lote['codigo']})", ruta))
+    return hallazgos
+
+
+def _hallazgos_de_talleres_de_ejemplo(session: Session) -> list[dict]:
+    return [
+        _hallazgo("media", t["codigo"], f"Taller de ejemplo en uso: {t['nombre']} tiene {t['lotes']} lote(s) cargado(s)",
+                  f"/talleres/{t['codigo']}")
+        for t in listar_talleres(session) if t["ejemplo"] and t["lotes"] > 0
+    ]
+
+
+def _hallazgos_de_gastos(session: Session) -> list[dict]:
+    hallazgos = []
+    for gasto in session.scalars(select(GastoPeriodo).order_by(GastoPeriodo.periodo.desc(), GastoPeriodo.id)):
+        ruta = f"/costos-fijos?periodo={gasto.periodo}"
+        if gasto.monto_ars_del_mes is None:
+            hallazgos.append(_hallazgo("media", gasto.codigo, f"Gasto sin monto: {gasto.concepto} ({gasto.periodo})", ruta))
+        if gasto.ficticio:
+            hallazgos.append(_hallazgo(
+                "baja", gasto.codigo, f"Monto ficticio: {gasto.concepto} ({gasto.periodo}); reemplazalo por el real", ruta))
+    return hallazgos
+
+
+def _hallazgos_de_parametros(session: Session) -> list[dict]:
+    hallazgos = []
+    for p in session.scalars(select(Parametro).order_by(Parametro.id)):
+        estado = estado_de_parametro(p.fuente_estado)
+        if estado:
+            hallazgos.append(_hallazgo(estado[0], p.codigo, f"{p.constante}: {estado[1]}", "/admin"))
+    return hallazgos
+
+
+def calidad_de_datos(session: Session, hoy: date | None = None) -> dict:
+    """Findings grouped by topic, each with a severity, the entity code, a Spanish message and where to fix it."""
+    hoy = hoy or date.today()
+    productos, recotizar = _hallazgos_de_productos(session)
+    modelos_sin_validar, modelos = _hallazgos_de_modelos(session)
+    grupos = [
+        ("productos", "Productos con avisos", productos),
+        ("recotizar", "Productos que conviene recotizar", recotizar),
+        ("modelos_sin_validar", "Modelos sin validar", modelos_sin_validar),
+        ("modelos", "Modelos con datos faltantes", modelos),
+        ("materiales", "Materiales sin precio vigente", _hallazgos_de_materiales(session, hoy)),
+        ("precios", "Precios para revisar", hallazgos_de_precios(listar_precios(session, a_fecha=hoy))),
+        ("lotes", "Lotes con problemas", _hallazgos_de_lotes(session)),
+        ("talleres", "Talleres de ejemplo en uso", _hallazgos_de_talleres_de_ejemplo(session)),
+        ("gastos_fijos", "Gastos fijos pendientes o ficticios", _hallazgos_de_gastos(session)),
+        ("parametros", "Parámetros sin confirmar", _hallazgos_de_parametros(session)),
+    ]
+    todos = [h for _, _, hallazgos in grupos for h in hallazgos]
+    resumen = {severidad: sum(1 for h in todos if h["severidad"] == severidad) for severidad in SEVERIDADES}
+    return {
+        "resumen": {**resumen, "total": len(todos)},
+        "grupos": [{"clave": clave, "titulo": titulo, "total": len(hallazgos), "hallazgos": hallazgos}
+                   for clave, titulo, hallazgos in grupos],
     }

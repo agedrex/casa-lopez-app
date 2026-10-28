@@ -13,7 +13,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, FastAPI, Query, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.orm import Session
 
 from backend import servicios
@@ -117,6 +117,43 @@ class OrdenIn(Entrada):
     estado: Literal[*LOT_STATES] = "PLANIFICADA"
     nota: str | None = None
     items: Annotated[list[ItemIn], Field(min_length=1)]
+
+
+class TallerIn(Entrada):
+    nombre: Annotated[str, Field(min_length=1)]
+    cuit: str | None = None
+    telefono: str | None = None
+    direccion: str | None = None
+    contacto: str | None = None
+    nota: str | None = None
+
+
+class ActivoIn(Entrada):
+    activo: bool
+
+
+class EstadoIn(Entrada):
+    estado: Literal[*LOT_STATES]
+    fecha: date
+    quien: str | None = None
+    fecha_de_entrega: date | None = None
+
+
+class PreciosItemIn(Entrada):
+    """What the workshop quoted and/or charged per unit; at least one of the two."""
+
+    cotizado: Annotated[Decimal, Field(ge=0, max_digits=14, decimal_places=4)] | None = None
+    pagado: Annotated[Decimal, Field(ge=0, max_digits=14, decimal_places=4)] | None = None
+
+    @model_validator(mode="after")
+    def alguno(self):
+        if self.cotizado is None and self.pagado is None:
+            raise ValueError("Indicá el precio cotizado, el pagado o los dos.")
+        return self
+
+
+class MontoIn(Entrada):
+    monto_ars_del_mes: Annotated[Decimal, Field(ge=0, max_digits=14, decimal_places=4)]
 
 
 # --- Responses -------------------------------------------------------------------------------------------
@@ -287,6 +324,11 @@ class TallerOut(Salida):
     contacto: str | None
     activo: bool
     nota: str | None
+    ejemplo: bool
+    lotes: int
+    unidades: Decimal
+    ultimo_lote: date | None
+    cobro_total_ars: Decimal
 
 
 class GastoOut(Salida):
@@ -300,10 +342,18 @@ class GastoOut(Salida):
     nota_fuente: str | None
 
 
+class PersonaOut(Salida):
+    codigo: str
+    nombre: str
+    rol: str
+    activo: bool
+
+
 class CostosFijosOut(Salida):
     periodo: str
     total_fabrica: Decimal
     total_tienda: Decimal
+    total: Decimal
     pendientes: int
     incluye_ficticios: bool
     gastos: list[GastoOut]
@@ -328,6 +378,148 @@ class OrdenOut(Salida):
     estado: str
     nota: str | None
     items: list[ItemOut]
+
+
+class PeriodosOut(Salida):
+    vigente: str | None
+    periodos: list[str]
+
+
+class OrdenResumenOut(Salida):
+    codigo: str
+    donde_se_hace: str
+    taller: str | None
+    taller_nombre: str | None
+    persona: str | None
+    persona_nombre: str | None
+    fecha_de_envio: date | None
+    fecha_de_entrega: date | None
+    periodo: str | None
+    estado: str
+    nota: str | None
+    productos: int
+    unidades: Decimal
+    total_cotizado: Decimal
+    total_cobrado: Decimal
+    costo_total: Decimal | None
+    costo_promedio_por_unidad: Decimal | None
+    avisos: list[str]
+
+
+class RenglonOut(Salida):
+    codigo: str
+    producto: str
+    producto_nombre: str
+    categoria: str | None
+    tamano: str | None
+    cantidad: Decimal
+    cotizado: Decimal | None
+    pagado: Decimal | None
+    nota: str | None
+    confeccion_por_unidad: Decimal | None
+    materiales_por_unidad: Decimal | None
+    costo_por_unidad: Decimal | None
+    total_linea: Decimal | None
+    avisos: list[str]
+
+
+class EstadoOut(Salida):
+    estado: str
+    fecha: date
+    quien: str | None
+    quien_nombre: str | None
+
+
+class OrdenDetalleOut(OrdenResumenOut):
+    items: list[RenglonOut]
+    estados: list[EstadoOut]
+
+
+class TallerDetalleOut(TallerOut):
+    ordenes: list[OrdenResumenOut]
+
+
+class MesCasaTallerOut(Salida):
+    periodo: str
+    lotes_casa: int
+    lotes_taller: int
+    unidades_casa: Decimal
+    unidades_taller: Decimal
+    porcentaje_taller: Decimal | None
+    pagado_a_talleres: Decimal
+    unidades_por_taller: dict[str, Decimal]
+
+
+class TallerCorto(Salida):
+    codigo: str
+    nombre: str
+
+
+class CasaVsTallerOut(Salida):
+    talleres: list[TallerCorto]
+    meses: list[MesCasaTallerOut]
+
+
+class PrecioPorTallerOut(Salida):
+    taller: str
+    taller_nombre: str | None
+    hizo: bool
+    precio: Decimal | None
+    fecha: date | None
+    lote: str | None
+    cantidad: Decimal | None
+    veces: int
+    precio_anterior: Decimal | None
+    variacion_pct: Decimal | None
+
+
+class PrecioParecidoOut(Salida):
+    fecha: date
+    producto: str
+    nombre: str
+    tamano: str | None
+    taller: str
+    taller_nombre: str | None
+    cantidad: Decimal
+    precio: Decimal
+    lote: str
+    es_mismo_producto: bool
+
+
+class PreciosTalleresOut(Salida):
+    producto: str
+    nombre: str
+    categoria: str | None
+    tamano: str | None
+    veces_en_taller: int
+    por_taller: list[PrecioPorTallerOut]
+    parecidos: list[PrecioParecidoOut]
+
+
+class HallazgoOut(Salida):
+    severidad: Literal["alta", "media", "baja"]
+    entidad: str
+    mensaje: str
+    ruta: str
+
+
+class GrupoCalidadOut(Salida):
+    clave: str
+    titulo: str
+    total: int
+    hallazgos: list[HallazgoOut]
+
+
+class ResumenCalidadOut(Salida):
+    alta: int
+    media: int
+    baja: int
+    total: int
+
+
+class CalidadOut(Salida):
+    resumen: ResumenCalidadOut
+    grupos: list[GrupoCalidadOut]
 
 
 # --- Read ----------------------------------------------------------------------------------------------------
@@ -395,9 +587,53 @@ def talleres(session: Sesion):
     return servicios.listar_talleres(session)
 
 
+@router.get("/personas", response_model=list[PersonaOut])
+def personas(session: Sesion):
+    return servicios.listar_personas(session)
+
+
+@router.get("/talleres/{codigo}", response_model=TallerDetalleOut)
+def taller(codigo: str, session: Sesion):
+    return servicios.detalle_taller(session, codigo)
+
+
 @router.get("/costos-fijos", response_model=CostosFijosOut)
 def costos_fijos(session: Sesion, periodo: Annotated[str | None, Query(pattern=PERIODO)] = None):
     return servicios.costos_fijos(session, periodo)
+
+
+@router.get("/costos-fijos/periodos", response_model=PeriodosOut)
+def periodos_de_costos_fijos(session: Sesion):
+    return servicios.periodos_de_costos_fijos(session)
+
+
+@router.get("/ordenes", response_model=list[OrdenResumenOut])
+def ordenes(
+    session: Sesion, estado: Literal[*LOT_STATES] | None = None, donde: Literal[*WHERE_MADE] | None = None,
+    taller: str | None = None,
+):
+    return servicios.listar_ordenes(session, estado, donde, taller)
+
+
+@router.get("/ordenes/{codigo}", response_model=OrdenDetalleOut)
+def orden(codigo: str, session: Sesion):
+    return servicios.detalle_orden(session, codigo)
+
+
+@router.get("/fabricacion/casa-vs-taller", response_model=CasaVsTallerOut)
+def casa_vs_taller(session: Sesion, hasta: Annotated[str | None, Query(pattern=PERIODO)] = None):
+    """The last 12 months up to `hasta` (default: this month). A lot counts in the month of its delivery date, else of its shipping date."""
+    return servicios.casa_vs_taller(session, hasta)
+
+
+@router.get("/productos/{codigo}/precios-talleres", response_model=PreciosTalleresOut)
+def precios_de_talleres(codigo: str, session: Sesion, mismo_tamano: bool = True):
+    return servicios.precios_de_talleres(session, codigo, mismo_tamano)
+
+
+@router.get("/calidad", response_model=CalidadOut)
+def calidad(session: Sesion):
+    return servicios.calidad_de_datos(session)
 
 
 # --- Write ----------------------------------------------------------------------------------------------------
@@ -441,6 +677,42 @@ def crear_gasto(cuerpo: GastoIn, session: Sesion):
 def crear_orden(cuerpo: OrdenIn, session: Sesion):
     datos = cuerpo.model_dump()
     return servicios.crear_orden(session, **datos)
+
+
+@router.post("/ordenes/{codigo}/estado", dependencies=ESCRITURA, response_model=OrdenDetalleOut, status_code=201)
+def cambiar_estado_de_orden(codigo: str, cuerpo: EstadoIn, session: Sesion):
+    return servicios.registrar_estado(session, codigo, **cuerpo.model_dump())
+
+
+@router.post("/ordenes/{codigo}/items", dependencies=ESCRITURA, response_model=OrdenDetalleOut, status_code=201)
+def agregar_item_a_orden(codigo: str, cuerpo: ItemIn, session: Sesion):
+    datos = cuerpo.model_dump()
+    return servicios.agregar_item_a_orden(
+        session, codigo, producto=datos["producto"], cantidad=datos["cantidad"],
+        cotizado=datos["taller_precio_cotizado_por_unidad_ars"], pagado=datos["taller_precio_pagado_por_unidad_ars"],
+        nota=datos["nota"],
+    )
+
+
+@router.post("/ordenes/{codigo}/items/{item}/precios", dependencies=ESCRITURA, response_model=OrdenDetalleOut)
+def registrar_precios_de_item(codigo: str, item: str, cuerpo: PreciosItemIn, session: Sesion):
+    return servicios.registrar_precios_item(session, codigo, item, **cuerpo.model_dump())
+
+
+@router.post("/talleres", dependencies=ESCRITURA, response_model=TallerDetalleOut, status_code=201)
+def crear_taller(cuerpo: TallerIn, session: Sesion):
+    return servicios.crear_taller(session, **cuerpo.model_dump())
+
+
+@router.post("/talleres/{codigo}/activo", dependencies=ESCRITURA, response_model=TallerDetalleOut)
+def cambiar_activo_de_taller(codigo: str, cuerpo: ActivoIn, session: Sesion):
+    return servicios.cambiar_activo_taller(session, codigo, cuerpo.activo)
+
+
+@router.post("/costos-fijos/{codigo}/monto", dependencies=ESCRITURA, response_model=CostosFijosOut)
+def cargar_monto_de_gasto(codigo: str, cuerpo: MontoIn, session: Sesion):
+    """Only while the amount is still empty (409 otherwise): a correction is a new row."""
+    return servicios.cargar_monto_de_gasto(session, codigo, cuerpo.monto_ars_del_mes)
 
 
 # --- Errors ----------------------------------------------------------------------------------------------------

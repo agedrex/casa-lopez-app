@@ -98,17 +98,48 @@ local machine.
 | `GET /productos` | any signed-in | List: code, name, category, lifecycle state, cost today in ARS/USD (null if not computable) and warnings. `limit`, `offset`, `q` (every word must appear in the code, model, own name, leather or color) and `categoria` (exact name). The response is still a plain list. |
 | `GET /productos/conteo?q=&categoria=` | any signed-in | `{"total": n}` for the same filters, so the UI can paginate without changing the list shape. |
 | `GET /productos/{codigo}` | any signed-in | Sheet: recipe lines, cost today, saved quotes, `recotizar` flag, warnings. |
-| `GET /modelos`, `/materiales`, `/parametros`, `/talleres`, `/dolar` | any signed-in | Catalogs; the dollar is newest first. |
+| `GET /modelos`, `/materiales`, `/parametros`, `/dolar` | any signed-in | Catalogs; the dollar is newest first. |
+| `GET /personas` | any signed-in | People of the plantilla (`codigo`, `nombre`, `rol`, `activo`) for the "quién" and "persona" selects. |
 | `GET /catalogos` | any signed-in | `{"colores": [...], "categorias": [...]}` names for the forms' selects. |
 | `GET /precios?material=&a_fecha=` | any signed-in | Price history, newest first; `vigente` marks the price in force at `a_fecha` (default today). `variacion_pct` and `salto_grande` compare each price with the previous one of the same material, color and currency. |
 | `GET /precios/chequeo?material=&color=&precio=&moneda=&vigente_desde=` | any signed-in | `{anterior, variacion_pct, salto_grande}` for a price about to be loaded. Saves nothing. A jump is more than `SALTO_PRECIO_PCT` (50 %, `SUPUESTO: validar`) and is only a warning: the load is never blocked. |
-| `GET /costos-fijos?periodo=AAAA-MM` | any signed-in | Fixed costs of the month (default `PERIODO_VIGENTE`) with factory and store totals. |
+| `GET /costos-fijos?periodo=AAAA-MM` | any signed-in | Fixed costs of the month (default `PERIODO_VIGENTE`) with factory, store and grand `total` (pending amounts are counted in `pendientes`, never summed). |
+| `GET /costos-fijos/periodos` | any signed-in | `{vigente, periodos}`: every period that has rows plus the current one, newest first. |
+| `GET /talleres`, `GET /talleres/{codigo}` | any signed-in | Workshops with `ejemplo` (note starts with "Ejemplo"), `lotes`, `unidades`, `ultimo_lote` and `cobro_total_ars`; the detail adds its lots. |
+| `GET /ordenes?estado=&donde=&taller=` | any signed-in | Lots newest first with products, units, quoted and charged totals, lot cost (materials of today + sewing), cost per unit and the sheet's control warnings. |
+| `GET /ordenes/{codigo}` | any signed-in | A lot with its lines (sewing per unit = paid, else quoted; materials per unit today; cost per unit; line total) and its state history. |
+| `GET /fabricacion/casa-vs-taller?hasta=AAAA-MM` | any signed-in | Last 12 months up to `hasta` (default this month), newest first: lots and units in house vs workshop, percent at workshops, what was paid and units per workshop. A lot counts in the month of its delivery date, else its shipping date; a lot without either counts nowhere. |
+| `GET /productos/{codigo}/precios-talleres?mismo_tamano=true` | any signed-in | Latest price per workshop for the product (with the previous one and the change) and the latest price per (workshop, product) of similar products: same category and, by default, same size; `es_mismo_producto` marks the product itself. |
+| `GET /calidad` | any signed-in | Data-quality findings grouped by topic, each `{severidad: alta|media|baja, entidad, mensaje, ruta}`, plus counts by severity. See "Data quality" below. |
 | `POST /productos` | admin, cotizador | Create a product (`modelo`, `cuero`, `color`, `quien_lo_confecciona`, `fecha_de_alta`, `nombre_propio`, `es_kit`); the server assigns `PRD-nnnn`. |
 | `POST /productos/{codigo}/extras` | admin, cotizador | Add an EXTRA recipe line (`material`, `color`, `consumo_neto_por_unidad`). |
 | `POST /productos/{codigo}/componentes` | admin, cotizador | Add a component to a kit; kit cycles are refused. |
 | `POST /productos/{codigo}/cotizaciones` | admin, cotizador | Save a quote `{tipo, fecha?}`: INICIAL uses `fecha_de_alta`, RECOTIZACION `fecha_de_recotizacion`, FINAL `fecha_de_cierre` (or the explicit date). Incomplete or dateless: 422 with the warnings; repeated (product, date, type): 409; never an UPDATE. |
-| `POST /precios`, `/dolar`, `/costos-fijos`, `/ordenes` | admin, cotizador | Append-only loads. A price for the same material, color and date, or a dollar for the same date, type and source, is 409. |
+| `POST /precios`, `/dolar`, `/costos-fijos`, `/ordenes` | admin, cotizador | Append-only loads. A price for the same material, color and date, or a dollar for the same date, type and source, is 409. A new lot also writes the first row of its state history. |
+| `POST /ordenes/{codigo}/estado` | admin, cotizador | `{estado, fecha, quien?, fecha_de_entrega?}`: appends an `orden_estado` row and sets the lot's state. `CERRADA` needs a delivery date (the body's, else the lot's, else 422) and sets it. A closed lot never changes state again, and repeating the current state is refused: both 409. |
+| `POST /ordenes/{codigo}/items` | admin, cotizador | Adds a product line `{producto, cantidad, taller_precio_cotizado_por_unidad_ars?, taller_precio_pagado_por_unidad_ars?}`; the server assigns `LIT-nnnn`. |
+| `POST /ordenes/{codigo}/items/{item}/precios` | admin, cotizador | `{cotizado?, pagado?}` (at least one): records what the workshop quoted / charged per unit. The one in-place edit of lots (the workshop price arrives after sending). |
+| `POST /talleres` | admin, cotizador | New workshop (`nombre`, `cuit?`, `telefono?`, `direccion?`, `contacto?`, `nota?`); the server assigns `TAL-nnnn`. A repeated name or CUIT is 409. |
+| `POST /talleres/{codigo}/activo` | admin, cotizador | `{activo}`: deactivates or reactivates; nothing is deleted. |
+| `POST /costos-fijos/{codigo}/monto` | admin, cotizador | `{monto_ars_del_mes}`: sets the amount of a row **only while it is empty** (409 otherwise): a correction is a new row. |
 
-Errors: 401 not signed in, 403 role without write permission, 404 missing product, 409 already there, 422 refused (`detail` in Spanish). Lot status history (`orden_estado`) is not written yet.
+Errors: 401 not signed in, 403 role without write permission, 404 missing product, lot, workshop or expense, 409 already there, 422 refused (`detail` in Spanish).
+
+### Lots, workshops, fixed costs and data quality (T5d)
+
+Everything below is derived on every read from existing tables (no migration); the Google Sheet and the screens only display it. Rules come from the plantilla sheets `Lotes`, `Lote_Productos`, `Casa_vs_Taller`, `Precios_Talleres` and the `Control` columns.
+
+- **Cost of a lot line** = (materials per unit today + sewing per unit) × quantity. Materials per unit = the product's cost today minus its sewing stage (`Costos_Variables!O − K`). Sewing per unit: in house 0; at a workshop what it charged (`pagado > 0`), else what it quoted, else nothing; a lot without a date has no sewing price. The lot cost is the sum of its lines and the cost per unit divides it by the units. A line whose product cannot be quoted today is left out of the sum and warned.
+- **Warnings** (sheet order, all listed instead of only the first): lot — `Falta el taller` (EXTERNA), `Falta la fecha de envío`, `Sin productos`, `Falta la fecha de entrega` (CERRADA), `Hay productos con problemas`; line — `Falta la cantidad`, `Falta el precio del taller` (EXTERNA), `El lote no tiene fecha`, and `No se puede calcular el costo de hoy del producto` (added by the app).
+- **State changes** append to `orden_estado` and set `orden_fabricacion.estado` in one transaction; rejected changes leave no history. `SUPUESTO: validar`: any state may follow any other (even going back) except after `CERRADA`; the first history row of a new lot is dated on its shipping date, else on the day it was loaded.
+- **Price edits** (`.../precios`) update the line in place and **keep no audit trail**: `orden_estado` cannot hold prices and no table may be added. `SUPUESTO: validar`: add a price-history table if Casa López wants to see what the workshop asked first.
+- **Workshops**: `ejemplo` is true when the note starts with "Ejemplo" (the three seeded ones). `SUPUESTO: validar`.
+- **Fixed costs**: `POST .../monto` is a single `UPDATE ... WHERE monto IS NULL`, so two simultaneous requests cannot both win.
+
+### Data quality (`GET /calidad`)
+
+Groups (`clave`): `productos`, `recotizar`, `modelos_sin_validar`, `modelos`, `materiales`, `precios`, `lotes`, `talleres`, `gastos_fijos`, `parametros`. Each finding has a Spanish message and the front route where it is fixed (`ruta`). The product, lot and price rules are the ones already used elsewhere (quote warnings, `marca_recotizar`, `listar_precios` jumps, the lot warnings above); the report only gathers and classifies them, plus the date checks of `Productos!T` (`Nombre repetido`, `Falta la fecha de alta`, `La recotización es anterior al alta`, `El cierre es anterior al alta`, `PRODUCIDO` without `Falta la fecha de cierre`).
+
+`SUPUESTO: validar` (the sheet has no severity column): **alta** = the product, lot or material cannot be quoted or closed (missing price, dollar, leather, workshop or delivery date); **media** = it can, but something is off (jumps, VAT included, repeated names, unconfirmed parameters of the "pendiente / propuesta" kind, pending or example workshops in use); **baja** = informative (models not validated, fictitious amounts, a parameter without a "confirmed" mark). Without any dollar on record a single `alta` finding asks for it instead of one per product. A price is "vigente" for the material check when it starts on or before today; non-quotable materials (lagarto, yacaré) show as `baja`. Models and parameters point at `/admin` until their screens exist (T5c).
 
 The integration cases of the API (`tests/test_api_integration.py`) also need `TEST_DATABASE_URL`; each one runs inside a transaction that is rolled back, so the seeded database is left untouched.

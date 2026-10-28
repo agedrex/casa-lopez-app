@@ -142,3 +142,179 @@ export type EtapaCatalogo = {
   orden: number;
   tipo: string;
 };
+
+export type Persona = {
+  codigo: string;
+  nombre: string;
+  rol: string;
+  activo: boolean;
+};
+
+export type Taller = {
+  codigo: string;
+  nombre: string;
+  cuit: string | null;
+  telefono: string | null;
+  direccion: string | null;
+  contacto: string | null;
+  activo: boolean;
+  nota: string | null;
+  // Flagged by the API from the note ("Ejemplo: ..."): a placeholder workshop.
+  ejemplo: boolean;
+  lotes: number;
+  unidades: string;
+  ultimo_lote: string | null;
+  cobro_total_ars: string;
+};
+
+export type TallerDetalle = Taller & { ordenes: OrdenResumen[] };
+
+export type OrdenResumen = {
+  codigo: string;
+  donde_se_hace: string;
+  taller: string | null;
+  taller_nombre: string | null;
+  persona: string | null;
+  persona_nombre: string | null;
+  fecha_de_envio: string | null;
+  fecha_de_entrega: string | null;
+  periodo: string | null;
+  estado: string;
+  nota: string | null;
+  productos: number;
+  unidades: string;
+  total_cotizado: string;
+  total_cobrado: string;
+  costo_total: string | null;
+  costo_promedio_por_unidad: string | null;
+  avisos: string[];
+};
+
+export type Renglon = {
+  codigo: string;
+  producto: string;
+  producto_nombre: string;
+  categoria: string | null;
+  tamano: string | null;
+  cantidad: string;
+  cotizado: string | null;
+  pagado: string | null;
+  nota: string | null;
+  confeccion_por_unidad: string | null;
+  materiales_por_unidad: string | null;
+  costo_por_unidad: string | null;
+  total_linea: string | null;
+  avisos: string[];
+};
+
+export type EstadoDeOrden = {
+  estado: string;
+  fecha: string;
+  quien: string | null;
+  quien_nombre: string | null;
+};
+
+export type OrdenDetalle = OrdenResumen & {
+  items: Renglon[];
+  estados: EstadoDeOrden[];
+};
+
+export type MesCasaTaller = {
+  periodo: string;
+  lotes_casa: number;
+  lotes_taller: number;
+  unidades_casa: string;
+  unidades_taller: string;
+  // Percent of the units made at workshops, calculated by the API (null: no units that month).
+  porcentaje_taller: string | null;
+  pagado_a_talleres: string;
+  unidades_por_taller: Record<string, string>;
+};
+
+export type CasaVsTaller = {
+  talleres: { codigo: string; nombre: string }[];
+  meses: MesCasaTaller[];
+};
+
+export type PrecioDeTaller = {
+  taller: string;
+  taller_nombre: string | null;
+  hizo: boolean;
+  precio: string | null;
+  fecha: string | null;
+  lote: string | null;
+  cantidad: string | null;
+  veces: number;
+  precio_anterior: string | null;
+  variacion_pct: string | null;
+};
+
+export type PrecioParecido = {
+  fecha: string;
+  producto: string;
+  nombre: string;
+  tamano: string | null;
+  taller: string;
+  taller_nombre: string | null;
+  cantidad: string;
+  precio: string;
+  lote: string;
+  es_mismo_producto: boolean;
+};
+
+export type PreciosTalleres = {
+  producto: string;
+  nombre: string;
+  categoria: string | null;
+  tamano: string | null;
+  veces_en_taller: number;
+  por_taller: PrecioDeTaller[];
+  parecidos: PrecioParecido[];
+};
+
+export type Gasto = {
+  codigo: string;
+  concepto: string;
+  fabrica_o_tienda: string;
+  categoria: string;
+  persona: string | null;
+  monto_ars_del_mes: string | null;
+  ficticio: boolean;
+  nota_fuente: string | null;
+};
+
+export type CostosFijos = {
+  periodo: string;
+  total_fabrica: string;
+  total_tienda: string;
+  total: string;
+  pendientes: number;
+  incluye_ficticios: boolean;
+  gastos: Gasto[];
+};
+
+export type PeriodosCostosFijos = {
+  vigente: string | null;
+  periodos: string[];
+};
+
+export type Severidad = "alta" | "media" | "baja";
+
+export type Hallazgo = {
+  severidad: Severidad;
+  entidad: string;
+  mensaje: string;
+  ruta: string;
+};
+
+export type GrupoCalidad = {
+  clave: string;
+  titulo: string;
+  total: number;
+  hallazgos: Hallazgo[];
+};
+
+export type Calidad = {
+  resumen: { alta: number; media: number; baja: number; total: number };
+  grupos: GrupoCalidad[];
+};
