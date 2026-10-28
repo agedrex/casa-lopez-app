@@ -40,7 +40,7 @@ Observed exception: the frontend has no navigation test runner or existing focus
 
 ## Delivery and progress
 
-Forecast: 250–400 authored changed lines, excluding generated files. Strategy: `single-pr`, based on the user's request for one PR; reassess before commit if the implementation materially exceeds the forecast. Running authored line count: pending. Slice: one PR containing T1's work-unit commit. Commit identity, native assessment, screenshots, PR URL, and final verification results: pending.
+Forecast: 250–400 authored changed lines, excluding generated files. Strategy: `single-pr`, based on the user's request for one PR. Running authored line count: 363 in implementation commit `3d4bcdc`. Slice: one PR containing T1's work-unit commit. Native assessment: medium risk, `review_due=false`, `review_due_reason=under_budget` against `main`. Screenshots, PR URL, and final verification results: pending.
 
 Implementation progress: grouped desktop and mobile navigation, role-specific tabs, both coming-soon routes, and requested page labels are written. T1 stays open until required checks and visual acceptance are resolved.
 
@@ -54,4 +54,4 @@ Verification observed:
 - `git diff --check` passed. The browser role check and 375 px / desktop screenshots remain pending because the browser control host is unavailable.
 - Scoped active-state correction: `node node_modules/@biomejs/biome/bin/biome format --write components/main-nav.tsx` completed; `node node_modules/@biomejs/biome/bin/biome check components/main-nav.tsx` passed (1 file, no fixes). A single direct installed Next build compiled and typechecked, generated all 31 pages, then exited 1 at the existing Next 16.4.0 `SecurityFatalError` upgrade reminder. No package change was made.
 
-Next step: restore a working local backend runner and frontend dependencies for the exact checks, inspect the three role menus at 375 px and desktop, capture screenshots, then commit the verified work unit and open the PR against `main` without merging it.
+Next step: restore a working local backend runner and frontend dependencies for the exact checks, inspect the three role menus at 375 px and desktop, capture screenshots, then open the PR against `main` without merging it. The implementation commit is reviewable, but T1 stays open until the missing verification is observed.
