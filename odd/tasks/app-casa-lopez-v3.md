@@ -12,7 +12,7 @@ Branch: feat/der-v3 · Entrega: ask-on-risk · Runner: `uv run --directory backe
 - S7. Frontend: estilo casalopez.com.ar; módulos de consulta/carga, panel admin, módulo de voz (el LLM interpreta, nunca calcula; una persona confirma).
 
 ## Tasks
-- T1 (S1,S4,S5) Esquema v3: modelos SQLAlchemy + migración Alembic 0003 (reemplaza v1) + semillas desde la plantilla + tests · delegated (backstop de contexto) · commit: pendiente
+- T1 (S1,S4,S5) Esquema v3: modelos SQLAlchemy + migración Alembic 0003 (reemplaza v1) + semillas desde la plantilla + tests · delegated (backstop de contexto) · HECHO · commit 173968c (123 passed, 13 skipped; migraciones verificadas en Postgres local descartable)
 - T2 (S1,S2) Motor de costeo v3 (función pura) + paridad contra la plantilla · inline · pendiente
 - T3 (S2) API: lectura y carga por módulo · pendiente
 - T4 (S3,S7) Frontend base + Better Auth + usuario de prueba · pendiente
@@ -23,3 +23,4 @@ Branch: feat/der-v3 · Entrega: ask-on-risk · Runner: `uv run --directory backe
 ## Log
 - L1 (2026-10-27): "migrar todo a la planilla que te acabo de decir que revises, esos son los datos que realmnete vamos a terminar usando. El sheet es solo para ver y consultar datos. la app es la que realemnte se conecta y carga todo y si usamos Better Auth"
 - L2: Hallazgo: docs/wo2-staging.md dice que las migraciones v1 no estaban aplicadas en Railway al escribirse; no verificado. 0003 debe funcionar con o sin v1 aplicada.
+- L3: T1 cerrado. Consumos pasaron a NUMERIC(12,6) para no romper la paridad (12 valores se redondeaban con (10,4)). Slice 1 = 173968c, ~2900 líneas (semillas JSON generadas). Pendiente: elegir estrategia de cadena de PRs. Migraciones NO aplicadas en Railway (S6).
