@@ -22,7 +22,7 @@ Show one live cost row per product at `/grilla`, using the existing `Catalogo` a
 
 - [x] G1 — Add the endpoint and focused endpoint test. Route: delegated direct; backend API and test require non-trivial edits. Check: AST and `git diff --check` passed; pytest pending because `uv` is absent and the local virtual environment points to a removed Python interpreter. Commit and RDD evidence below.
 - [x] G2 — Build responsive grid, cards, filters, sorting, column selection, and CSV. Route: delegated direct; page and client behavior require non-trivial edits. Check: focused Biome and `git diff --check` passed; installed Next compiled, passed TypeScript, and generated `/grilla`, then stopped with a Next 16.4.0 security error. Full lint reports pre-existing line-ending diagnostics. Live 375 px inspection pending because browser tooling is unavailable. Commit and RDD evidence below.
-- [ ] G3 — Push the branch and prepare the PR text. Route: inline repository state and delivery operations. Check: remote branch identity and final status.
+- [x] G3 — Push the branch and prepare the PR text. Route: inline repository state and delivery operations. Check: `origin/feat/grilla-completa` created and tracking verified. PR text prepared for the user; no PR created or merged.
 
 ## Progress
 
@@ -30,7 +30,10 @@ Show one live cost row per product at `/grilla`, using the existing `Catalogo` a
 - G1 response keeps the original export headers and row order, joins `Catalogo` and `Costos_Variables` by code, and serializes each cell as text. Optional text and exact category filters are case insensitive.
 - G1 commit: `40f1e13`; RDD assessment: medium, under budget, review not due.
 - G2 renders mobile cards by default, a sticky/scrollable grid, filters, column selection, sorting, and a CSV of visible values. CSV treats formula-like text as literal while keeping numeric strings unchanged.
-- G2 commit: pending.
+- G2 commit: `1d68e98`; cumulative RDD assessment: medium, under budget, review not due.
+- First push: `feat/grilla-completa` was created on `origin` and set as upstream.
+- Delivery size: 523 authored changed lines across the two behavior commits. A single PR keeps the read-only API and its only consumer together; flag `size:exception` in the proposed PR text.
+- Remaining checks: backend pytest, full frontend lint/build success, and live 375 px visual inspection.
 - Engram recovery mirror pending because the runtime session identity is unavailable.
 
 ## Next step
