@@ -15,7 +15,7 @@ Branch: feat/der-v3 · Entrega: ask-on-risk · Runner: `uv run --directory backe
 - T1 (S1,S4,S5) Esquema v3: modelos SQLAlchemy + migración Alembic 0003 (reemplaza v1) + semillas desde la plantilla + tests · delegated (backstop de contexto) · HECHO · commit 173968c · aplicado en staging (123 passed, 13 skipped; migraciones verificadas en Postgres local descartable)
 - T2 (S1,S2) Motor de costeo v3 (función pura, tests por regla; SIN prueba de paridad, el usuario la descartó) · inline · HECHO (22 tests, 145 passed)
 - T3a (S2) Generador de recetas y cotización a una fecha, en la app (receta.py, puro) · inline · HECHO (12 tests, 157 passed)
-- T3b (S2) Servicio con DB: armar receta desde modelo/producto/extras, persistir cotizaciones INICIAL/RECOTIZACION/FINAL y endpoints de lectura y carga · pendiente
+- T3b (S2) Servicio con DB + endpoints de lectura y carga, todos tras `require_user` fail-closed (401 hasta T4) · delegated (backstop de contexto) · HECHO (226 passed; 257 con Postgres local)
 - T4 (S3,S7) Frontend base + Better Auth + usuario de prueba · pendiente
 - T5 (S7) Módulos consulta/carga + admin · pendiente
 - T6 (S2) Sync de lectura hacia Google Sheet · pendiente
@@ -30,3 +30,4 @@ Branch: feat/der-v3 · Entrega: ask-on-risk · Runner: `uv run --directory backe
 - Estrategia de PRs: feature-branch-chain (todos contra feat/der-v3, PR final a main).
 - L6 (2026-10-28): "hay una prueba de paridad. Necesito que solo esté funcionando la lógica, en realidad" -> T2 sin fixtures de paridad contra Excel; solo tests de cada regla de la plantilla (LEEME sec. 6).
 - L7 (2026-10-28): "esa receta y todo se debería generar directamente en la aplicación, ya no estar en el Excel... el Excel ya no sirva para hacer cálculos, sino solo para mostrar información" -> refuerza S2: la receta, las cotizaciones y todos los cálculos se hacen y persisten en la app; el Sheet solo muestra.
+- L8: T3b hecho. Corregido por el parent: el componente de un kit cuenta por su subtotal de etapas (plantilla Cotizaciones!O), no por su total, para no duplicar IVA/arreglos. Supuestos abiertos del worker: prefijos REX-/LOT-/LIT-, kits anidados hasta 5 niveles, parámetro faltante = 0 %, desperdicio_manual como fracción. CORS ahora permite POST.
