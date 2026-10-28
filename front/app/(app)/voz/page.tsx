@@ -21,7 +21,7 @@ export default async function VozPage() {
       <PageHeader
         eyebrow="Carga"
         title="Voz"
-        description="Dicte o escriba un pedido corto. El asistente interpreta lo que dijo y le propone la carga; usted revisa y confirma. El asistente nunca calcula plata ni guarda nada por su cuenta."
+        description="Grabá audio en tu teléfono o escribí un pedido corto. Para interpretarlo, escribí el texto: el asistente te propone la carga y vos revisás y confirmás. Nunca calcula plata ni guarda nada por su cuenta."
       />
       <div className="space-y-10">
         <section aria-labelledby="voz-como">
@@ -30,18 +30,19 @@ export default async function VozPage() {
           </SectionTitle>
           <ol className="list-decimal space-y-1 pl-5 text-sm text-muted">
             <li>
-              Dicte con el micrófono o escriba el pedido (hasta {VOZ_MAX_CHARS}{" "}
-              caracteres).
+              Grabá audio si querés conservarlo en esta pestaña. Para
+              interpretar el pedido, escribilo en el cuadro (hasta{" "}
+              {VOZ_MAX_CHARS} caracteres).
             </li>
             <li>
-              El modelo extrae qué quiere hacer y las palabras que usó; la
+              El modelo extrae qué querés hacer y las palabras que usaste; la
               aplicación busca el material, producto, lote o taller en la base.
             </li>
             <li>
-              Si algo es ambiguo o falta, se lo pregunta; nunca elige por usted.
+              Si algo es ambiguo o falta, te lo pregunta; nunca elige por vos.
             </li>
             <li>
-              Recién cuando usted toca «Confirmar y cargar» se guarda, con sus
+              Recién cuando tocás «Confirmar y cargar» se guarda, con tus
               permisos y las mismas validaciones que las otras pantallas.
             </li>
           </ol>
@@ -67,14 +68,14 @@ export default async function VozPage() {
 
         <Notice tone="info" title="Privacidad">
           <p>
-            El <strong>texto</strong> del pedido se envía al proveedor del
-            modelo (Anthropic) para interpretarlo; no se envían datos de la
-            base. La aplicación <strong>no recibe ni guarda audio</strong>.
+            El <strong>audio no sale de tu teléfono</strong>: queda solo en esta
+            pestaña, no se sube ni se usa para interpretar el pedido. Al cerrar
+            la pestaña se pierde.
           </p>
           <p className="mt-2">
-            Ojo: el dictado lo hace el navegador y, en Chrome, Edge y Safari,
-            usa el servicio de reconocimiento de voz de Google o de Apple, que
-            puede recibir el audio. Si eso no es aceptable, escriba el pedido.
+            El <strong>texto</strong> que escribas sí se envía a Anthropic para
+            interpretarlo; no se envían datos de la base. Revisá la propuesta
+            antes de confirmar cualquier carga.
           </p>
         </Notice>
       </div>

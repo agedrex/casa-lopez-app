@@ -1,0 +1,55 @@
+.ringA,
+.ringB,
+.ringC,
+.pulse {
+  transform-origin: 160px 160px;
+}
+
+.ringA {
+  animation: rotate 24s linear infinite;
+}
+.ringB {
+  animation: rotate 17s linear infinite reverse;
+}
+.ringC {
+  animation: rotate 31s linear infinite;
+}
+.pulse {
+  animation: pulse 2.8s ease-in-out infinite;
+}
+
+.ringA,
+.ringB,
+.ringC,
+.pulse {
+  animation-play-state: paused;
+}
+
+.brain[data-state="recording"][data-visible="true"] .ringA,
+.brain[data-state="recording"][data-visible="true"] .ringB,
+.brain[data-state="recording"][data-visible="true"] .ringC,
+.brain[data-state="recording"][data-visible="true"] .pulse {
+  animation-play-state: running;
+}
+
+@keyframes rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulse {
+  50% {
+    transform: scale(1.1);
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ringA,
+  .ringB,
+  .ringC,
+  .pulse {
+    animation: none;
+  }
+}
