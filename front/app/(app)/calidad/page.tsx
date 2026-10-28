@@ -12,6 +12,11 @@ import {
   tdClass,
   thClass,
 } from "@/components/ui";
+import {
+  selectedView,
+  type View,
+  ViewSelector,
+} from "@/components/view-selector";
 import { apiGet } from "@/lib/api";
 import { safeNext } from "@/lib/redirect";
 import { requireSession } from "@/lib/session";
@@ -37,6 +42,9 @@ type Search = Promise<{
   severidad?: string | string[];
   grupo?: string | string[];
   q?: string | string[];
+  vista?: string | string[];
+  orden?: string | string[];
+  dir?: string | string[];
 }>;
 
 function first(value: string | string[] | undefined): string {
@@ -54,6 +62,11 @@ export default async function CalidadPage({
     SEVERIDADES.find((s) => s === first(params.severidad)) ?? "";
   const grupo = first(params.grupo);
   const q = first(params.q);
+  const view = selectedView(params.vista);
+  const order = ["tema", "gravedad", "codigo"].includes(first(params.orden))
+    ? first(params.orden)
+    : "tema";
+  const direction = first(params.dir) === "desc" ? "desc" : "asc";
   const result = await apiGet<Calidad>("/calidad");
 
   return (
@@ -64,7 +77,15 @@ export default async function CalidadPage({
         description="Datos que faltan, se contradicen o son de prueba, con el lugar donde corregirlos. La gravedad es una propuesta: alta = no se puede cotizar o cerrar; media = se puede, pero hay algo raro; baja = informativo."
       />
       {result.ok ? (
-        <Report data={result.data} severidad={severidad} grupo={grupo} q={q} />
+        <Report
+          data={result.data}
+          severidad={severidad}
+          grupo={grupo}
+          q={q}
+          view={view}
+          order={order}
+          direction={direction}
+        />
       ) : (
         <ErrorNotice message={result.message} />
       )}
@@ -72,7 +93,14 @@ export default async function CalidadPage({
   );
 }
 
-function href(filter: { severidad?: string; grupo?: string; q?: string }) {
+function href(filter: {
+  severidad?: string;
+  grupo?: string;
+  q?: string;
+  vista?: string;
+  orden?: string;
+  dir?: string;
+}) {
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(filter)) {
     if (value) query.set(key, value);
@@ -86,11 +114,17 @@ function Report({
   severidad,
   grupo,
   q,
+  view,
+  order,
+  direction,
 }: {
   data: Calidad;
   severidad: string;
   grupo: string;
   q: string;
+  view: View;
+  order: string;
+  direction: "asc" | "desc";
 }) {
   const needle = q.toLowerCase();
   const matches = (h: Hallazgo) =>
@@ -108,13 +142,22 @@ function Report({
     <div className="space-y-10">
       <section aria-label="Resumen por gravedad">
         <dl className="grid gap-5 sm:grid-cols-4">
-          <Count label="Total" value={data.resumen.total} to={href({})} />
+          <Count
+            label="Total"
+            value={data.resumen.total}
+            to={href({ vista: view === "tabla" ? "tabla" : "" })}
+          />
           {SEVERIDADES.map((s) => (
             <Count
               key={s}
               label={`Gravedad ${SEVERITY_LABELS[s].toLowerCase()}`}
               value={data.resumen[s]}
-              to={href({ severidad: s, grupo, q })}
+              to={href({
+                severidad: s,
+                grupo,
+                q,
+                vista: view === "tabla" ? "tabla" : "",
+              })}
               active={severidad === s}
             />
           ))}
@@ -127,6 +170,9 @@ function Report({
           action="/calidad"
           className="flex flex-wrap items-end gap-4"
         >
+          {view === "tabla" ? (
+            <input type="hidden" name="vista" value="tabla" />
+          ) : null}
           <div className="w-full sm:w-auto sm:min-w-44">
             <label
               htmlFor="filtro-severidad"
@@ -194,7 +240,7 @@ function Report({
           </button>
           {filtered ? (
             <Link
-              href="/calidad"
+              href={href({ vista: view === "tabla" ? "tabla" : "" })}
               className="py-2.5 text-sm text-muted underline decoration-gold underline-offset-4"
             >
               Limpiar
@@ -202,6 +248,18 @@ function Report({
           ) : null}
         </form>
       </search>
+
+      <ViewSelector
+        path="/calidad"
+        view={view}
+        params={
+          new URLSearchParams({
+            ...(severidad ? { severidad } : {}),
+            ...(grupo ? { grupo } : {}),
+            ...(q ? { q } : {}),
+          })
+        }
+      />
 
       {groups.length === 0 ? (
         <Notice
@@ -212,12 +270,114 @@ function Report({
               : "No hay hallazgos: los datos están en orden."
           }
         />
+      ) : view === "tabla" ? (
+        <AllFindings
+          groups={groups}
+          severidad={severidad}
+          grupo={grupo}
+          q={q}
+          order={order}
+          direction={direction}
+        />
       ) : (
         groups.map((g) => (
           <Group key={g.clave} grupo={g} showAll={Boolean(grupo)} />
         ))
       )}
     </div>
+  );
+}
+
+function AllFindings({
+  groups,
+  severidad,
+  grupo,
+  q,
+  order,
+  direction,
+}: {
+  groups: (GrupoCalidad & { visibles: Hallazgo[] })[];
+  severidad: string;
+  grupo: string;
+  q: string;
+  order: string;
+  direction: "asc" | "desc";
+}) {
+  const rows = groups.flatMap((group) =>
+    group.visibles.map((finding) => ({ group, finding })),
+  );
+  const severity = { alta: 0, media: 1, baja: 2 };
+  rows.sort((a, b) => {
+    const result =
+      order === "gravedad"
+        ? severity[a.finding.severidad] - severity[b.finding.severidad]
+        : order === "codigo"
+          ? a.finding.entidad.localeCompare(b.finding.entidad, "es-AR")
+          : a.group.titulo.localeCompare(b.group.titulo, "es-AR");
+    return direction === "desc" ? -result : result;
+  });
+  const heading = (key: string, label: string) => (
+    <Link
+      href={href({
+        severidad,
+        grupo,
+        q,
+        vista: "tabla",
+        orden: key,
+        dir: order === key && direction === "asc" ? "desc" : "asc",
+      })}
+      className="underline decoration-gold underline-offset-4"
+    >
+      {label}
+      {order === key ? (direction === "asc" ? " ↑" : " ↓") : ""}
+    </Link>
+  );
+  return (
+    <TableWrap>
+      <table className={tableClass}>
+        <thead>
+          <tr>
+            <th className={thClass}>{heading("tema", "Tema")}</th>
+            <th className={thClass}>{heading("gravedad", "Gravedad")}</th>
+            <th className={thClass}>{heading("codigo", "Código")}</th>
+            <th className={thClass}>Qué pasa</th>
+            <th className={thClass}>Dónde corregirlo</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(({ group, finding }, index) => (
+            <tr key={`${group.clave}-${finding.entidad}-${index}`}>
+              <td className={tdClass}>{group.titulo}</td>
+              <td className={tdClass}>
+                <Badge tone={SEVERITY_TONES[finding.severidad]}>
+                  {SEVERITY_LABELS[finding.severidad]}
+                </Badge>
+              </td>
+              <td className={tdClass}>{finding.entidad}</td>
+              <td className={`${tdClass} max-w-xl`}>{finding.mensaje}</td>
+              <td className={tdClass}>
+                <Link
+                  href={safeNext(finding.ruta)}
+                  className="underline decoration-gold underline-offset-4"
+                >
+                  Ir a corregir
+                </Link>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr className="bg-paper-mid">
+            <th className={tdClass} scope="row">
+              Hallazgos visibles
+            </th>
+            <td className={tdClass} colSpan={4}>
+              {rows.length}
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+    </TableWrap>
   );
 }
 
