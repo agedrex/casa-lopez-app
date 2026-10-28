@@ -34,3 +34,9 @@ def local_postgres():
         yield engine
     finally:
         engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def no_auth_verify_url(monkeypatch):
+    """The auth gate must be fail-closed unless a test configures AUTH_VERIFY_URL itself."""
+    monkeypatch.delenv("AUTH_VERIFY_URL", raising=False)

@@ -7,20 +7,28 @@
     "build": "next build",
     "start": "next start",
     "lint": "biome check",
-    "format": "biome format --write"
+    "format": "biome format --write",
+    "auth:migrate": "node --env-file-if-exists=.env.local ./node_modules/auth/dist/index.mjs migrate --config lib/auth.ts --yes",
+    "seed:user": "tsx --env-file-if-exists=.env.local scripts/seed-user.ts"
   },
   "dependencies": {
+    "better-auth": "^1.7.14",
     "next": "16.4.0",
+    "pg": "^8.23.1",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "server-only": "^0.0.1"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.2",
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "auth": "^1.7.14",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5"
   },
   "packageManager": "pnpm@12.11.2"

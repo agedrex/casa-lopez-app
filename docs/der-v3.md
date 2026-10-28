@@ -46,3 +46,8 @@ Conventions: schema `costos`; `id` (identity) and `created_at` everywhere; `codi
 - `producto.modelo_id` and dates are nullable (a kit has no model); `estado_del_ciclo` defaults to `EN_DEFINICION`.
 - Consumptions are rounded to 4 decimals on load (12 values of the plantilla had more, e.g. goma EVA of MOD-0147).
 - The seeded parameters keep their sheet value and `fuente_estado`; none is confirmed. The three workshops are examples.
+- Codes assigned by the API when it creates rows: `PRD-nnnn` (producto), `REX-nnnn` (receta_linea), `LOT-nnnn` (orden_fabricacion), `LIT-nnnn` (orden_item); `PRE-nnnn` and `GF-nnnn` follow the seeds; the `REX`, `LOT` and `LIT` prefixes are ours (SUPUESTO: validar).
+- Kits may nest up to 5 levels; a kit component counts at its stage subtotal (plantilla `Cotizaciones!O`), so IVA and repairs apply once, on the kit.
+- Parameters missing from `parametro` count as 0 %; `material.desperdicio_manual` is read as a fraction (0.2 = 20 %).
+
+The endpoints that read and load these tables are listed in [`backend/README.md`](../backend/README.md#costing-api-t3b).
