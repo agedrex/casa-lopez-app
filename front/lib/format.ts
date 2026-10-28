@@ -194,3 +194,18 @@ export function formatPeriod(value: string | null | undefined): string {
   const match = /^(\d{4})-(\d{2})$/.exec(value ?? "");
   return match ? `${match[2]}/${match[1]}` : (value ?? NONE);
 }
+
+/**
+ * Whether two decimal strings written by people or by the API are the same number, compared as text
+ * (`0.250000` = `0,25`; empty = empty). No arithmetic: only separators and trailing zeros are dropped.
+ */
+export function sameDecimalText(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): boolean {
+  const normalize = (value: string | null | undefined) => {
+    const text = (value ?? "").trim().replace(",", ".");
+    return text.includes(".") ? text.replace(/\.?0+$/, "") : text;
+  };
+  return normalize(a) === normalize(b);
+}

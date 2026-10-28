@@ -16,7 +16,7 @@ Environment variables, roles and the backend side (`AUTH_VERIFY_URL`) are docume
 ## How it fits together
 
 - `proxy.ts` (Next 16's replacement for `middleware`): no session cookie sends the visitor to `/login`; `/admin` also checks the role against the database. `/login` and `/api/auth/*` are public.
-- `lib/auth.ts`: Better Auth with the `admin` plugin and the roles `admin`, `cotizador` and `consulta` (`lib/permissions.ts`). Sign-up is disabled; an admin creates users.
+- `lib/auth.ts`: Better Auth with the `admin` plugin and the roles `admin`, `cotizador` and `consulta` (`lib/permissions.ts`). Sign-up is disabled; an admin creates users. A `hooks.before` guard (`lib/user-guards.ts`, `lib/password.ts`) runs on `/admin/set-role`, `/admin/ban-user`, `/admin/create-user`, `/admin/set-user-password` and `/admin/remove-user`, for the server actions and for direct calls alike: nobody changes their own role or ban themselves, the last active admin stays, passwords must be strong, and nobody is deleted. The admin role is also stripped of the plugin's `delete`, `update`, `set-email` and impersonation permissions.
 - `lib/session.ts`: server-side session checks used by pages (the proxy check is only optimistic).
 - `lib/api.ts`: server-only client for the costing API. It forwards the visitor's `cookie` header and redirects to `/login` on a 401. The browser never calls the API.
 - `lib/format.ts`: display formatting of decimal strings. The frontend never calculates money.
@@ -46,4 +46,19 @@ Environment variables, roles and the backend side (`AUTH_VERIFY_URL`) are docume
 - Forms use `useActionForm` (`lib/use-action-form.ts`): a refused submission keeps what was typed, the result is announced through an `aria-live` region, and a successful one clears the fields.
 - Amounts travel as text: `parseDecimalInput` only normalizes `1545,5` to `1545.5`; the frontend never adds, multiplies or compares money.
 - Dynamic product rows (`app/(app)/fabricacion/product-rows.tsx`) are plain uncontrolled inputs that share a name per column; the action reads them as parallel lists and skips empty rows.
-- The color selects are empty today: the seeds carry no colors yet, and no screen creates them.
+- The color select of the product form is empty until an admin creates colors in `/admin/catalogos` (the seeds carry none).
+
+## Admin area (`/admin`, role `admin` only)
+
+Each page calls `requireRole("admin")` and each server action starts with `denyUnlessAdmin()` (`lib/write-guard.ts`); the API checks the role a third time. Money and consumptions travel as text and are validated by the API; the frontend only shows them.
+
+| Route | What it does |
+|---|---|
+| `/admin` | Cards with counts and a link to each section. |
+| `/admin/usuarios` | List (email, name, role, active or deactivated, created) and, per user, change role, deactivate / activate, set a new password (all sessions of that user are closed; changing one's own password sends you to `/login`). New users get a password typed by the admin, with a strength check (at least 12 characters, three of four character types, not containing the email name). The controls of your own row are disabled. The password is read from the form, handed to Better Auth and dropped: it is never returned, logged or shown. |
+| `/admin/parametros` | The parameters with value, unit, state and note. Editing asks twice: the second step shows the current and the new value and says that **the previous value is not saved** (the table has no history column; the API logs who changed what). Percentages are fractions between 0 and 1 (`0,05` = 5 %), the dollar and areas must be above 0, the period is `AAAA-MM`. Calculated parameters are not editable. |
+| `/admin/modelos`, `/admin/modelos/[codigo]`, `/admin/modelos/nuevo` | Model list with search and category, size and validation filters (a plain GET form, the filters live in the URL); detail with the consumptions and their origin; "Marcar como validado" (a person confirms, never the app); "Nuevo modelo" (the server assigns `MOD-nnnn`); editing consumptions of an existing model shows a before / after table first, resets `validado` and only affects future quotes. |
+| `/admin/catalogos` | Colors (`COL-nnnn`) and categories (`CAT-XXXX`, the first four letters of the name when free) with a create form each. Nothing is deleted or deactivated: those tables have no `activo` column. |
+| `/admin/personas`, `/admin/impuestos` | People (create, deactivate / activate) and the taxes table (read only: whether VAT is a product cost is an open business decision). |
+
+`components/confirm-form.tsx` is the two-step form used for parameters and consumptions: the first press shows what will change, the second one sends it, and editing a field in between takes the summary back.

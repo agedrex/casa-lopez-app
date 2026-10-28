@@ -1,5 +1,5 @@
 import { createAccessControl } from "better-auth/plugins/access";
-import { adminAc, defaultStatements } from "better-auth/plugins/admin/access";
+import { defaultStatements } from "better-auth/plugins/admin/access";
 
 export const ROLES = ["admin", "cotizador", "consulta"] as const;
 export type Role = (typeof ROLES)[number];
@@ -14,11 +14,17 @@ export const ROLE_LABELS: Record<Role, string> = {
 
 const ac = createAccessControl(defaultStatements);
 
-// Only `admin` manages users (Better Auth admin plugin statements).
-// `cotizador` and `consulta` carry no user-management permission; what they may
-// do inside the costing modules is decided by the modules themselves.
+// Only `admin` manages users (Better Auth admin plugin statements). `cotizador` and
+// `consulta` carry no user-management permission; what they may do inside the costing
+// modules is decided by the modules themselves.
+// Nothing is deleted from the app: the admin role does not get `delete` (remove-user),
+// `update` (admin update-user could change a role or a ban around the guards in auth.ts),
+// `set-email`, nor impersonation, so those endpoints answer 403 even to an admin.
 export const roles = {
-  admin: ac.newRole({ ...adminAc.statements }),
+  admin: ac.newRole({
+    user: ["create", "list", "get", "set-role", "ban", "set-password"],
+    session: ["list", "revoke"],
+  }),
   cotizador: ac.newRole({}),
   consulta: ac.newRole({}),
 };

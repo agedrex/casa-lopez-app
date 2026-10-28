@@ -19,7 +19,7 @@ Branch: feat/der-v3 · Entrega: ask-on-risk · Runner: `uv run --directory backe
 - T4 (S3,S7) Frontend base + Better Auth + usuario de prueba + verificador en backend · delegated (backstop) · HECHO · desplegado en staging (front 3b60b1bc, backend a65ff0b7)
 - T5a (S2,S7) Dólar y precios (consulta + carga) y permisos de escritura por rol en el backend · delegated · HECHO (326 passed; 363 con Postgres local)
 - T5b (S2,S7) Productos: crear, extras, cotizar INICIAL/RECOTIZACION/FINAL desde pantalla · HECHO (misma corrida)
-- T5c (S3,S7) Panel admin: usuarios/roles y parámetros · pendiente
+- T5c (S3,S7) Panel admin: usuarios/roles, parámetros, modelos, catálogos, personas/impuestos · delegated · HECHO (571 passed; 663 con Postgres local; E2E HTTP 125 chequeos)
 - T5d (S7) Fabricación, talleres, costos fijos, calidad de datos · delegated · HECHO (423 passed; 479 con Postgres local; E2E HTTP 49 chequeos)
 - T8 (S2) Dólar: carga inicial pendiente (el usuario no define el valor todavía) y automatización de scraping del BNA · pendiente
 - T6 (S2) Sync de lectura hacia Google Sheet · pendiente
@@ -41,3 +41,4 @@ Branch: feat/der-v3 · Entrega: ask-on-risk · Runner: `uv run --directory backe
 - L12: T5a/T5b hechos. Escrituras exigen rol admin|cotizador (consulta -> 403). Hueco cerrado: el bloqueo de materiales no cotizables también se valida en la server action. Pendientes del worker: no hay pantalla para crear colores (tabla color vacía), GET /precios sin paginar, componente de kit por código sin buscador, el costo hoy no distingue tipo de dólar (VENDEDOR/COMPRADOR). Sin probar en navegador real.
 - L13 (2026-10-28): ante '¿qué dólar cargo?' el usuario respondió: "Dejalo como pendiente y despues vamos a armar la automatizacion para scrapearlo"; y eligió seguir con "fabricación, talleres, costos fijos y calidad de datos" antes que el panel admin.
 - L14: T5d hecho. Límites: el precio del taller se edita en el lugar (sin historial: orden_estado no guarda precios; no se agregaron tablas); se pueden agregar items a un lote cerrado; severidades de calidad y 'taller de ejemplo' por prefijo de nota son supuestos; sin pantalla de modelos (apunta a /admin). Sin probar en navegador real (hidratación, server actions, filas dinámicas).
+- L15: T5c hecho. Guards de usuarios en hooks.before de Better Auth (no auto-degradarse/banearse, último admin protegido; mutex solo por proceso). Rol admin sin delete/update/set-email/impersonate. Parámetros sin historial (el valor anterior se loguea en uvicorn.error y no se guarda). Colores/categorías sin activo (no se desactivan). Sin probar en navegador real. Pendiente: unit tests del front para user-guards/password (no hay runner).

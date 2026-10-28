@@ -5,6 +5,9 @@ re-implemented here: this file loads plain data, calls them and stores the resul
 Money is Decimal end to end; the API layer serializes it as strings.
 """
 
+import logging
+import re
+import unicodedata
 from collections import Counter
 from dataclasses import dataclass, field, replace
 from datetime import date
@@ -25,6 +28,10 @@ from backend.models import (
 from backend.receta import (
     Cotizado, Extra, ModeloReceta, ProductoReceta, Receta, cotizar_producto, generar_receta,
 )
+
+# Audit lines (who changed which parameter or consumption) go to uvicorn's logger: uvicorn sets it to INFO, whereas the
+# application's own root logger is left at WARNING and would drop them. Only ids and values are logged, never secrets.
+logger = logging.getLogger("uvicorn.error")
 
 QUOTE_TYPES = ("INICIAL", "RECOTIZACION", "FINAL")
 # Product column that holds the date of each quote type.
@@ -478,22 +485,39 @@ def ficha_producto(session: Session, codigo: str) -> dict:
     }
 
 
-def listar_modelos(session: Session, limit: int = 500, offset: int = 0) -> list[dict]:
-    forro = aliased(Material)
-    filas = session.execute(
-        select(Modelo, Categoria.nombre, forro.codigo)
-        .outerjoin(Categoria, Categoria.id == Modelo.categoria_id)
-        .outerjoin(forro, forro.id == Modelo.forro_id)
-        .order_by(Modelo.id).limit(limit).offset(offset)
-    ).all()
-    return [{
+def _modelo_a_dict(m: Modelo, categoria: str | None, forro_codigo: str | None) -> dict:
+    return {
         "codigo": m.codigo, "nombre_del_modelo": m.nombre_del_modelo, "categoria": categoria, "tamano": m.tamano,
         "cuero_m2_por_unidad": m.cuero_m2_por_unidad, "forro": forro_codigo,
         "forro_m2_por_unidad": m.forro_m2_por_unidad, "flex_m2_por_unidad": m.flex_m2_por_unidad,
         "goma_eva_m2_por_unidad": m.goma_eva_m2_por_unidad, "herrajes_usd_por_unidad": m.herrajes_usd_por_unidad,
         "hilo_y_cemento": m.hilo_y_cemento, "confeccion_estimada_ars": m.confeccion_estimada_ars,
         "origen_de_los_consumos": m.origen_de_los_consumos, "validado": m.validado,
-    } for m, categoria, forro_codigo in filas]
+    }
+
+
+def listar_modelos(
+    session: Session, limit: int = 500, offset: int = 0, q: str | None = None, categoria: str | None = None,
+    validado: bool | None = None, tamano: str | None = None,
+) -> list[dict]:
+    """Models in sheet order. Filters: every word of `q` in the code or name, exact category name, flag, size."""
+    forro = aliased(Material)
+    consulta = (
+        select(Modelo, Categoria.nombre, forro.codigo)
+        .outerjoin(Categoria, Categoria.id == Modelo.categoria_id)
+        .outerjoin(forro, forro.id == Modelo.forro_id)
+        .order_by(Modelo.id).limit(limit).offset(offset)
+    )
+    for palabra in (q or "").split():
+        patron = _patron(palabra)
+        consulta = consulta.where(or_(Modelo.codigo.ilike(patron, escape="\\"), Modelo.nombre_del_modelo.ilike(patron, escape="\\")))
+    if categoria:
+        consulta = consulta.where(Categoria.nombre == categoria)
+    if validado is not None:
+        consulta = consulta.where(Modelo.validado.is_(validado))
+    if tamano:
+        consulta = consulta.where(Modelo.tamano == tamano)
+    return [_modelo_a_dict(m, nombre_categoria, forro_codigo) for m, nombre_categoria, forro_codigo in session.execute(consulta).all()]
 
 
 def listar_materiales(session: Session) -> list[dict]:
@@ -581,16 +605,23 @@ def listar_dolar(session: Session) -> list[dict]:
     ]
 
 
-def listar_parametros(session: Session) -> list[dict]:
-    return [{
+def _parametro_a_dict(p: Parametro) -> dict:
+    return {
         "codigo": p.codigo, "constante": p.constante, "valor": p.valor, "valor_texto": p.valor_texto,
         "unidad": p.unidad, "que_es": p.que_es, "fuente_estado": p.fuente_estado,
-    } for p in session.scalars(select(Parametro).order_by(Parametro.id))]
+    }
+
+
+def listar_parametros(session: Session) -> list[dict]:
+    return [_parametro_a_dict(p) for p in session.scalars(select(Parametro).order_by(Parametro.id))]
+
+
+def _persona_a_dict(p: Persona) -> dict:
+    return {"codigo": p.codigo, "nombre": p.nombre, "rol": p.rol, "activo": p.activo}
 
 
 def listar_personas(session: Session) -> list[dict]:
-    return [{"codigo": p.codigo, "nombre": p.nombre, "rol": p.rol, "activo": p.activo}
-            for p in session.scalars(select(Persona).order_by(Persona.id))]
+    return [_persona_a_dict(p) for p in session.scalars(select(Persona).order_by(Persona.id))]
 
 
 def costos_fijos(session: Session, periodo: str | None = None) -> dict:
@@ -1360,6 +1391,264 @@ def cargar_monto_de_gasto(session: Session, codigo: str, monto: Decimal) -> dict
     return costos_fijos(session, cargado[0])
 
 
+# --- Admin area (T5c) ---------------------------------------------------------------------------------------------
+# Parameters, people, taxes, catalogs and models. Every function here is reached only through admin-gated routes
+# (models: admin or cotizador); the role is checked by the router, never here.
+
+# Calculated by the app from other rows, so they are never edited (the plantilla marks them "Calculado").
+PARAMETROS_CALCULADOS = frozenset({"DOLAR_VIGENTE", "FECHA_DOLAR_VIGENTE"})
+ESTADOS_DE_PARAMETRO = ("Pendiente", "Propuesta", "Confirmado")
+# These mirror the CHECK constraints of models.py (a test keeps them in sync).
+PERSONA_ROLES = ("CONSUMO_MOLDES", "CORTE", "CONFECCION", "VENTAS", "ENCARGADO", "ADMINISTRACION", "OTRO")
+PERSONA_VINCULOS = ("SUELDO_FIJO", "OTRO")
+TAMANOS = ("CHICO", "MEDIANO", "GRANDE")
+ORIGENES = ("EXCEL", "MOLDE", "ESTIMADO", "MEDIDO")
+PERIODO_AAAA_MM = re.compile(r"^[0-9]{4}-(0[1-9]|1[0-2])$")
+# Parameter units whose value is a number, and the rule each one gets (see `validar_valor_de_parametro`).
+UNIDADES_NUMERICAS = ("%", "ARS/USD", "m2")
+
+
+def validar_valor_de_parametro(unidad: str | None, valor: Decimal | None, valor_texto: str | None) -> None:
+    """Range check by unit. SUPUESTO: validar. The sheet states no ranges: percentages are fractions between 0 and 1
+    (0.05 = 5 %, like every other percentage in the app), dollars and areas must be above 0, the period is AAAA-MM."""
+    if unidad == "AAAA-MM":
+        if valor is not None:
+            raise DatosInvalidos("Este parámetro es un texto AAAA-MM: no lleva un valor numérico.")
+        if valor_texto is None or not PERIODO_AAAA_MM.match(valor_texto):
+            raise DatosInvalidos("El período debe tener el formato AAAA-MM, por ejemplo 2026-11.")
+        return
+    if unidad == "fecha":
+        raise DatosInvalidos("Un parámetro de tipo fecha es calculado: no se puede editar.")
+    if unidad not in UNIDADES_NUMERICAS:
+        raise DatosInvalidos("Este parámetro no tiene una regla de validación: no se edita desde la aplicación.")
+    if valor is not None and valor_texto is not None:
+        raise DatosInvalidos("Se carga uno solo: el valor numérico o el texto.")
+    if valor_texto is not None:
+        raise DatosInvalidos("Este parámetro es numérico: cargá el valor, no un texto.")
+    if valor is None:
+        raise DatosInvalidos("Falta el valor numérico.")
+    if unidad == "%":
+        if not ZERO <= valor <= Decimal(1):
+            raise DatosInvalidos("Es una fracción entre 0 y 1: un 5 % se escribe 0,05.")
+    elif valor <= 0:
+        raise DatosInvalidos("Tiene que ser mayor que 0.")
+
+
+def texto_de_estado(estado: str, nota: str | None) -> str:
+    """`fuente_estado` keeps its leading word (Pendiente / Propuesta / Confirmado): the quality report reads it."""
+    nota = (nota or "").strip()
+    return f"{estado}: {nota}" if nota else estado
+
+
+def cambiar_parametro(
+    session: Session, codigo: str, *, valor: Decimal | None, valor_texto: str | None, estado: str,
+    nota: str | None, quien: str,
+) -> dict:
+    """Overwrite a parameter in place. SUPUESTO: validar. `parametro` has no history column and no table may be added,
+    so the previous value is not stored; the change is logged (who, old, new) and `fuente_estado` holds the new state.
+    Quotes already saved are snapshots and do not change; the next quote reads the new value."""
+    if codigo in PARAMETROS_CALCULADOS:
+        raise DatosInvalidos(f"{codigo} es un valor calculado: no se puede editar.")
+    fila = session.scalar(select(Parametro).where(Parametro.codigo == codigo).with_for_update())
+    if fila is None:
+        raise NoEncontrado(f"No existe el parámetro {codigo}.")
+    if (fila.fuente_estado or "").strip().lower().startswith("calculado"):
+        raise DatosInvalidos(f"{codigo} es un valor calculado: no se puede editar.")
+    validar_valor_de_parametro(fila.unidad, valor, valor_texto)
+    anterior = fila.valor if fila.valor is not None else fila.valor_texto
+    fila.valor = valor
+    fila.valor_texto = valor_texto
+    fila.fuente_estado = texto_de_estado(estado, nota)
+    session.commit()
+    session.refresh(fila)  # answer with what the database stored (NUMERIC(14,4)), not the typed value
+    logger.info(
+        "Parameter %s changed by %s: %s -> %s (%s)", codigo, quien, anterior,
+        valor if valor is not None else valor_texto, fila.fuente_estado,
+    )
+    return _parametro_a_dict(fila)
+
+
+def _nombre_repetido(session: Session, columna, nombre: str) -> bool:
+    """Case-insensitive in Python: the database collation may not fold accents or non-ASCII capitals."""
+    buscado = nombre.casefold()
+    return any(existente.casefold() == buscado for existente in session.scalars(select(columna)))
+
+
+def crear_persona(session: Session, *, nombre: str, rol: str, vinculo: str, nota: str | None) -> dict:
+    nombre = nombre.strip()
+    if not nombre:
+        raise DatosInvalidos("Falta el nombre de la persona.")
+    if _nombre_repetido(session, Persona.nombre, nombre):
+        raise Conflicto(f"Ya hay una persona con el nombre {nombre}.")
+    fila = Persona(
+        codigo=f"PER-{_siguiente_numero(session, Persona.codigo, 'PER'):04d}", nombre=nombre, rol=rol,
+        vinculo=vinculo, activo=True, nota=_texto_o_nada(nota),
+    )
+    _insertar(session, fila, "No se pudo asignar el código de la persona; intentá de nuevo.")
+    session.commit()
+    return _persona_a_dict(fila)
+
+
+def cambiar_activo_persona(session: Session, codigo: str, activo: bool) -> dict:
+    """Deactivating deletes nothing: expenses and lots keep pointing at the person."""
+    persona = session.scalar(select(Persona).where(Persona.codigo == codigo))
+    if persona is None:
+        raise NoEncontrado(f"No existe la persona {codigo}.")
+    persona.activo = activo
+    session.commit()
+    return _persona_a_dict(persona)
+
+
+def listar_impuestos(session: Session) -> list[dict]:
+    """Read only: whether VAT is a product cost is an open business decision, so it is not edited from the app."""
+    return [{
+        "codigo": i.codigo, "nombre": i.nombre, "alicuota": i.alicuota, "base": i.base,
+        "es_costo_del_producto": i.es_costo_del_producto, "nota": i.nota,
+    } for i in session.scalars(select(Impuesto).order_by(Impuesto.id))]
+
+
+def _catalogo_a_dict(fila) -> dict:
+    return {"codigo": fila.codigo, "nombre": fila.nombre, "nota": fila.nota}
+
+
+def listar_colores(session: Session) -> list[dict]:
+    return [_catalogo_a_dict(c) for c in session.scalars(select(Color).order_by(Color.nombre))]
+
+
+def listar_categorias(session: Session) -> list[dict]:
+    return [_catalogo_a_dict(c) for c in session.scalars(select(Categoria).order_by(Categoria.nombre))]
+
+
+def crear_color(session: Session, *, nombre: str, nota: str | None) -> dict:
+    nombre = nombre.strip()
+    if not nombre:
+        raise DatosInvalidos("Falta el nombre del color.")
+    if _nombre_repetido(session, Color.nombre, nombre):
+        raise Conflicto(f"Ya hay un color con el nombre {nombre}.")
+    fila = Color(codigo=f"COL-{_siguiente_numero(session, Color.codigo, 'COL'):04d}", nombre=nombre, nota=_texto_o_nada(nota))
+    _insertar(session, fila, "Ya hay un color con ese nombre, o no se pudo asignar el código; intentá de nuevo.")
+    session.commit()
+    return _catalogo_a_dict(fila)
+
+
+def codigo_de_categoria(nombre: str) -> str | None:
+    """`CAT-` plus the first four letters of the name without accents (CAT-PORT, CAT-RINO...), or None if it has fewer.
+    SUPUESTO: validar. 15 of the 16 seeded categories follow this; Portadocumentos is CAT-DOCU, so it is a convention
+    and not a rule: a taken code falls back to a number."""
+    letras = [c for c in unicodedata.normalize("NFKD", nombre) if c.isascii() and c.isalpha()]
+    return "CAT-" + "".join(letras[:4]).upper() if len(letras) >= 4 else None
+
+
+def crear_categoria(session: Session, *, nombre: str, nota: str | None) -> dict:
+    nombre = nombre.strip()
+    if not nombre:
+        raise DatosInvalidos("Falta el nombre de la categoría.")
+    if _nombre_repetido(session, Categoria.nombre, nombre):
+        raise Conflicto(f"Ya hay una categoría con el nombre {nombre}.")
+    codigo = codigo_de_categoria(nombre)
+    if codigo is None or session.scalar(select(Categoria.id).where(Categoria.codigo == codigo)):
+        codigo = f"CAT-{_siguiente_numero(session, Categoria.codigo, 'CAT'):04d}"
+    fila = Categoria(codigo=codigo, nombre=nombre, nota=_texto_o_nada(nota))
+    _insertar(session, fila, "Ya hay una categoría con ese nombre, o no se pudo asignar el código; intentá de nuevo.")
+    session.commit()
+    return _catalogo_a_dict(fila)
+
+
+# Models. The consumption fields of the sheet's Modelos tab; NULL = missing data, 0 = "no lleva".
+CAMPOS_DE_CONSUMO = (
+    "cuero_m2_por_unidad", "forro_m2_por_unidad", "flex_m2_por_unidad", "goma_eva_m2_por_unidad",
+    "herrajes_usd_por_unidad", "hilo_y_cemento", "confeccion_estimada_ars", "horas_de_confeccion",
+    "origen_de_los_consumos",
+)
+
+
+def detalle_modelo(session: Session, codigo: str) -> dict:
+    forro = aliased(Material)
+    fila = session.execute(
+        select(Modelo, Categoria.nombre, forro.codigo)
+        .outerjoin(Categoria, Categoria.id == Modelo.categoria_id)
+        .outerjoin(forro, forro.id == Modelo.forro_id)
+        .where(Modelo.codigo == codigo)
+    ).one_or_none()
+    if fila is None:
+        raise NoEncontrado(f"No existe el modelo {codigo}.")
+    m, categoria, forro_codigo = fila
+    return {
+        **_modelo_a_dict(m, categoria, forro_codigo), "horas_de_confeccion": m.horas_de_confeccion, "nota": m.nota,
+        "modelo_excel_viejo": m.modelo_excel_viejo, "fila_excel_viejo": m.fila_excel_viejo,
+        "productos": session.scalar(select(func.count(Producto.id)).where(Producto.modelo_id == m.id)) or 0,
+    }
+
+
+def _forro_del_modelo(session: Session, forro: str | None, forro_m2: Decimal | None) -> Material | None:
+    if forro is None:
+        if forro_m2 is not None and forro_m2 > 0:
+            raise DatosInvalidos("Elegí el forro: hay metros cuadrados de forro sin material.")
+        return None
+    if forro_m2 is None:
+        raise DatosInvalidos("Indicá cuántos m² de forro lleva (0 si no lleva).")
+    return _material_de_receta(session, forro, "FORRO")
+
+
+def crear_modelo(
+    session: Session, *, nombre_del_modelo: str, categoria: str, tamano: str | None, nota: str | None,
+    forro: str | None, **consumos,
+) -> dict:
+    """A new model starts unvalidated. The name must be unique (the sheet asks to add something that tells two apart)."""
+    nombre = nombre_del_modelo.strip()
+    if not nombre:
+        raise DatosInvalidos("Falta el nombre del modelo.")
+    if _nombre_repetido(session, Modelo.nombre_del_modelo, nombre):
+        raise Conflicto(f"Ya hay un modelo con el nombre {nombre}: agregá algo que lo distinga.")
+    categoria_fila = session.scalar(select(Categoria).where(Categoria.nombre == categoria))
+    if categoria_fila is None:
+        raise DatosInvalidos(f"No existe la categoría {categoria}.")
+    forro_fila = _forro_del_modelo(session, forro, consumos["forro_m2_por_unidad"])
+    fila = Modelo(
+        codigo=f"MOD-{_siguiente_numero(session, Modelo.codigo, 'MOD'):04d}", nombre_del_modelo=nombre,
+        categoria_id=categoria_fila.id, tamano=tamano, forro_id=forro_fila.id if forro_fila else None,
+        validado=False, nota=_texto_o_nada(nota), **consumos,
+    )
+    _insertar(session, fila, "Ya hay un modelo con ese nombre, o no se pudo asignar el código; intentá de nuevo.")
+    session.commit()
+    return detalle_modelo(session, fila.codigo)
+
+
+def _modelo_por_codigo(session: Session, codigo: str) -> Modelo:
+    modelo = session.scalar(select(Modelo).where(Modelo.codigo == codigo).with_for_update())
+    if modelo is None:
+        raise NoEncontrado(f"No existe el modelo {codigo}.")
+    return modelo
+
+
+def cambiar_validado(session: Session, codigo: str, validado: bool) -> dict:
+    """The one in-place flag of a model that carries no consumption: a person confirms (or withdraws) the numbers."""
+    _modelo_por_codigo(session, codigo).validado = validado
+    session.commit()
+    return detalle_modelo(session, codigo)
+
+
+def cambiar_consumos(session: Session, codigo: str, *, forro: str | None, quien: str, **consumos) -> dict:
+    """Overwrite the consumptions of a model and reset `validado`. SUPUESTO: validar. No table may be added, so the
+    previous values are not stored; they are logged (who, old, new). Saved quotes are snapshots and keep their
+    numbers; every product of the model is costed with the new ones from now on."""
+    modelo = _modelo_por_codigo(session, codigo)
+    forro_fila = _forro_del_modelo(session, forro, consumos["forro_m2_por_unidad"])
+    anterior_forro = session.scalar(select(Material.codigo).where(Material.id == modelo.forro_id)) if modelo.forro_id else None
+    cambios = {}
+    for campo in CAMPOS_DE_CONSUMO:
+        if getattr(modelo, campo) != consumos[campo]:
+            cambios[campo] = f"{getattr(modelo, campo)} -> {consumos[campo]}"
+        setattr(modelo, campo, consumos[campo])
+    if anterior_forro != forro:
+        cambios["forro"] = f"{anterior_forro} -> {forro}"
+    modelo.forro_id = forro_fila.id if forro_fila else None
+    modelo.validado = False
+    session.commit()
+    logger.info("Model %s consumptions changed by %s: %s", codigo, quien, cambios or "no value changed")
+    return detalle_modelo(session, codigo)
+
+
 # --- Data quality ------------------------------------------------------------------------------------------------
 # One list of findings. Product, lot and price rules are the ones that already live above (quote warnings, the sheet's
 # Control columns, price jumps): this section only gathers and classifies them, it does not decide anything new.
@@ -1466,7 +1755,6 @@ def _hallazgos_de_productos(session: Session) -> tuple[list[dict], list[dict]]:
 
 
 def _hallazgos_de_modelos(session: Session) -> tuple[list[dict], list[dict]]:
-    # SUPUESTO: validar. There is no screen to edit models yet (admin panel, T5c), so they point at /admin.
     sin_validar, con_problemas = [], []
     filas = session.execute(
         select(Modelo.codigo, Modelo.nombre_del_modelo, Modelo.categoria_id, Modelo.cuero_m2_por_unidad, Modelo.forro_id,
@@ -1474,14 +1762,14 @@ def _hallazgos_de_modelos(session: Session) -> tuple[list[dict], list[dict]]:
     ).all()
     for codigo, nombre, categoria_id, cuero, forro_id, forro_m2, validado in filas:
         if not validado:
-            sin_validar.append(_hallazgo("baja", codigo, f"Modelo sin validar: {nombre}", "/admin"))
+            sin_validar.append(_hallazgo("baja", codigo, f"Modelo sin validar: {nombre}", "/admin/modelos"))
         for falla in (
             "Falta la categoría" if categoria_id is None else None,
             "Falta el consumo de cuero" if cuero is None else None,
             "Falta elegir el forro" if (forro_m2 or 0) > 0 and forro_id is None else None,
         ):
             if falla:
-                con_problemas.append(_hallazgo("media", codigo, f"{falla}: {nombre}", "/admin"))
+                con_problemas.append(_hallazgo("media", codigo, f"{falla}: {nombre}", "/admin/modelos"))
     return sin_validar, con_problemas
 
 
@@ -1538,7 +1826,7 @@ def _hallazgos_de_parametros(session: Session) -> list[dict]:
     for p in session.scalars(select(Parametro).order_by(Parametro.id)):
         estado = estado_de_parametro(p.fuente_estado)
         if estado:
-            hallazgos.append(_hallazgo(estado[0], p.codigo, f"{p.constante}: {estado[1]}", "/admin"))
+            hallazgos.append(_hallazgo(estado[0], p.codigo, f"{p.constante}: {estado[1]}", "/admin/parametros"))
     return hallazgos
 
 

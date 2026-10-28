@@ -57,7 +57,9 @@ SEED_USER_PASSWORD='choose-a-password' corepack pnpm seed:user   # creates conta
 
 `auth:migrate` applies changes to whatever database `DATABASE_URL` points to, so check that variable before running it against a shared environment. The backend verifier forwards the `Cookie` (and `Authorization`) header to `AUTH_VERIFY_URL` with a 3 second timeout and answers `401 No autenticado.` on any failure.
 
-Roles (stored in `user.role`): `admin` (everything, plus `/admin` and user management), `cotizador` (quotes and loads data) and `consulta` (read only). New users get `consulta`. This task enforces `/admin` for admins only; per-module permissions for the other roles arrive with the modules themselves.
+Roles (stored in `user.role`): `admin` (everything, plus the `/admin` area and user management), `cotizador` (quotes and loads data; may also create models and mark them as validated) and `consulta` (read only). New users get `consulta`; sign-up is disabled, an admin creates users in `/admin/usuarios`.
+
+The admin area (`/admin/*`: users, parameters, models, catalogs, people, taxes) is `admin` only at three levels: `proxy.ts` redirects everybody else, every server action re-checks the role, and the API answers 403 to the admin-only writes (see the table in [`backend/README.md`](backend/README.md#costing-api-t3b)). Users are never deleted, only deactivated; nobody can demote or deactivate themselves, and the last active admin can never lose the role (enforced inside Better Auth, so a direct call to `/api/auth/admin/*` is refused too).
 
 ## Checks
 

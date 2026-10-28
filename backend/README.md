@@ -91,7 +91,7 @@ local machine.
 
 **Authentication is fail-closed.** Every route below depends on `require_user` (`auth.py`), which answers `401 {"detail": "No autenticado."}` when there is no valid Better Auth session (or no verifier is configured). The verifier calls `AUTH_VERIFY_URL` (the front's `get-session`) with the caller's cookie.
 
-**Roles.** Reads (`GET`) are open to any signed-in user. Every `POST` also needs the role `admin` or `cotizador` (`ESCRITURA` in `api.py`, built with `require_role`); a `consulta` user gets `403 {"detail": "No tenés permiso para esta acción."}`. No session is still `401`, never `403`.
+**Roles.** Reads (`GET`) are open to any signed-in user. Every `POST` also needs the role `admin` or `cotizador` (`ESCRITURA` in `api.py`, built with `require_role`); a `consulta` user gets `403 {"detail": "No tenés permiso para esta acción."}`. The admin area (parameters, people, colors, categories and the consumptions of a model) needs the role `admin` (`ADMINISTRACION` / `SoloAdmin`): a `cotizador` gets 403 there too. No session is still `401`, never `403`.
 
 | Method and path | Roles | What it does |
 |---|---|---|
@@ -122,8 +122,28 @@ local machine.
 | `POST /talleres` | admin, cotizador | New workshop (`nombre`, `cuit?`, `telefono?`, `direccion?`, `contacto?`, `nota?`); the server assigns `TAL-nnnn`. A repeated name or CUIT is 409. |
 | `POST /talleres/{codigo}/activo` | admin, cotizador | `{activo}`: deactivates or reactivates; nothing is deleted. |
 | `POST /costos-fijos/{codigo}/monto` | admin, cotizador | `{monto_ars_del_mes}`: sets the amount of a row **only while it is empty** (409 otherwise): a correction is a new row. |
+| `GET /modelos?q=&categoria=&validado=&tamano=&limit=&offset=` | any signed-in | Models in sheet order. `q`: every word in the code or name (wildcards are plain text); `categoria`: exact name; `validado`: `true` / `false`; `tamano`: `CHICO` / `MEDIANO` / `GRANDE`. |
+| `GET /modelos/{codigo}` | any signed-in | A model with its consumptions, origin, note, reference to the old Excel row and `productos` (how many products use it). |
+| `GET /colores`, `GET /categorias` | any signed-in | `[{codigo, nombre, nota}]` by name (`/catalogos` keeps returning only the names). |
+| `GET /impuestos` | any signed-in | Taxes with `alicuota`, `base` and `es_costo_del_producto`. Read only: there is no write endpoint. |
+| `POST /parametros/{codigo}` | **admin** | `{valor or valor_texto, fuente_estado: Pendiente\|Propuesta\|Confirmado, nota?}`. Overwrites in place (see below). 422 for calculated parameters (`DOLAR_VIGENTE`, `FECHA_DOLAR_VIGENTE`, or a row whose state starts with "Calculado") and for out-of-range values; 404 unknown code. |
+| `POST /personas`, `POST /personas/{codigo}/activo` | **admin** | New person `{nombre, rol, vinculo, nota?}` (`PER-nnnn`; a repeated name, ignoring case, is 409) and `{activo}`: deactivates or reactivates, nothing is deleted. |
+| `POST /colores`, `POST /categorias` | **admin** | `{nombre, nota?}`. The name is unique ignoring case (409); the server assigns `COL-nnnn` or the category code (see below). |
+| `POST /modelos` | admin, cotizador | New model (name, `categoria` name, `tamano?`, forro `MAT-FO..`, all consumptions, `origen_de_los_consumos`, `nota?`). Server code `MOD-nnnn`; always created `validado = false`; a repeated name is 409. Consumptions are non-negative with the model's precision (`NUMERIC(12,6)` m² / juegos / horas, `NUMERIC(14,4)` USD and ARS). |
+| `POST /modelos/{codigo}/validado` | admin, cotizador | `{validado}`: a person confirms (or withdraws) the numbers. |
+| `POST /modelos/{codigo}/consumos` | **admin** | Replaces the consumptions (every field must be sent, `null` = missing data, so a partial body is 422), sets `validado = false` and logs the previous values. Saved quotes are snapshots and keep their numbers; every later quote of the model's products uses the new ones. |
 
-Errors: 401 not signed in, 403 role without write permission, 404 missing product, lot, workshop or expense, 409 already there, 422 refused (`detail` in Spanish).
+Errors: 401 not signed in, 403 role without write permission (admin area: any role but `admin`), 404 missing product, lot, workshop or expense, 409 already there, 422 refused (`detail` in Spanish).
+
+### Admin area (T5c)
+
+No migrations or model changes: everything uses the existing tables.
+
+- **Parameters change in place and keep no history.** `parametro` has no history column and no table may be added, so the previous value is not stored. Each change is logged (`parameter, user id, old -> new, state`) and `fuente_estado` always holds `Pendiente`, `Propuesta` or `Confirmado`, optionally followed by `: note`; the data-quality report still reads that leading word. `SUPUESTO: validar`: add a history table if Casa López wants to see old values. The services read the parameters on every quote, so the next quote uses the new value; saved quotes do not change.
+- **Ranges** (`SUPUESTO: validar`, the sheet states none), by the parameter's unit: `%` is a fraction from 0 to 1 (`0.05` = 5 %); `ARS/USD` and `m2` must be above 0; `AAAA-MM` is a text `YYYY-MM`; any other unit is not editable. Values keep `NUMERIC(14,4)`; more decimals are 422.
+- **Category codes** (`SUPUESTO: validar`): 15 of the 16 seeded codes are `CAT-` plus the first four letters of the name without accents (`CAT-PORT`, `CAT-RINO`); a new one follows that when the code is free and the name has four letters, else `CAT-nnnn`. Colors are `COL-nnnn` (the plantilla's sequence). Neither table has an `activo` column, so nothing can be deactivated.
+- **Models**: `validado` is a flag a person flips; editing consumptions is a separate admin-only endpoint that always resets it, so a validated model cannot silently change. The previous values are logged, not stored (same limitation as parameters). The data-quality findings of models point at `/admin/modelos` and those of parameters at `/admin/parametros`.
+- Audit lines go to the `uvicorn.error` logger (uvicorn sets it to INFO; the application's root logger would drop them). They carry the opaque user id and the values, never a secret.
 
 ### Lots, workshops, fixed costs and data quality (T5d)
 
@@ -140,6 +160,6 @@ Everything below is derived on every read from existing tables (no migration); t
 
 Groups (`clave`): `productos`, `recotizar`, `modelos_sin_validar`, `modelos`, `materiales`, `precios`, `lotes`, `talleres`, `gastos_fijos`, `parametros`. Each finding has a Spanish message and the front route where it is fixed (`ruta`). The product, lot and price rules are the ones already used elsewhere (quote warnings, `marca_recotizar`, `listar_precios` jumps, the lot warnings above); the report only gathers and classifies them, plus the date checks of `Productos!T` (`Nombre repetido`, `Falta la fecha de alta`, `La recotización es anterior al alta`, `El cierre es anterior al alta`, `PRODUCIDO` without `Falta la fecha de cierre`).
 
-`SUPUESTO: validar` (the sheet has no severity column): **alta** = the product, lot or material cannot be quoted or closed (missing price, dollar, leather, workshop or delivery date); **media** = it can, but something is off (jumps, VAT included, repeated names, unconfirmed parameters of the "pendiente / propuesta" kind, pending or example workshops in use); **baja** = informative (models not validated, fictitious amounts, a parameter without a "confirmed" mark). Without any dollar on record a single `alta` finding asks for it instead of one per product. A price is "vigente" for the material check when it starts on or before today; non-quotable materials (lagarto, yacaré) show as `baja`. Models and parameters point at `/admin` until their screens exist (T5c).
+`SUPUESTO: validar` (the sheet has no severity column): **alta** = the product, lot or material cannot be quoted or closed (missing price, dollar, leather, workshop or delivery date); **media** = it can, but something is off (jumps, VAT included, repeated names, unconfirmed parameters of the "pendiente / propuesta" kind, pending or example workshops in use); **baja** = informative (models not validated, fictitious amounts, a parameter without a "confirmed" mark). Without any dollar on record a single `alta` finding asks for it instead of one per product. A price is "vigente" for the material check when it starts on or before today; non-quotable materials (lagarto, yacaré) show as `baja`. Models point at `/admin/modelos` and parameters at `/admin/parametros`.
 
 The integration cases of the API (`tests/test_api_integration.py`) also need `TEST_DATABASE_URL`; each one runs inside a transaction that is rolled back, so the seeded database is left untouched.

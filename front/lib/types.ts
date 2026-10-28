@@ -137,6 +137,54 @@ export type Modelo = {
   categoria: string | null;
 };
 
+// Consumptions are NUMERIC strings; null = missing data, "0" = "no lleva".
+export type ModeloLista = Modelo & {
+  tamano: string | null;
+  cuero_m2_por_unidad: string | null;
+  forro: string | null;
+  forro_m2_por_unidad: string | null;
+  flex_m2_por_unidad: string | null;
+  goma_eva_m2_por_unidad: string | null;
+  herrajes_usd_por_unidad: string | null;
+  hilo_y_cemento: string | null;
+  confeccion_estimada_ars: string | null;
+  origen_de_los_consumos: string | null;
+  validado: boolean;
+};
+
+export type ModeloDetalle = ModeloLista & {
+  horas_de_confeccion: string | null;
+  nota: string | null;
+  modelo_excel_viejo: string | null;
+  fila_excel_viejo: number | null;
+  productos: number;
+};
+
+export type Parametro = {
+  codigo: string;
+  constante: string;
+  valor: string | null;
+  valor_texto: string | null;
+  unidad: string | null;
+  que_es: string | null;
+  fuente_estado: string | null;
+};
+
+export type Impuesto = {
+  codigo: string;
+  nombre: string;
+  alicuota: string | null;
+  base: string | null;
+  es_costo_del_producto: boolean;
+  nota: string | null;
+};
+
+export type ItemCatalogo = {
+  codigo: string;
+  nombre: string;
+  nota: string | null;
+};
+
 export type EtapaCatalogo = {
   codigo: string;
   orden: number;

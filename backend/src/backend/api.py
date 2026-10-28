@@ -1,7 +1,8 @@
 """Costing API: read and load endpoints. Routers only validate input and call `servicios`.
 
 Every route requires a signed-in user (see auth.py; fail-closed without a verifier). Reads are open to
-any signed-in role; every POST also needs the role `admin` or `cotizador` (`consulta` gets 403).
+any signed-in role; every POST also needs the role `admin` or `cotizador` (`consulta` gets 403), except the
+admin area (parameters, people, catalogs, model consumptions), which needs `admin`.
 Calculated values (names, categories, totals, costs) are never accepted from the client:
 request models forbid unknown fields. Money leaves as strings because the response models
 keep Decimal and pydantic serializes it as text in JSON.
@@ -17,13 +18,16 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.orm import Session
 
 from backend import servicios
-from backend.auth import require_role, require_user
+from backend.auth import Usuario, require_role, require_user
 from backend.database import get_session
 from backend.models import ARS_USD, LOT_STATES, UNITS, WHERE_MADE
 
 router = APIRouter(dependencies=[Depends(require_user)])
 # Roles that may write. `require_role` builds on `require_user`, so no session still answers 401, not 403.
 ESCRITURA = [Depends(require_role("admin", "cotizador"))]
+# The admin area: only `admin` (the front also hides it, and re-checks the role in every server action).
+ADMINISTRACION = [Depends(require_role("admin"))]
+SoloAdmin = Annotated[Usuario, Depends(require_role("admin"))]
 Sesion = Annotated[Session, Depends(get_session)]
 
 PERIODO = r"^[0-9]{4}-(0[1-9]|1[0-2])$"
@@ -156,6 +160,58 @@ class MontoIn(Entrada):
     monto_ars_del_mes: Annotated[Decimal, Field(ge=0, max_digits=14, decimal_places=4)]
 
 
+class ParametroIn(Entrada):
+    """Exactly one of `valor` / `valor_texto`, according to the parameter's unit (checked by the service)."""
+
+    valor: Annotated[Decimal, Field(max_digits=14, decimal_places=4)] | None = None
+    valor_texto: str | None = None
+    fuente_estado: Literal[*servicios.ESTADOS_DE_PARAMETRO]
+    nota: Annotated[str, Field(max_length=300)] | None = None
+
+
+class PersonaIn(Entrada):
+    nombre: Annotated[str, Field(min_length=1, max_length=120)]
+    rol: Literal[*servicios.PERSONA_ROLES]
+    vinculo: Literal[*servicios.PERSONA_VINCULOS]
+    nota: str | None = None
+
+
+class CatalogoIn(Entrada):
+    nombre: Annotated[str, Field(min_length=1, max_length=120)]
+    nota: str | None = None
+
+
+Metros = Annotated[Decimal, Field(ge=0, max_digits=12, decimal_places=6)]
+Importe = Annotated[Decimal, Field(ge=0, max_digits=14, decimal_places=4)]
+
+
+class ConsumosIn(Entrada):
+    """Every consumption field must be sent (null = missing data, 0 = "no lleva"): a partial body is refused, so
+    nothing is cleared by leaving it out."""
+
+    cuero_m2_por_unidad: Metros
+    forro: str | None
+    forro_m2_por_unidad: Metros | None
+    flex_m2_por_unidad: Metros | None
+    goma_eva_m2_por_unidad: Metros | None
+    herrajes_usd_por_unidad: Importe | None
+    hilo_y_cemento: Metros | None
+    confeccion_estimada_ars: Importe | None
+    horas_de_confeccion: Metros | None
+    origen_de_los_consumos: Literal[*servicios.ORIGENES]
+
+
+class ModeloIn(ConsumosIn):
+    nombre_del_modelo: Annotated[str, Field(min_length=1, max_length=200)]
+    categoria: str
+    tamano: Literal[*servicios.TAMANOS] | None = None
+    nota: str | None = None
+
+
+class ValidadoIn(Entrada):
+    validado: bool
+
+
 # --- Responses -------------------------------------------------------------------------------------------
 
 class ProductoResumen(Salida):
@@ -255,6 +311,14 @@ class ModeloOut(Salida):
     validado: bool
 
 
+class ModeloDetalleOut(ModeloOut):
+    horas_de_confeccion: Decimal | None
+    nota: str | None
+    modelo_excel_viejo: str | None
+    fila_excel_viejo: int | None
+    productos: int  # products made from this model
+
+
 class MaterialOut(Salida):
     codigo: str
     nombre: str
@@ -340,6 +404,21 @@ class GastoOut(Salida):
     monto_ars_del_mes: Decimal | None
     ficticio: bool
     nota_fuente: str | None
+
+
+class ImpuestoOut(Salida):
+    codigo: str
+    nombre: str
+    alicuota: Decimal | None
+    base: str | None
+    es_costo_del_producto: bool
+    nota: str | None
+
+
+class CatalogoItemOut(Salida):
+    codigo: str
+    nombre: str
+    nota: str | None
 
 
 class PersonaOut(Salida):
@@ -544,8 +623,17 @@ def ficha(codigo: str, session: Sesion):
 
 
 @router.get("/modelos", response_model=list[ModeloOut])
-def modelos(session: Sesion, limit: int = Query(500, ge=1, le=1000), offset: int = Query(0, ge=0)):
-    return servicios.listar_modelos(session, limit, offset)
+def modelos(
+    session: Sesion, limit: int = Query(500, ge=1, le=1000), offset: int = Query(0, ge=0),
+    q: str | None = Query(None, max_length=100), categoria: str | None = None, validado: bool | None = None,
+    tamano: Literal[*servicios.TAMANOS] | None = None,
+):
+    return servicios.listar_modelos(session, limit, offset, q, categoria, validado, tamano)
+
+
+@router.get("/modelos/{codigo}", response_model=ModeloDetalleOut)
+def modelo(codigo: str, session: Sesion):
+    return servicios.detalle_modelo(session, codigo)
 
 
 @router.get("/materiales", response_model=list[MaterialOut])
@@ -570,6 +658,22 @@ def precio_chequeo(
 @router.get("/catalogos", response_model=CatalogosOut)
 def catalogos(session: Sesion):
     return servicios.listar_catalogos(session)
+
+
+@router.get("/colores", response_model=list[CatalogoItemOut])
+def colores(session: Sesion):
+    return servicios.listar_colores(session)
+
+
+@router.get("/categorias", response_model=list[CatalogoItemOut])
+def categorias(session: Sesion):
+    return servicios.listar_categorias(session)
+
+
+@router.get("/impuestos", response_model=list[ImpuestoOut])
+def impuestos(session: Sesion):
+    """Read only: whether VAT counts as a product cost is an open business decision."""
+    return servicios.listar_impuestos(session)
 
 
 @router.get("/dolar", response_model=list[DolarOut])
@@ -713,6 +817,52 @@ def cambiar_activo_de_taller(codigo: str, cuerpo: ActivoIn, session: Sesion):
 def cargar_monto_de_gasto(codigo: str, cuerpo: MontoIn, session: Sesion):
     """Only while the amount is still empty (409 otherwise): a correction is a new row."""
     return servicios.cargar_monto_de_gasto(session, codigo, cuerpo.monto_ars_del_mes)
+
+
+@router.post("/parametros/{codigo}", response_model=ParametroOut)
+def cambiar_parametro(codigo: str, cuerpo: ParametroIn, session: Sesion, usuario: SoloAdmin):
+    """Admin only. Overwrites the value in place and keeps no history (no column for it): the change is logged."""
+    return servicios.cambiar_parametro(
+        session, codigo, valor=cuerpo.valor, valor_texto=cuerpo.valor_texto, estado=cuerpo.fuente_estado,
+        nota=cuerpo.nota, quien=usuario.id,
+    )
+
+
+@router.post("/personas", dependencies=ADMINISTRACION, response_model=PersonaOut, status_code=201)
+def crear_persona(cuerpo: PersonaIn, session: Sesion):
+    return servicios.crear_persona(session, **cuerpo.model_dump())
+
+
+@router.post("/personas/{codigo}/activo", dependencies=ADMINISTRACION, response_model=PersonaOut)
+def cambiar_activo_de_persona(codigo: str, cuerpo: ActivoIn, session: Sesion):
+    return servicios.cambiar_activo_persona(session, codigo, cuerpo.activo)
+
+
+@router.post("/colores", dependencies=ADMINISTRACION, response_model=CatalogoItemOut, status_code=201)
+def crear_color(cuerpo: CatalogoIn, session: Sesion):
+    return servicios.crear_color(session, **cuerpo.model_dump())
+
+
+@router.post("/categorias", dependencies=ADMINISTRACION, response_model=CatalogoItemOut, status_code=201)
+def crear_categoria(cuerpo: CatalogoIn, session: Sesion):
+    return servicios.crear_categoria(session, **cuerpo.model_dump())
+
+
+@router.post("/modelos", dependencies=ESCRITURA, response_model=ModeloDetalleOut, status_code=201)
+def crear_modelo(cuerpo: ModeloIn, session: Sesion):
+    """The server assigns `MOD-nnnn`; a new model is never validated."""
+    return servicios.crear_modelo(session, **cuerpo.model_dump())
+
+
+@router.post("/modelos/{codigo}/validado", dependencies=ESCRITURA, response_model=ModeloDetalleOut)
+def cambiar_validado_de_modelo(codigo: str, cuerpo: ValidadoIn, session: Sesion):
+    return servicios.cambiar_validado(session, codigo, cuerpo.validado)
+
+
+@router.post("/modelos/{codigo}/consumos", response_model=ModeloDetalleOut)
+def cambiar_consumos_de_modelo(codigo: str, cuerpo: ConsumosIn, session: Sesion, usuario: SoloAdmin):
+    """Admin only. Overwrites the consumptions, resets `validado` and logs the previous values."""
+    return servicios.cambiar_consumos(session, codigo, quien=usuario.id, **cuerpo.model_dump())
 
 
 # --- Errors ----------------------------------------------------------------------------------------------------

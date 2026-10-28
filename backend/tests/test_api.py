@@ -129,13 +129,16 @@ def test_invalid_period_is_rejected():
 
 # --- Roles: every write needs admin or cotizador; reads stay open to any signed-in user ----------------------
 
-ESCRITURAS = [(m, r) for m, r in RUTAS if m == "POST"]
+# The admin area (T5c) writes are admin only; test_admin.py covers their gate. Every other POST is admin or cotizador.
+SOLO_ADMIN = {"/parametros/{codigo}", "/personas", "/personas/{codigo}/activo", "/colores", "/categorias",
+              "/modelos/{codigo}/consumos"}
+ESCRITURAS = [(m, r) for m, r in RUTAS if m == "POST" and r not in SOLO_ADMIN]
 LECTURAS = [(m, r) for m, r in RUTAS if m == "GET"]
 SIN_PERMISO = {"detail": "No tenés permiso para esta acción."}
 
 
 def test_every_write_route_is_covered_by_the_role_tests():
-    assert len(ESCRITURAS) == 14 and {r for _, r in ESCRITURAS} >= {
+    assert len(ESCRITURAS) == 16 and {r for _, r in ESCRITURAS} >= {"/modelos", "/modelos/{codigo}/validado",
         "/productos", "/precios", "/dolar", "/ordenes", "/talleres", "/talleres/{codigo}/activo",
         "/ordenes/{codigo}/estado", "/ordenes/{codigo}/items", "/ordenes/{codigo}/items/{item}/precios",
         "/costos-fijos/{codigo}/monto"}
