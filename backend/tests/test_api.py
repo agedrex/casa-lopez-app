@@ -139,7 +139,7 @@ SIN_PERMISO = {"detail": "No tenés permiso para esta acción."}
 
 
 def test_every_write_route_is_covered_by_the_role_tests():
-    assert len(ESCRITURAS) == 16 and {r for _, r in ESCRITURAS} >= {"/modelos", "/modelos/{codigo}/validado",
+    assert len(ESCRITURAS) == 17 and {r for _, r in ESCRITURAS} >= {"/modelos", "/modelos/{codigo}/validado", "/voz/interpretar",
         "/productos", "/precios", "/dolar", "/ordenes", "/talleres", "/talleres/{codigo}/activo",
         "/ordenes/{codigo}/estado", "/ordenes/{codigo}/items", "/ordenes/{codigo}/items/{item}/precios",
         "/costos-fijos/{codigo}/monto"}

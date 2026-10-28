@@ -1933,3 +1933,27 @@ def modelos_para_exportar(session: Session) -> list[dict]:
 def costos_fijos_de_todos_los_periodos(session: Session) -> list[dict]:
     """`costos_fijos` of every period that has rows (newest first), each with its factory / store totals."""
     return [costos_fijos(session, periodo) for periodo in periodos_de_costos_fijos(session)["periodos"]]
+
+
+# --- Voice module (T7) ---------------------------------------------------------------------------------------------
+# Read-only lists for the resolver of `voz.py`: names and codes only, nothing is calculated or saved here.
+
+def productos_para_voz(session: Session) -> list[dict]:
+    """Code and computed name of every product (the same name the screens show)."""
+    return [{"codigo": d.codigo, "nombre": d.nombre} for d in cargar_productos(session)]
+
+
+def lotes_para_voz(session: Session) -> list[dict]:
+    """Every lot, newest first, with the code and name of the product of each line (no costs: they are not needed)."""
+    lotes = _cargar_lotes(session)
+    items = _cargar_items(session, [lote.id for lote in lotes])
+    nombres = _info_productos(session, {item.producto for item in items}, con_costo=False)
+    por_lote: dict[str, list[dict]] = {}
+    for item in items:
+        por_lote.setdefault(item.lote, []).append({
+            "codigo": item.codigo, "producto": item.producto,
+            "producto_nombre": nombres[item.producto].nombre if item.producto in nombres else item.producto})
+    return [{
+        "codigo": lote.codigo, "taller": lote.taller, "taller_nombre": lote.taller_nombre, "estado": lote.estado,
+        "fecha": lote.fecha, "items": por_lote.get(lote.codigo, []),
+    } for lote in lotes]

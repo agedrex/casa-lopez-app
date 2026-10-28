@@ -401,3 +401,39 @@ export type SyncVista = {
   total_filas: number;
   mostradas: number;
 };
+
+// Voice module (GET /voz/estado, POST /voz/interpretar). The model only extracts words; the API resolves them and answers
+// a proposal. Money travels as decimal strings and nothing is calculated here.
+
+export type VozEstado = {
+  configurado: boolean;
+  acciones: string[];
+  max_caracteres: number;
+  limite_por_minuto: number;
+};
+
+export type VozAccion =
+  | "cargar_precio"
+  | "cargar_dolar"
+  | "agregar_extra"
+  | "registrar_precio_taller"
+  | "cargar_monto_gasto"
+  | "desconocida";
+
+export type VozCampo = { valor: string; texto: string | null };
+
+/** `codigo` is the value to send (for a color it is the color's name). */
+export type VozCandidato = { codigo: string; nombre: string };
+
+export type VozPropuesta = {
+  accion: VozAccion;
+  resumen: string;
+  campos_resueltos: Record<string, VozCampo>;
+  /** Only for ambiguous fields: up to five options, the person picks one. */
+  candidatos: Record<string, VozCandidato[]>;
+  /** Names of the fields that are missing, unknown or ambiguous. */
+  faltantes: string[];
+  avisos: string[];
+  endpoint_destino: string | null;
+  payload_propuesto: Record<string, unknown> | null;
+};

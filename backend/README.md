@@ -203,3 +203,36 @@ Per run: one read of the existing tabs, one `spreadsheets.batchUpdate` (`addShee
 - "Today" for the price in force and the quality report is the Argentine date (fixed UTC-3, no daylight saving).
 - The tabs hold CUIT / phone / address of workshops: anyone with access to the Sheet sees them.
 - `POST /sync/sheets` has no service-token path yet; an n8n schedule would need one (future work).
+
+## Voice module (T7)
+
+**The model interprets, it never calculates or decides, and a person confirms.** Runbook for the people who set it up (Spanish): [`docs/voz.md`](../docs/voz.md). No migration and no table: nothing is stored, the per-user limit lives in memory.
+
+| Endpoint | Who | What it does |
+|---|---|---|
+| `POST /voz/interpretar` | **admin**, **cotizador** | Body `{"texto": "..."}` (1 to 500 characters; unknown fields and longer text are 422). Asks the model to EXTRACT an action and raw mentions, resolves them against the database and answers a **proposal**: `{accion, resumen, campos_resueltos, candidatos, faltantes, avisos, endpoint_destino, payload_propuesto}`. Writes nothing. **503** `El módulo de voz no está configurado: falta la clave del modelo.` without the key, **429** (with `Retry-After`) over 20 requests a minute per user, **504** / **502** with a fixed Spanish message when the model times out or fails (never the provider's text). |
+| `GET /voz/estado` | any signed-in | `{configurado, acciones, max_caracteres, limite_por_minuto}`: yes or no, never the key, the model or the address. |
+
+Layout: `voz_llm.py` is the model client behind the `VozLLM` protocol (`interpretar(texto, hoy) -> Interpretacion`); `voz.py` is the resolver (`proponer`), the rate limiter and `FuenteVoz` / `FuenteSQL` (read-only access to the catalog through `servicios`); the two routes in `api.py` only wire them.
+
+- **Closed schema.** `Interpretacion` has the action (`cargar_precio`, `cargar_dolar`, `agregar_extra`, `registrar_precio_taller`, `cargar_monto_gasto`, `desconocida`) and bounded text fields (`material`, `color`, `producto`, `lote`, `taller`, `concepto`, `numero`, `moneda`, `tipo_dolar`, `fecha`, `periodo`, `cotizado_o_pagado`). The model returns it through ONE strict tool (`extraer_orden`, `tool_choice` forced); the answer is re-validated with Pydantic and anything invalid becomes `desconocida`. The user's sentence travels alone in the user turn between `<comando>` tags (the delimiter cannot be forged from inside it); the system prompt says to treat it as data and ignore instructions in it.
+- **Resolver.** Mentions are matched without accents or case, by whole words (a prefix counts), preferring a code written in the sentence and then an exact name; `1.480,50`, `26,5` or `lote 3` are read deterministically (words like "mil" are refused, not interpreted). One match resolves, several give up to five `candidatos` (`codigo` is the value to send; for a color, its name), none is a missing field. Non-quotable materials are never proposed or offered. A future date is refused unless the sentence writes it out; a missing date is today (Argentine day), said in `avisos`. Price and dollar jumps over 50 % reuse `servicios.chequear_precio` / `variacion_de_precio` and only add a warning.
+- **`payload_propuesto` is exactly a valid body** for `endpoint_destino`: it is built with the same models the write endpoints use (`PrecioIn`, `DolarIn`, `ExtraIn`, `PreciosItemIn`, `MontoIn`), and it is `null` (like `endpoint_destino`) while anything is missing or ambiguous. Every rule that protects the data stays in the existing endpoints (409, 422, append-only).
+- **Model client.** `POST {base}/v1/messages` over `httpx`, no SDK, headers `x-api-key` and `anthropic-version: 2023-06-01`. Default model `claude-haiku-5-5`. `temperature` is **not** sent: the current docs ask to omit it on the 5.x models. 15 s in total, `max_tokens` 512, one retry on 429 / 5xx (`Retry-After` honoured up to 5 s); a 400 that rejects the forced tool (Opus / Sonnet 5.5) retries once with `tool_choice: auto`. Logs hold the action, latency, outcome class and the sentence LENGTH, never the text, the prompt or the key.
+
+### Environment variables (read only from the environment)
+
+| Variable | What it is |
+|---|---|
+| `ANTHROPIC_API_KEY` | Required to enable the module. Never logged, never in a repr, never returned. |
+| `VOZ_LLM_MODEL` | Optional. Default `claude-haiku-5-5`. |
+| `VOZ_LLM_BASE_URL` | Optional, for tests (a fake server). Default `https://api.anthropic.com`; anything that is not an `http(s)` URL is ignored. |
+
+### SUPUESTOS (`validar`)
+
+- 20 requests per minute per user, counted per process (lost on restart, one count per replica).
+- A dot followed by exactly three digits (`1.480`) is read as thousands (es-AR) and warned.
+- A price uses the material's consumption unit; no VAT split (same as the prices screen).
+- Fixed costs are pesos only: dollars are not converted.
+- No history of interpreted commands is kept (it would need storage).
+

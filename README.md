@@ -48,6 +48,8 @@ Sign-in is handled by [Better Auth](https://better-auth.com) inside the Next.js 
 | backend | `AUTH_VERIFY_URL` | `<BETTER_AUTH_URL>/api/auth/get-session`. If unset, every protected route answers 401 (fail-closed). |
 | backend | `GOOGLE_SHEETS_SPREADSHEET_ID` | Optional. Id of the Google Sheet that receives the display copy (see [`docs/sheets-sync.md`](docs/sheets-sync.md)). |
 | backend | `GOOGLE_SERVICE_ACCOUNT_JSON` | Optional. Content of the service account key (JSON, not a path). Never commit it. Without both Google variables only dry runs work. |
+| backend | `ANTHROPIC_API_KEY` | Optional. Key of the model that interprets the voice screen (see [`docs/voz.md`](docs/voz.md)). Without it `/voz/interpretar` answers 503. Never commit it. |
+| backend | `VOZ_LLM_MODEL` | Optional. Default `claude-haiku-5-5`. (`VOZ_LLM_BASE_URL` exists only for tests.) |
 
 `front/.env.example` lists the frontend ones; copy it to `front/.env.local` for local work.
 

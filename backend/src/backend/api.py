@@ -22,7 +22,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.orm import Session
 
-from backend import servicios, sheets_client
+from backend import servicios, sheets_client, voz, voz_llm
 from backend.auth import Usuario, require_role, require_user
 from backend.database import get_session
 from backend.models import ARS_USD, LOT_STATES, UNITS, WHERE_MADE
@@ -1039,6 +1039,71 @@ def _resumen(simular: bool, configurado: bool, iniciado: datetime, reloj: float,
         "duracion_ms": int((time.monotonic() - reloj) * 1000), "total_filas": sum(p["filas"] for p in pestanas),
         "pestanas": pestanas, "ok": error is None, "error": error,
     }
+
+
+# --- Voice module (T7) ---------------------------------------------------------------------------------------------------
+# The model only EXTRACTS intent and raw mentions from one short sentence; `voz.proponer` resolves them against the database
+# with deterministic code and answers a PROPOSAL (resolved fields, candidates, missing data, the endpoint and the body for
+# it). Nothing is written here: the person confirms and the screen calls the existing write endpoints with their session.
+
+MENSAJE_VOZ_SIN_CLAVE = "El módulo de voz no está configurado: falta la clave del modelo."
+MENSAJE_VOZ_LIMITE = "Pediste demasiadas interpretaciones seguidas. Esperá un minuto y probá de nuevo."
+# SUPUESTO: validar. 20 requests per minute per user, counted per process (lost on restart, each replica counts its own).
+_LIMITADOR_VOZ = voz.LimitadorPorUsuario()
+
+
+class InterpretarIn(Entrada):
+    texto: Annotated[str, Field(min_length=1, max_length=voz_llm.MAX_TEXTO)]
+
+
+class EstadoVozOut(Salida):
+    configurado: bool
+    acciones: list[str]
+    max_caracteres: int
+    limite_por_minuto: int
+
+
+def get_voz_llm() -> voz_llm.VozLLM | None:
+    """The real model client while `ANTHROPIC_API_KEY` is set (building it makes no network call), else None."""
+    return voz_llm.crear_cliente()
+
+
+def get_fuente_voz(session: Sesion) -> voz.FuenteVoz:
+    return voz.FuenteSQL(session)
+
+
+@router.get("/voz/estado", response_model=EstadoVozOut)
+def estado_de_voz(llm: Annotated[voz_llm.VozLLM | None, Depends(get_voz_llm)]):
+    """Whether the model is configured, yes or no: never the key, the model name or the address."""
+    return {"configurado": llm is not None, "acciones": list(voz_llm.ACCIONES), "max_caracteres": voz_llm.MAX_TEXTO,
+            "limite_por_minuto": _LIMITADOR_VOZ.maximo}
+
+
+@router.post("/voz/interpretar", dependencies=ESCRITURA, response_model=voz.PropuestaOut)
+def interpretar_voz(
+    cuerpo: InterpretarIn, usuario: Annotated[Usuario, Depends(require_user)],
+    llm: Annotated[voz_llm.VozLLM | None, Depends(get_voz_llm)],
+    fuente: Annotated[voz.FuenteVoz, Depends(get_fuente_voz)],
+):
+    """Interprets one sentence and answers a proposal. 503 without the model key, 429 over the per-user limit, 502 / 504
+    (fixed Spanish message, never the provider's text) when the model fails. Saves nothing."""
+    if llm is None:
+        raise HTTPException(503, MENSAJE_VOZ_SIN_CLAVE)
+    if not _LIMITADOR_VOZ.permitir(usuario.id):
+        raise HTTPException(429, MENSAJE_VOZ_LIMITE, headers={"Retry-After": str(int(_LIMITADOR_VOZ.ventana))})
+    hoy = ahora().date()  # the model is told the Argentine day, so "hoy / ayer / el lunes" come back as ISO dates
+    try:
+        interpretacion = llm.interpretar(cuerpo.texto, hoy)
+    except voz_llm.ErrorDeVoz as error:
+        logger.info("voz interpretar resultado=%s largo=%d", error.clase, len(cuerpo.texto))
+        raise HTTPException(error.estado, error.mensaje) from None
+    except Exception as error:  # noqa: BLE001 - the answer must never carry the raw error (it may hold the key)
+        logger.warning("voz interpretar fallo inesperado: %s", type(error).__name__)
+        raise HTTPException(502, voz_llm.MENSAJE_NO_DISPONIBLE) from None
+    propuesta = voz.proponer(interpretacion, cuerpo.texto, hoy, fuente)
+    logger.info("voz propuesta accion=%s faltantes=%d avisos=%d largo=%d", propuesta.accion, len(propuesta.faltantes),
+                len(propuesta.avisos), len(cuerpo.texto))
+    return propuesta
 
 
 # --- Errors ----------------------------------------------------------------------------------------------------

@@ -39,6 +39,8 @@ Environment variables, roles and the backend side (`AUTH_VERIFY_URL`) are docume
 | `/costos-fijos` | everyone sees; `admin` and `cotizador` load | Period selector (`?periodo=AAAA-MM`, default the current period), factory / store / grand totals from the API, rows grouped by category with "Pendiente de monto" and "Ficticio" badges, an inline amount form for pending rows and a form to add an expense. |
 | `/calidad` | everyone | Counts by severity (each links to its filter), filters by severity, topic and text, and the findings grouped by topic with a link to where each one is fixed (a group shows its first 50 unless filtered to that topic). |
 
+| `/voz` | `admin` and `cotizador` use it; `consulta` sees the explanation | Voice module. A text box (always there, editable), a push-to-talk "Hablar" button that uses the browser's `SpeechRecognition` / `webkitSpeechRecognition` with `lang = "es-AR"` (disabled with the reason where the browser has none, in an insecure context, or while the model is not configured), "Interpretar", and the proposal as an editable confirmation card ("Entendí esto… ¿Lo cargo?"): resolved fields are filled in, ambiguous ones are radio choices, missing ones are marked. Only "Confirmar y cargar" writes. Examples are UI copy. The privacy note says the text goes to the model provider and that the browser's dictation may send the audio to Google or Apple. |
+
 ## Writing from the screens
 
 - Every write is a **server action** (`actions.ts` next to each page) that forwards the visitor's cookie to the API (`apiPost` in `lib/api.ts`). The browser never calls the API.
@@ -63,3 +65,12 @@ Each page calls `requireRole("admin")` and each server action starts with `denyU
 | `/admin/sync` | Google Sheet display copy (the Sheet only shows; nothing flows back). Shows whether the two backend variables are set (names only, never values), the last run kept in the backend's memory with rows per tab, a tab selector with the first 50 rows exactly as the Sheet would get them (a plain GET form, `?pestana=`), and two actions that each ask twice: "Simular (no escribe en Google)" and "Sincronizar ahora" (disabled, with the reason, while the variables are missing or a run is in progress). The page shows counts and text only; it never computes money. |
 
 `components/confirm-form.tsx` is the two-step form used for parameters and consumptions: the first press shows what will change, the second one sends it, and editing a field in between takes the summary back.
+
+## Voice module (`/voz`)
+
+- `app/(app)/voz/actions.ts`: `interpretarVoz` (calls `POST /voz/interpretar`, returns the proposal) and `confirmarVoz`. The second one does **not** call a new endpoint: it re-checks the role (`denyUnlessWriter`) and runs the existing server actions (`createPrecio`, `createDolar`, `addExtra`, `savePrecios`, `setMonto`) with the fields of the card, so the person's session, the validations, the "big jump" confirmation and the 409 / 422 messages are exactly the ones of the regular screens. The `endpoint_destino` / `payload_propuesto` of the proposal are informational: the browser never sends them anywhere.
+- `lib/use-dictation.ts` + `lib/voz.ts`: push-to-talk (`continuous = false`, `interimResults = true`, a click starts and a second click stops), support detected with `useSyncExternalStore` (unsupported on the server render, real answer after hydration), Spanish messages for each recognizer error. The microphone is released when the screen is left.
+- Accessibility: the status of the dictation and of the interpretation is an `<output>` (live region), errors go to an `aria-live` region, focus moves to the card's heading when a proposal arrives, missing fields have text and `aria-invalid` (not only a color), everything works with the keyboard.
+- The frontend never calculates money: it shows the decimal strings of the proposal and submits what the person confirmed. The model key lives in the backend only; `.env.example` mentions it as a comment.
+- Support (MDN browser-compat-data, 2026-10-28): Chrome / Edge with `webkit` prefix from 33 and unprefixed from 139, Safari 14.1+ with the `webkit` prefix only, Firefox none. Not exercised in a real browser or with a real microphone in this task.
+
