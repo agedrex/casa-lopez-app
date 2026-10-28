@@ -5,9 +5,10 @@ import {
   FormFeedback,
   inputClass,
   PrimaryButton,
+  SecondaryButton,
 } from "@/components/form";
 import { useActionForm } from "@/lib/use-action-form";
-import { createDolar } from "./actions";
+import { actualizarDolarBna, createDolar } from "./actions";
 
 export function DolarForm({ today }: { today: string }) {
   const { state, pending, formKey, onSubmit } = useActionForm(createDolar);
@@ -81,6 +82,27 @@ export function DolarForm({ today }: { today: string }) {
       <PrimaryButton pending={pending}>
         {pending ? "Cargando…" : "Cargar dólar"}
       </PrimaryButton>
+    </form>
+  );
+}
+
+export function DolarBnaForm() {
+  const { state, pending, onSubmit } = useActionForm(actualizarDolarBna);
+  return (
+    <form
+      onSubmit={onSubmit}
+      className="space-y-3"
+      aria-describedby="dolar-bna-help"
+    >
+      <p id="dolar-bna-help" className="text-sm text-muted">
+        Trae la cotización vendedor del Banco Nación (bna.com.ar) y la guarda
+        con su fecha. Si esa fecha ya estaba cargada, no cambia nada. SUPUESTO:
+        validar con Gerardo que el costo use el dólar vendedor.
+      </p>
+      <FormFeedback state={state} />
+      <SecondaryButton pending={pending}>
+        {pending ? "Consultando al BNA…" : "Actualizar desde BNA"}
+      </SecondaryButton>
     </form>
   );
 }

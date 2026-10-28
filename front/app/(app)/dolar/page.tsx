@@ -18,7 +18,7 @@ import { formatDate, formatRate, todayIso } from "@/lib/format";
 import { canWrite } from "@/lib/permissions";
 import { requireSession } from "@/lib/session";
 import type { Dolar } from "@/lib/types";
-import { DolarForm } from "./dolar-form";
+import { DolarBnaForm, DolarForm } from "./dolar-form";
 
 export const metadata: Metadata = { title: "Dólar" };
 
@@ -42,9 +42,14 @@ export default async function DolarPage() {
         <section>
           <SectionTitle>Cargar dólar</SectionTitle>
           {canWrite(user.role) ? (
-            <Card>
-              <DolarForm today={todayIso()} />
-            </Card>
+            <div className="space-y-5">
+              <Card>
+                <DolarBnaForm />
+              </Card>
+              <Card>
+                <DolarForm today={todayIso()} />
+              </Card>
+            </div>
           ) : (
             <ReadOnlyNote />
           )}

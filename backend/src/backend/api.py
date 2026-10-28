@@ -378,6 +378,10 @@ class DolarOut(Salida):
     nota: str | None
 
 
+class DolarBnaOut(DolarOut):
+    estado: Literal["creado", "ya_existia"]
+
+
 class ParametroOut(Salida):
     codigo: str
     constante: str
@@ -781,6 +785,13 @@ def crear_dolar(cuerpo: DolarIn, session: Sesion):
     return servicios.crear_dolar(session, **cuerpo.model_dump())
 
 
+@router.post("/dolar/actualizar-bna", dependencies=ESCRITURA, response_model=DolarBnaOut)
+def actualizar_dolar_bna(session: Sesion):
+    """Loads the BNA sell quote of the day from bna.com.ar. No body: the page is never supplied by the client.
+    Idempotent (`ya_existia` changes nothing); 502 with a fixed Spanish message when the BNA page fails."""
+    return servicios.actualizar_dolar_bna(session)
+
+
 @router.post("/costos-fijos", dependencies=ESCRITURA, response_model=CostosFijosOut, status_code=201)
 def crear_gasto(cuerpo: GastoIn, session: Sesion):
     return servicios.crear_gasto(session, **cuerpo.model_dump())
@@ -1109,7 +1120,11 @@ def interpretar_voz(
 # --- Errors ----------------------------------------------------------------------------------------------------
 
 def registrar_errores(app: FastAPI) -> None:
-    """Map service errors to HTTP codes: 404 missing, 409 already there, 422 refused."""
+    """Map service errors to HTTP codes: 404 missing, 409 already there, 422 refused, 502 outside source down."""
+
+    @app.exception_handler(servicios.FuenteNoDisponible)
+    async def fuente_no_disponible(request: Request, error: servicios.FuenteNoDisponible):
+        return JSONResponse(status_code=502, content={"detail": str(error)})
 
     @app.exception_handler(servicios.NoEncontrado)
     async def no_encontrado(request: Request, error: servicios.NoEncontrado):

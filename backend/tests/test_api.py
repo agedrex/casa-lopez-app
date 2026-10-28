@@ -139,8 +139,8 @@ SIN_PERMISO = {"detail": "No tenés permiso para esta acción."}
 
 
 def test_every_write_route_is_covered_by_the_role_tests():
-    assert len(ESCRITURAS) == 17 and {r for _, r in ESCRITURAS} >= {"/modelos", "/modelos/{codigo}/validado", "/voz/interpretar",
-        "/productos", "/precios", "/dolar", "/ordenes", "/talleres", "/talleres/{codigo}/activo",
+    assert len(ESCRITURAS) == 18 and {r for _, r in ESCRITURAS} >= {"/modelos", "/modelos/{codigo}/validado", "/voz/interpretar",
+        "/productos", "/precios", "/dolar", "/dolar/actualizar-bna", "/ordenes", "/talleres", "/talleres/{codigo}/activo",
         "/ordenes/{codigo}/estado", "/ordenes/{codigo}/items", "/ordenes/{codigo}/items/{item}/precios",
         "/costos-fijos/{codigo}/monto"}
 
@@ -158,8 +158,16 @@ def test_a_user_without_a_writing_role_gets_403_on_every_post(monkeypatch, metod
 
 @pytest.mark.parametrize("metodo, ruta", ESCRITURAS)
 @pytest.mark.parametrize("role", ["admin", "cotizador", "consulta,cotizador"])
-def test_admin_and_cotizador_pass_the_role_gate_on_every_post(metodo, ruta, role):
+def test_admin_and_cotizador_pass_the_role_gate_on_every_post(monkeypatch, metodo, ruta, role):
     client, _ = con_usuario(role)
+    if ruta == "/dolar/actualizar-bna":
+        # Bodyless route: stub the service so the test never reaches bna.com.ar.
+        def sin_fuente(*a, **k):
+            raise servicios.FuenteNoDisponible("sin red en la prueba")
+        monkeypatch.setattr(servicios, "actualizar_dolar_bna", sin_fuente)
+        response = client.request(metodo, ruta, json={})
+        assert response.status_code == 502  # past the gate: the service ran and its failure is mapped
+        return
     response = client.request(metodo, ruta.replace("{codigo}", "PRD-0001"), json={})
     assert response.status_code == 422  # past the gate: the empty body is what is refused
 

@@ -3,7 +3,7 @@
 import { refresh } from "next/cache";
 import { error, type FormState, ok } from "@/lib/action-state";
 import { apiPost } from "@/lib/api";
-import { parseDecimalInput } from "@/lib/format";
+import { formatDate, formatRate, parseDecimalInput } from "@/lib/format";
 import type { Dolar } from "@/lib/types";
 import {
   denyUnlessWriter,
@@ -13,6 +13,10 @@ import {
 } from "@/lib/write-guard";
 
 const TIPOS = ["VENDEDOR", "COMPRADOR"];
+// The BNA page is downloaded by the API (up to 15 s), so the call gets more room than a read.
+const BNA_TIMEOUT_MS = 25_000;
+
+type DolarBna = Dolar & { estado: "creado" | "ya_existia" };
 
 export async function createDolar(
   _previous: FormState,
@@ -44,4 +48,27 @@ export async function createDolar(
   }
   refresh();
   return ok("Dólar cargado.");
+}
+
+export async function actualizarDolarBna(
+  _previous: FormState,
+  _formData: FormData,
+): Promise<FormState> {
+  const denied = await denyUnlessWriter();
+  if (denied) return denied;
+
+  const result = await apiPost<DolarBna>(
+    "/dolar/actualizar-bna",
+    undefined,
+    BNA_TIMEOUT_MS,
+  );
+  if (!result.ok) return fromFailure(result);
+  refresh();
+  const { estado, ars_por_usd, fecha } = result.data;
+  if (estado === "ya_existia") {
+    return ok("El dólar BNA de esa fecha ya estaba cargado.");
+  }
+  return ok(
+    `Dólar BNA cargado: $${formatRate(ars_por_usd)} al ${formatDate(fecha)}.`,
+  );
 }

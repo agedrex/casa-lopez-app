@@ -17,6 +17,7 @@ from sqlalchemy import Integer, and_, cast, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, aliased
 
+from backend import dolar_bna
 from backend.costeo import (
     Desglose, ItemLote, PrecioVigente, Precios, ZERO, confeccion_externa, costo_kit, necesita_recotizar,
 )
@@ -64,6 +65,10 @@ class NoEncontrado(LookupError):
 
 class Conflicto(Exception):
     """The row already exists; history is append-only, so nothing is updated (HTTP 409)."""
+
+
+class FuenteNoDisponible(Exception):
+    """An outside source (the BNA page) failed. The message is fixed and safe to show (HTTP 502)."""
 
 
 @dataclass(frozen=True)
@@ -786,6 +791,41 @@ def crear_dolar(
     _insertar(session, fila, "Ya hay un dólar con esa fecha, tipo y fuente; cargá uno con otra fecha.")
     session.commit()
     return {"fecha": fila.fecha, "ars_por_usd": fila.ars_por_usd, "fuente": fila.fuente, "tipo": fila.tipo, "nota": fila.nota}
+
+
+# SUPUESTO: VENDEDOR (venta) is the quote used for costs; validate with Gerardo (open assumptions #12 and #9).
+DOLAR_BNA_TIPO = "VENDEDOR"
+DOLAR_BNA_NOTA = "Scrapeado de bna.com.ar"
+
+
+def actualizar_dolar_bna(session: Session, *, html: str | None = None) -> dict:
+    """Loads today's BNA sell quote as a new dated row; if that date, type and source exist it changes nothing.
+
+    `html` lets tests inject the page; without it the page is downloaded. History is append-only: an existing
+    row is never updated, even when the page now says another value.
+    """
+    try:
+        cotizacion = dolar_bna.parse_bna(html if html is not None else dolar_bna.descargar_bna())
+    except dolar_bna.BnaError as error:
+        raise FuenteNoDisponible(str(error)) from None
+    def existente() -> dict | None:
+        fila = session.scalars(select(TipoCambio).where(
+            TipoCambio.fecha == cotizacion.fecha, TipoCambio.fuente == "BNA", TipoCambio.tipo == DOLAR_BNA_TIPO)).first()
+        if fila is None:
+            return None
+        return {"estado": "ya_existia", "fecha": fila.fecha, "ars_por_usd": fila.ars_por_usd, "fuente": fila.fuente,
+                "tipo": fila.tipo, "nota": fila.nota}
+
+    if (previo := existente()) is not None:
+        return previo
+    try:
+        return {"estado": "creado", **crear_dolar(
+            session, fecha=cotizacion.fecha, ars_por_usd=cotizacion.venta, fuente="BNA", tipo=DOLAR_BNA_TIPO,
+            nota=DOLAR_BNA_NOTA)}
+    except Conflicto:  # another run inserted the same day between the check and the insert
+        if (previo := existente()) is None:
+            raise
+        return previo
 
 
 def crear_gasto(
