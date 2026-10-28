@@ -1,13 +1,24 @@
 import type { Metadata } from "next";
-import { ComingSoon } from "@/components/coming-soon";
+import { ErrorNotice, PageHeader } from "@/components/ui";
+import { apiGet } from "@/lib/api";
+import { GrillaClient, type GrillaData } from "./grilla-client";
 
 export const metadata: Metadata = { title: "Grilla completa" };
 
-export default function GrillaPage() {
+export default async function GrillaPage() {
+  const result = await apiGet<GrillaData>("/grilla");
   return (
-    <ComingSoon
-      title="Grilla completa"
-      description="Acá vas a poder consultar todos los productos y sus costos juntos."
-    />
+    <>
+      <PageHeader
+        eyebrow="Consultas"
+        title="Grilla completa"
+        description="Todos los productos y sus costos de hoy, etapa por etapa."
+      />
+      {result.ok ? (
+        <GrillaClient data={result.data} />
+      ) : (
+        <ErrorNotice message={result.message} />
+      )}
+    </>
   );
 }
