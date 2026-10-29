@@ -4,7 +4,7 @@ import { MobileNav } from "@/components/mobile-nav";
 import { UserMenu } from "@/components/user-menu";
 import { Wordmark } from "@/components/wordmark";
 import { mobileTabs, navForRole } from "@/lib/nav";
-import { parseRoles, ROLE_LABELS } from "@/lib/permissions";
+import { canWrite, parseRoles, ROLE_LABELS } from "@/lib/permissions";
 import { requireSession } from "@/lib/session";
 
 // The session is request-time data: everything that depends on it streams in
@@ -42,7 +42,7 @@ async function AuthenticatedShell({ children }: { children: React.ReactNode }) {
           {children}
         </main>
       </div>
-      <MobileNav groups={groups} tabs={tabs} />
+      <MobileNav groups={groups} tabs={tabs} canCreate={canWrite(user.role)} />
     </div>
   );
 }
