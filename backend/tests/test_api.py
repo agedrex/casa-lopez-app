@@ -146,7 +146,7 @@ def test_every_write_route_is_covered_by_the_role_tests():
 
 
 @pytest.mark.parametrize("metodo, ruta", ESCRITURAS)
-@pytest.mark.parametrize("role", ["consulta", None, "otro"])
+@pytest.mark.parametrize("role", ["consulta", "corte", None, "otro"])
 def test_a_user_without_a_writing_role_gets_403_on_every_post(monkeypatch, metodo, ruta, role):
     client, session = con_usuario(role)
     monkeypatch.setattr(servicios, "crear_producto", lambda *a, **k: pytest.fail("the service must not be called"))

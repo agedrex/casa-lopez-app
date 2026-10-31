@@ -62,9 +62,28 @@ const MOBILE_TAB_HREFS: Record<Role, readonly string[]> = {
   admin: ["/", "/productos", "/materiales", "/fabricacion"],
   cotizador: ["/", "/productos", "/materiales", "/fabricacion"],
   consulta: ["/", "/grilla", "/productos", "/calidad"],
+  corte: ["/corte", "/cueros", "/voz"],
 };
 
+const CORTE_NAV: NavGroup[] = [
+  {
+    title: "Producción",
+    items: [
+      { href: "/corte", label: "Corte" },
+      { href: "/cueros", label: "Cueros" },
+      { href: "/voz", label: "Voz" },
+    ],
+  },
+];
+
 export function navForRole(roles: Role[]): NavGroup[] {
+  if (
+    roles.includes("corte") &&
+    !roles.includes("admin") &&
+    !roles.includes("cotizador")
+  ) {
+    return CORTE_NAV;
+  }
   return NAV_ITEMS.map((group) => ({
     ...group,
     items: group.items.filter(
@@ -79,7 +98,9 @@ export function mobileTabs(groups: NavGroup[], roles: Role[]): NavItem[] {
     ? "admin"
     : roles.includes("cotizador")
       ? "cotizador"
-      : "consulta";
+      : roles.includes("corte")
+        ? "corte"
+        : "consulta";
   const hrefs = MOBILE_TAB_HREFS[role];
   return hrefs.flatMap((href) => items.filter((item) => item.href === href));
 }

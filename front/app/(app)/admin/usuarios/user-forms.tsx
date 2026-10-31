@@ -51,7 +51,7 @@ export function CreateUserForm() {
         <Field
           id="usuario-rol"
           label="Rol"
-          hint="Consulta solo mira; cotizador carga datos; administrador además gestiona esta sección."
+          hint="Gerente solo mira; Corte accede a corte, cueros y voz; Cotizador carga datos; Administrador además gestiona esta sección."
         >
           <select
             id="usuario-rol"

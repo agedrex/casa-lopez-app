@@ -1,10 +1,18 @@
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { MainNav } from "@/components/main-nav";
 import { MobileNav } from "@/components/mobile-nav";
 import { UserMenu } from "@/components/user-menu";
 import { Wordmark } from "@/components/wordmark";
 import { mobileTabs, navForRole } from "@/lib/nav";
-import { canWrite, parseRoles, ROLE_LABELS } from "@/lib/permissions";
+import {
+  canWrite,
+  isCorteOnly,
+  isCortePath,
+  parseRoles,
+  ROLE_LABELS,
+} from "@/lib/permissions";
 import { requireSession } from "@/lib/session";
 
 // The session is request-time data: everything that depends on it streams in
@@ -19,6 +27,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
 async function AuthenticatedShell({ children }: { children: React.ReactNode }) {
   const { user } = await requireSession();
+  const corteOnly = isCorteOnly(user.role);
+  if (
+    corteOnly &&
+    !isCortePath((await headers()).get("x-app-pathname") ?? "")
+  ) {
+    redirect("/corte");
+  }
   const roles = parseRoles(user.role);
   const [role] = roles;
   const groups = navForRole(roles);
@@ -42,7 +57,12 @@ async function AuthenticatedShell({ children }: { children: React.ReactNode }) {
           {children}
         </main>
       </div>
-      <MobileNav groups={groups} tabs={tabs} canCreate={canWrite(user.role)} />
+      <MobileNav
+        groups={groups}
+        tabs={tabs}
+        canCreate={canWrite(user.role) || corteOnly}
+        isCorte={corteOnly}
+      />
     </div>
   );
 }

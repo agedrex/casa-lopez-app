@@ -127,3 +127,7 @@ def require_role(*roles: str) -> Callable[..., Usuario]:
         return usuario
 
     return dependency
+
+
+# Reserved for future cutting endpoints; existing writes keep their own role gate.
+CORTE = require_role("admin", "cotizador", "corte")
