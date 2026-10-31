@@ -8,7 +8,7 @@ import pytest
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
-from backend import api, servicios
+from backend import api, cueros, servicios
 from backend.auth import Usuario, get_verifier, require_user
 from backend.database import get_session
 from backend.main import app
@@ -127,20 +127,21 @@ def test_invalid_period_is_rejected():
     assert client.get("/costos-fijos", params={"periodo": "octubre"}).status_code == 422
 
 
-# --- Roles: every write needs admin or cotizador; reads stay open to any signed-in user ----------------------
+# --- Roles: existing writes need admin or cotizador; only cutting writes also allow corte -------------------
 
 # The admin area (T5c) writes are admin only; test_admin.py covers their gate. Every other POST is admin or cotizador.
 # POST /sync/sheets (T6) is admin only too; test_sheets_api.py covers its gate.
 SOLO_ADMIN = {"/parametros/{codigo}", "/personas", "/personas/{codigo}/activo", "/colores", "/categorias",
               "/modelos/{codigo}/consumos", "/sync/sheets"}
-ESCRITURAS = [(m, r) for m, r in RUTAS if m == "POST" and r not in SOLO_ADMIN]
+SOLO_CORTE = {"/cueros/{codigo}/cortes", "/cueros/{codigo}/sobrante"}
+ESCRITURAS = [(m, r) for m, r in RUTAS if m == "POST" and r not in SOLO_ADMIN | SOLO_CORTE]
 LECTURAS = [(m, r) for m, r in RUTAS if m == "GET"]
 SIN_PERMISO = {"detail": "No tenés permiso para esta acción."}
 
 
 def test_every_write_route_is_covered_by_the_role_tests():
-    assert len(ESCRITURAS) == 18 and {r for _, r in ESCRITURAS} >= {"/modelos", "/modelos/{codigo}/validado", "/voz/interpretar",
-        "/productos", "/precios", "/dolar", "/dolar/actualizar-bna", "/ordenes", "/talleres", "/talleres/{codigo}/activo",
+    assert len(ESCRITURAS) == 19 and {r for _, r in ESCRITURAS} >= {"/modelos", "/modelos/{codigo}/validado", "/voz/interpretar",
+        "/productos", "/precios", "/cueros", "/dolar", "/dolar/actualizar-bna", "/ordenes", "/talleres", "/talleres/{codigo}/activo",
         "/ordenes/{codigo}/estado", "/ordenes/{codigo}/items", "/ordenes/{codigo}/items/{item}/precios",
         "/costos-fijos/{codigo}/monto"}
 
@@ -179,6 +180,19 @@ def test_posts_without_a_session_stay_401_not_403(metodo, ruta):
         response = client.request(metodo, ruta.replace("{codigo}", "PRD-0001"), json={})
     assert response.status_code == 401
     assert response.json() == {"detail": "No autenticado."}
+
+
+@pytest.mark.parametrize("ruta,cuerpo,servicio", [
+    ("/cueros/PZC-0001/cortes", {"m2": "1", "orden_item": "LIT-0001"}, "cortar"),
+    ("/cueros/PZC-0001/sobrante", {"decision": "REUTILIZABLE"}, "decidir_sobrante"),
+])
+@pytest.mark.parametrize("role,permitido", [("corte", True), ("admin", True), ("cotizador", True), ("consulta", False)])
+def test_cutting_writes_have_their_own_role_gate(monkeypatch, ruta, cuerpo, servicio, role, permitido):
+    client, _ = con_usuario(role)
+    monkeypatch.setattr(cueros, servicio, lambda *a, **k: (_ for _ in ()).throw(servicios.DatosInvalidos("Llegó al servicio.")))
+    response = client.post(ruta, json=cuerpo)
+    assert response.status_code == (422 if permitido else 403)
+    assert response.json() == ({"detail": "Llegó al servicio."} if permitido else SIN_PERMISO)
 
 
 @pytest.mark.parametrize("metodo, ruta", [(m, r) for m, r in LECTURAS if "{" not in r and r != "/productos/conteo"])
