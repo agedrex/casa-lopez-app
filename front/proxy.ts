@@ -1,11 +1,10 @@
 import { getSessionCookie } from "better-auth/cookies";
 import { type NextRequest, NextResponse } from "next/server";
 import { auth } from "./lib/auth";
-import { hasRole } from "./lib/permissions";
+import { hasRole, isCorteOnly, isCortePath } from "./lib/permissions";
 
 // Optimistic gate: a missing session cookie sends the visitor to /login. The real
-// authorization happens close to the data (pages and the API verifier); only /admin
-// is validated against the database here because its role decides access.
+// authorization happens close to the data (pages and the API verifier).
 export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
 
@@ -19,15 +18,21 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(login);
   }
 
-  if (pathname === "/admin" || pathname.startsWith("/admin/")) {
-    const session = await auth.api.getSession({ headers: request.headers });
-    if (!session) return NextResponse.redirect(new URL("/login", request.url));
-    if (!hasRole(session.user.role, "admin")) {
-      return NextResponse.redirect(new URL("/", request.url));
-    }
+  const session = await auth.api.getSession({ headers: request.headers });
+  if (!session) return NextResponse.redirect(new URL("/login", request.url));
+  if (isCorteOnly(session.user.role) && !isCortePath(pathname)) {
+    return NextResponse.redirect(new URL("/corte", request.url));
+  }
+  if (
+    (pathname === "/admin" || pathname.startsWith("/admin/")) &&
+    !hasRole(session.user.role, "admin")
+  ) {
+    return NextResponse.redirect(new URL("/", request.url));
   }
 
-  return NextResponse.next();
+  const headers = new Headers(request.headers);
+  headers.set("x-app-pathname", pathname);
+  return NextResponse.next({ request: { headers } });
 }
 
 export const config = {

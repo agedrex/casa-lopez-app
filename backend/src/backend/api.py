@@ -23,7 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.orm import Session
 
 from backend import servicios, sheets_client, voz, voz_llm
-from backend.auth import Usuario, require_role, require_user
+from backend.auth import CORTE, Usuario, require_role, require_user
 from backend.database import get_session
 from backend.models import ARS_USD, LOT_STATES, UNITS, WHERE_MADE
 from backend.sheets_client import ErrorDeSheets, SheetsClient
@@ -34,6 +34,8 @@ logger = logging.getLogger("uvicorn.error")
 router = APIRouter(dependencies=[Depends(require_user)])
 # Roles that may write. `require_role` builds on `require_user`, so no session still answers 401, not 403.
 ESCRITURA = [Depends(require_role("admin", "cotizador"))]
+# Use this on future cutting endpoints without widening ESCRITURA.
+CORTES = [Depends(CORTE)]
 # The admin area: only `admin` (the front also hides it, and re-checks the role in every server action).
 ADMINISTRACION = [Depends(require_role("admin"))]
 SoloAdmin = Annotated[Usuario, Depends(require_role("admin"))]
