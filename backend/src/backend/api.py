@@ -1,8 +1,8 @@
 """Costing API: read and load endpoints. Routers only validate input and call `servicios`.
 
 Every route requires a signed-in user (see auth.py; fail-closed without a verifier). Reads are open to
-any signed-in role; every POST also needs the role `admin` or `cotizador` (`consulta` gets 403), except the
-admin area (parameters, people, catalogs, model consumptions), which needs `admin`.
+any signed-in role; existing POST routes need `admin` or `cotizador`. Cutting and remainder POST routes
+also allow `corte`; the admin area (parameters, people, catalogs, model consumptions) needs `admin`.
 Calculated values (names, categories, totals, costs) are never accepted from the client:
 request models forbid unknown fields. Money leaves as strings because the response models
 keep Decimal and pydantic serializes it as text in JSON.
@@ -22,7 +22,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.orm import Session
 
-from backend import servicios, sheets_client, voz, voz_llm
+from backend import cueros, servicios, sheets_client, voz, voz_llm
 from backend.auth import CORTE, Usuario, require_role, require_user
 from backend.database import get_session
 from backend.models import ARS_USD, LOT_STATES, UNITS, WHERE_MADE
@@ -34,7 +34,7 @@ logger = logging.getLogger("uvicorn.error")
 router = APIRouter(dependencies=[Depends(require_user)])
 # Roles that may write. `require_role` builds on `require_user`, so no session still answers 401, not 403.
 ESCRITURA = [Depends(require_role("admin", "cotizador"))]
-# Use this on future cutting endpoints without widening ESCRITURA.
+# Cutting and remainder routes have their own gate; ESCRITURA stays unchanged.
 CORTES = [Depends(CORTE)]
 # The admin area: only `admin` (the front also hides it, and re-checks the role in every server action).
 ADMINISTRACION = [Depends(require_role("admin"))]
@@ -52,6 +52,109 @@ class Entrada(BaseModel):
 
 class Salida(BaseModel):
     pass
+
+
+class PiezaCueroIn(Entrada):
+    origen: Literal["COMPRA", "SOBRANTE_EXISTENTE"]
+    material: str
+    color: str | None = None
+    m2_iniciales: Annotated[Decimal, Field(gt=0, max_digits=12, decimal_places=6)]
+    fecha_de_compra: date | None = None
+    precio_pagado_por_m2: Annotated[Decimal, Field(ge=0, max_digits=14, decimal_places=4)] | None = None
+    moneda: Literal[*ARS_USD] | None = None
+    proveedor: str | None = None
+
+
+class CorteCueroIn(Entrada):
+    m2: Annotated[Decimal, Field(gt=0, max_digits=12, decimal_places=6)]
+    orden_item: str
+    fecha: date | None = None
+    registro_id: Annotated[int, Field(gt=0)] | None = None
+    unidades: Annotated[Decimal, Field(gt=0, max_digits=12, decimal_places=6)] | None = None
+
+
+class SobranteCueroIn(Entrada):
+    decision: Literal["REUTILIZABLE", "IRRECUPERABLE"]
+    fecha: date | None = None
+
+
+class MovimientoCueroOut(Salida):
+    id: int
+    fecha: date
+    tipo: Literal["CORTE", "DESPERDICIO", "AJUSTE", "ENTRADA"]
+    m2: Decimal
+    orden_item_id: int | None
+    registro_id: int | None
+    unidades: Decimal | None
+
+
+class PiezaCueroOut(Salida):
+    codigo: str
+    material: str
+    color: str | None
+    fecha_de_compra: date | None
+    proveedor: str | None
+    m2_iniciales: Decimal
+    precio_pagado_por_m2: Decimal | None
+    moneda: Literal[*ARS_USD] | None
+    estado: Literal["ENTERA", "EN_USO", "RETAZO", "CERRADA"]
+    disponible: Decimal
+    natural: Decimal
+    irrecuperable: Decimal
+    cortado: Decimal
+
+
+class PiezaCueroDetalleOut(PiezaCueroOut):
+    movimientos: list[MovimientoCueroOut]
+
+
+class UmbralMedidoOut(Salida):
+    casos: int
+    promedio_m2: Decimal
+    promedio_pct_comprado: Decimal | None
+
+
+class GrupoCueroOut(Salida):
+    material: str
+    color: str | None
+    comprado: Decimal
+    natural: Decimal
+    cuero_total_real: Decimal
+    cortado: Decimal
+    irrecuperable: Decimal
+    disponible: Decimal
+    porcentaje_desperdicio_neto: Decimal | None
+    costo_desperdicio_ars: Decimal | None
+    piezas: list[PiezaCueroOut]
+    umbral_medido: UmbralMedidoOut | None
+    umbral_retazo_m2: Decimal | None
+    avisos: list[str]
+
+
+class PiezaDisponibleOut(Salida):
+    codigo: str
+    material: str
+    color: str | None
+    estado: Literal["ENTERA", "EN_USO", "RETAZO"]
+    disponible: Decimal
+
+
+class AlternativaCueroOut(Salida):
+    material: str
+    color: str | None
+    disponible: Decimal
+
+
+class AlcanzaCueroOut(Salida):
+    producto: str
+    cantidad: Decimal
+    necesario: Decimal | None
+    disponible: Decimal
+    alcanza: bool
+    faltante: Decimal | None
+    piezas: list[PiezaDisponibleOut]
+    alternativas: list[AlternativaCueroOut]
+    mensaje: str | None
 
 
 # --- Request bodies --------------------------------------------------------------------------------
@@ -654,6 +757,38 @@ def modelo(codigo: str, session: Sesion):
 @router.get("/materiales", response_model=list[MaterialOut])
 def materiales(session: Sesion):
     return servicios.listar_materiales(session)
+
+
+@router.get("/cueros", response_model=list[GrupoCueroOut])
+def listar_cueros(session: Sesion, material: str | None = None, color: str | None = None):
+    return cueros.listar_cueros(session, material, color)
+
+
+@router.get("/cueros/alcanza", response_model=AlcanzaCueroOut)
+def alcanza_cuero(
+    session: Sesion, producto: str, cantidad: Annotated[Decimal, Query(gt=0, max_digits=12, decimal_places=6)],
+):
+    return cueros.alcanza(session, producto, cantidad)
+
+
+@router.get("/cueros/{codigo}", response_model=PiezaCueroDetalleOut)
+def detalle_cuero(codigo: str, session: Sesion):
+    return cueros.detalle_pieza(session, codigo)
+
+
+@router.post("/cueros", dependencies=ESCRITURA, response_model=PiezaCueroDetalleOut, status_code=201)
+def alta_cuero(cuerpo: PiezaCueroIn, session: Sesion):
+    return cueros.crear_pieza(session, **cuerpo.model_dump())
+
+
+@router.post("/cueros/{codigo}/cortes", dependencies=CORTES, response_model=PiezaCueroDetalleOut, status_code=201)
+def cortar_cuero(codigo: str, cuerpo: CorteCueroIn, session: Sesion):
+    return cueros.cortar(session, codigo, **{**cuerpo.model_dump(), "fecha": cuerpo.fecha or date.today()})
+
+
+@router.post("/cueros/{codigo}/sobrante", dependencies=CORTES, response_model=PiezaCueroDetalleOut)
+def sobrante_cuero(codigo: str, cuerpo: SobranteCueroIn, session: Sesion):
+    return cueros.decidir_sobrante(session, codigo, decision=cuerpo.decision, fecha=cuerpo.fecha or date.today())
 
 
 @router.get("/precios", response_model=list[PrecioOut])
