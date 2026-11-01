@@ -1,6 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AlcanzaResumen } from "@/components/cueros/alcanza-resumen";
+import {
+  buttonClass,
+  labelClass,
+  linkButtonClass,
+} from "@/components/cueros/estilos";
 import { GrupoCard, UmbralLinea } from "@/components/cueros/grupo-card";
 import { GruposTabla, PiezasTabla } from "@/components/cueros/tablas";
 import { inputClass } from "@/components/form";
@@ -38,13 +43,6 @@ const first = (value: string | string[] | undefined) =>
 
 const groupKey = (grupo: GrupoCuero) =>
   `${grupo.material}|${grupo.color ?? ""}`;
-
-const buttonClass =
-  "inline-flex min-h-12 w-full items-center justify-center rounded-card bg-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm text-white hover:bg-ink-soft sm:w-auto";
-const linkButtonClass =
-  "inline-flex min-h-12 w-full items-center justify-center rounded-card border border-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm hover:bg-ink hover:text-white sm:w-auto";
-const labelClass =
-  "mb-1.5 block text-sm uppercase tracking-caps-sm text-muted sm:text-xs";
 
 export default async function CuerosPage({
   searchParams,
