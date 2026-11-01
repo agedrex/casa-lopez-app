@@ -39,7 +39,7 @@ function Icon({ path }: { path: string }) {
 }
 
 const tabClass = (active: boolean) =>
-  `flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 px-1 text-[0.6875rem] ${
+  `flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 px-0.5 text-sm ${
     active ? "text-ink" : "text-muted"
   }`;
 
@@ -161,15 +161,13 @@ export function MobileNav({
             id="acciones-rapidas"
             className="fixed inset-x-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-40 rounded-2xl border border-line bg-surface p-2 shadow-card"
           >
-            {isCorte ? (
-              <Link
-                href="/corte"
-                className="flex min-h-14 items-center gap-3 rounded-card px-4 text-base text-ink"
-              >
-                <Icon path={ICONS["/corte"]} />
-                <span>Cortar</span>
-              </Link>
-            ) : null}
+            <Link
+              href="/corte"
+              className="flex min-h-14 items-center gap-3 rounded-card px-4 text-base text-ink"
+            >
+              <Icon path={ICONS["/corte"]} />
+              <span>Cortar</span>
+            </Link>
             <Link
               href="/voz"
               className="flex min-h-14 items-center gap-3 rounded-card px-4 text-base text-ink"

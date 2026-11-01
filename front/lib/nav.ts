@@ -24,6 +24,7 @@ export const NAV_ITEMS: NavGroup[] = [
         label: "Materiales y precios",
         shortLabel: "Precios",
       },
+      { href: "/cueros", label: "Cueros" },
       { href: "/admin/modelos", label: "Modelos", adminOnly: true },
     ],
   },
