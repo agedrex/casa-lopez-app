@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Avisos } from "@/components/avisos";
 import { ReadOnlyNote } from "@/components/form";
+import { PrecioReferencia } from "@/components/precio-referencia";
 import {
   Badge,
   Card,
@@ -36,6 +37,7 @@ import type {
   EtapaCatalogo,
   Ficha,
   Material,
+  PreciosTalleres,
 } from "@/lib/types";
 import { Comparison } from "./comparison";
 import { ComponenteForm, CotizacionForm, ExtraForm } from "./forms";
@@ -97,6 +99,7 @@ export default async function FichaPage({
       <div className="space-y-10">
         <Details ficha={ficha} />
         <CostToday ficha={ficha} />
+        <NegotiationReference codigo={ficha.codigo} />
         <Recipe ficha={ficha} />
         {ficha.componentes.length > 0 ? <Components ficha={ficha} /> : null}
         <StoredQuotes ficha={ficha} />
@@ -104,6 +107,26 @@ export default async function FichaPage({
         <Actions ficha={ficha} writer={canWrite(user.role)} />
       </div>
     </>
+  );
+}
+
+async function NegotiationReference({ codigo }: { codigo: string }) {
+  const precios = await apiGet<PreciosTalleres>(
+    `/productos/${encodeURIComponent(codigo)}/precios-talleres`,
+  );
+  return (
+    <section>
+      {precios.ok ? (
+        <Card>
+          <PrecioReferencia referencia={precios.data.referencia} />
+        </Card>
+      ) : (
+        <ErrorNotice
+          title="No pudimos cargar el precio de referencia."
+          message={precios.message}
+        />
+      )}
+    </section>
   );
 }
 

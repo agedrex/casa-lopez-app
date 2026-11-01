@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Avisos } from "@/components/avisos";
 import { ReadOnlyNote } from "@/components/form";
 import { LotStateBadge, whereText } from "@/components/orders-table";
+import { PrecioReferencia } from "@/components/precio-referencia";
 import {
   Card,
   ErrorNotice,
@@ -25,7 +26,13 @@ import {
 } from "@/lib/format";
 import { canWrite } from "@/lib/permissions";
 import { requireSession } from "@/lib/session";
-import type { OrdenDetalle, Persona, ProductoResumen } from "@/lib/types";
+import type {
+  OrdenDetalle,
+  Persona,
+  PreciosTalleres,
+  ProductoResumen,
+  Referencia,
+} from "@/lib/types";
 import { EstadoForm, ItemForm, PreciosForm } from "./forms";
 
 export const metadata: Metadata = { title: "Lote" };
@@ -276,10 +283,29 @@ function Timeline({ orden }: { orden: OrdenDetalle }) {
 }
 
 async function WriterSections({ orden }: { orden: OrdenDetalle }) {
-  const [personas, productos] = await Promise.all([
+  // The same endpoint as the product page, once per distinct product of the lot.
+  const codigosDeProducto = [...new Set(orden.items.map((i) => i.producto))];
+  const [personas, productos, precios] = await Promise.all([
     apiGet<Persona[]>("/personas"),
     apiGet<ProductoResumen[]>(`/productos?limit=${PRODUCT_LIMIT}`),
+    orden.donde_se_hace === "EXTERNA"
+      ? Promise.all(
+          codigosDeProducto.map((producto) =>
+            apiGet<PreciosTalleres>(
+              `/productos/${encodeURIComponent(producto)}/precios-talleres`,
+            ),
+          ),
+        )
+      : Promise.resolve([]),
   ]);
+  const referencias = new Map<string, Referencia>(
+    codigosDeProducto.flatMap((producto, i) => {
+      const respuesta = precios[i];
+      return respuesta?.ok
+        ? [[producto, respuesta.data.referencia] as const]
+        : [];
+    }),
+  );
   return (
     <>
       <section>
@@ -294,20 +320,28 @@ async function WriterSections({ orden }: { orden: OrdenDetalle }) {
         ) : (
           <Card className="space-y-6">
             <p className="text-sm text-muted">
-              El taller manda su precio después de recibir el lote. Estos dos
-              precios se guardan sobre el renglón: no queda historial de los
+              El taller pone el precio recién al retirar la mercadería. Lo que
+              cargues se guarda sobre el renglón: no queda historial de los
               valores anteriores.
             </p>
-            {orden.items.map((item) => (
-              <PreciosForm
-                key={item.codigo}
-                codigo={orden.codigo}
-                item={item.codigo}
-                producto={`${item.producto} · ${item.producto_nombre}`}
-                cotizado={item.cotizado}
-                pagado={item.pagado}
-              />
-            ))}
+            {orden.items.map((item) => {
+              const referencia = referencias.get(item.producto);
+              return (
+                <PreciosForm
+                  key={item.codigo}
+                  codigo={orden.codigo}
+                  item={item.codigo}
+                  producto={`${item.producto} · ${item.producto_nombre}`}
+                  cotizado={item.cotizado}
+                  pagado={item.pagado}
+                  referencia={
+                    referencia ? (
+                      <PrecioReferencia referencia={referencia} />
+                    ) : null
+                  }
+                />
+              );
+            })}
           </Card>
         )}
       </section>

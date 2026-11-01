@@ -22,6 +22,7 @@ function positive(value: string | null): value is string {
 type ItemBody = {
   producto: string;
   cantidad: string;
+  taller_precio_pagado_por_unidad_ars: string | null;
   taller_precio_cotizado_por_unidad_ars: string | null;
 };
 
@@ -29,18 +30,24 @@ type ItemBody = {
 function readItems(formData: FormData): ItemBody[] | FormState {
   const productos = formData.getAll("producto");
   const cantidades = formData.getAll("cantidad");
+  const pagados = formData.getAll("pagado");
   const cotizados = formData.getAll("cotizado");
   const items: ItemBody[] = [];
   for (let i = 0; i < productos.length; i++) {
     const producto = String(productos[i] ?? "").trim();
     const rawCantidad = String(cantidades[i] ?? "").trim();
+    const rawPagado = String(pagados[i] ?? "").trim();
     const rawCotizado = String(cotizados[i] ?? "").trim();
-    if (!producto && !rawCantidad && !rawCotizado) continue;
+    if (!producto && !rawCantidad && !rawPagado && !rawCotizado) continue;
     const fila = `Producto ${i + 1}`;
     if (!producto) return error(`${fila}: indique el código del producto.`);
     const cantidad = parseDecimalInput(rawCantidad);
     if (!positive(cantidad)) {
       return error(`${fila}: ingrese una cantidad mayor que cero.`);
+    }
+    const pagado = rawPagado ? parseDecimalInput(rawPagado) : null;
+    if (rawPagado && pagado === null) {
+      return error(`${fila}: el precio pagado no es un número válido.`);
     }
     const cotizado = rawCotizado ? parseDecimalInput(rawCotizado) : null;
     if (rawCotizado && cotizado === null) {
@@ -49,6 +56,7 @@ function readItems(formData: FormData): ItemBody[] | FormState {
     items.push({
       producto,
       cantidad,
+      taller_precio_pagado_por_unidad_ars: pagado,
       taller_precio_cotizado_por_unidad_ars: cotizado,
     });
   }
@@ -161,7 +169,7 @@ export async function savePrecios(
     body[field] = value;
   }
   if (!body.cotizado && !body.pagado) {
-    return error("Ingrese el precio cotizado, el pagado o los dos.");
+    return error("Ingresá el precio pagado (o lo que pidió el taller).");
   }
 
   const result = await apiPost<OrdenDetalle>(

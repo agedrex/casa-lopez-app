@@ -7,7 +7,7 @@ export type ProductoOption = { codigo: string; label: string };
 
 /**
  * Dynamic list of products for a lot. The fields are plain uncontrolled inputs sharing a name per
- * column (`producto`, `cantidad`, `cotizado`): the server action reads them as parallel lists.
+ * column (`producto`, `cantidad`, `pagado`, `cotizado`): the server action reads them as parallel lists.
  */
 export function ProductRows({
   productos,
@@ -68,15 +68,15 @@ export function ProductRows({
               />
             </Field>
             <Field
-              id={`${idPrefix}-cotizado-${row}`}
-              label="Precio cotizado por unidad"
+              id={`${idPrefix}-pagado-${row}`}
+              label="Precio pagado por unidad (al retirar)"
             >
               <input
-                id={`${idPrefix}-cotizado-${row}`}
-                name="cotizado"
+                id={`${idPrefix}-pagado-${row}`}
+                name="pagado"
                 inputMode="decimal"
                 autoComplete="off"
-                placeholder="Opcional"
+                placeholder="Se carga al retirar"
                 className={inputClass}
               />
             </Field>
@@ -91,6 +91,24 @@ export function ProductRows({
                 Quitar
               </button>
             )}
+            <details className="sm:col-span-full">
+              <summary className="min-h-11 cursor-pointer py-2 text-base text-muted">
+                Lo que pidió el taller (opcional)
+              </summary>
+              <Field
+                id={`${idPrefix}-cotizado-${row}`}
+                label="Precio cotizado por unidad"
+              >
+                <input
+                  id={`${idPrefix}-cotizado-${row}`}
+                  name="cotizado"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  placeholder="Opcional"
+                  className={inputClass}
+                />
+              </Field>
+            </details>
           </li>
         ))}
       </ul>

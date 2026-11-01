@@ -65,6 +65,12 @@ export function formatDate(value: string | null | undefined): string {
   return match ? `${match[3]}/${match[2]}/${match[1]}` : value;
 }
 
+/** Days already counted by the API (`dias`): 0 -> `hoy`, 1 -> `hace 1 día`, 12 -> `hace 12 días`. */
+export function daysAgoText(days: number): string {
+  if (days <= 0) return "hoy";
+  return days === 1 ? "hace 1 día" : `hace ${days} días`;
+}
+
 /** `2026-10-28T15:30:05.123-03:00` -> `28/10/2026 15:30:05`, read as written (no timezone shifts). */
 export function formatDateTime(value: string | null | undefined): string {
   if (!value) return NONE;

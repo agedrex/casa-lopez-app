@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import {
   Field,
   FormFeedback,
@@ -127,12 +128,14 @@ export function PreciosForm({
   producto,
   cotizado,
   pagado,
+  referencia,
 }: {
   codigo: string;
   item: string;
   producto: string;
   cotizado: string | null;
   pagado: string | null;
+  referencia?: ReactNode;
 }) {
   const { state, pending, formKey, onSubmit } = useActionForm(
     savePrecios.bind(null, codigo, item),
@@ -144,19 +147,13 @@ export function PreciosForm({
       aria-label={`Precios del taller para ${producto}`}
       className="space-y-3"
     >
-      <p className="text-sm font-bold">{producto}</p>
-      <div className="grid gap-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
-        <Field id={`precio-cotizado-${item}`} label="Cotizado por unidad">
-          <input
-            id={`precio-cotizado-${item}`}
-            name="cotizado"
-            inputMode="decimal"
-            autoComplete="off"
-            defaultValue={cotizado ?? ""}
-            className={inputClass}
-          />
-        </Field>
-        <Field id={`precio-pagado-${item}`} label="Pagado por unidad">
+      <p className="text-base font-bold">{producto}</p>
+      {referencia}
+      <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
+        <Field
+          id={`precio-pagado-${item}`}
+          label="Precio pagado por unidad (al retirar)"
+        >
           <input
             id={`precio-pagado-${item}`}
             name="pagado"
@@ -170,6 +167,21 @@ export function PreciosForm({
           {pending ? "Guardando…" : "Guardar precios"}
         </SecondaryButton>
       </div>
+      <details open={cotizado !== null} className="sm:max-w-sm">
+        <summary className="min-h-11 cursor-pointer py-2 text-base text-muted">
+          Lo que pidió el taller (opcional)
+        </summary>
+        <Field id={`precio-cotizado-${item}`} label="Cotizado por unidad">
+          <input
+            id={`precio-cotizado-${item}`}
+            name="cotizado"
+            inputMode="decimal"
+            autoComplete="off"
+            defaultValue={cotizado ?? ""}
+            className={inputClass}
+          />
+        </Field>
+      </details>
       <FormFeedback state={state} />
     </form>
   );

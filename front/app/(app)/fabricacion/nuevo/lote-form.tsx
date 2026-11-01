@@ -100,8 +100,9 @@ export function LoteForm({
         />
       </Field>
       <p className="text-sm text-muted">
-        El precio cotizado es lo que pidió el taller por unidad. El precio
-        pagado se carga después, desde el lote, cuando el taller cobra.
+        El taller pone el precio recién al retirar la mercadería: si todavía no
+        lo tenés, dejá el precio pagado vacío y cargalo después desde el lote.
+        Lo que pidió el taller es opcional.
       </p>
       <FormFeedback state={state} />
       <PrimaryButton pending={pending}>
