@@ -29,7 +29,7 @@ export function ViewSelector({
             key={option}
             href={href}
             aria-current={view === option ? "page" : undefined}
-            className={`inline-flex min-h-11 items-center rounded-card border px-4 py-2 text-sm sm:min-h-0 ${view === option ? "border-ink bg-ink text-white" : "border-line bg-surface hover:border-gold"}`}
+            className={`inline-flex min-h-12 items-center rounded-card border px-4 py-2 text-sm sm:min-h-0 ${view === option ? "border-ink bg-ink text-white" : "border-line bg-surface hover:border-gold"}`}
           >
             {option === "tabla" ? "Todo junto" : "Por secciones"}
           </Link>

@@ -467,3 +467,87 @@ export type VozPropuesta = {
   endpoint_destino: string | null;
   payload_propuesto: Record<string, unknown> | null;
 };
+
+// Leather inventory (GET /cueros, /cueros/{codigo}, /cueros/alcanza). Square meters and money come
+// calculated by the API as decimal strings: the frontend only formats and compares them.
+
+export type EstadoPiel = "ENTERA" | "EN_USO" | "RETAZO" | "CERRADA";
+
+export type PiezaCuero = {
+  codigo: string;
+  material: string;
+  color: string | null;
+  fecha_de_compra: string | null;
+  proveedor: string | null;
+  m2_iniciales: string;
+  precio_pagado_por_m2: string | null;
+  moneda: "ARS" | "USD" | null;
+  estado: EstadoPiel;
+  disponible: string;
+  natural: string;
+  irrecuperable: string;
+  cortado: string;
+};
+
+export type MovimientoCuero = {
+  id: number;
+  fecha: string;
+  tipo: "CORTE" | "DESPERDICIO" | "AJUSTE" | "ENTRADA";
+  m2: string;
+  orden_item_id: number | null;
+  registro_id: number | null;
+  unidades: string | null;
+};
+
+export type PiezaCueroDetalle = PiezaCuero & {
+  movimientos: MovimientoCuero[];
+};
+
+export type UmbralMedido = {
+  casos: number;
+  promedio_m2: string;
+  promedio_pct_comprado: string | null;
+};
+
+export type GrupoCuero = {
+  material: string;
+  color: string | null;
+  comprado: string;
+  natural: string;
+  cuero_total_real: string;
+  cortado: string;
+  irrecuperable: string;
+  disponible: string;
+  porcentaje_desperdicio_neto: string | null;
+  costo_desperdicio_ars: string | null;
+  piezas: PiezaCuero[];
+  umbral_medido: UmbralMedido | null;
+  umbral_retazo_m2: string | null;
+  avisos: string[];
+};
+
+export type PiezaDisponible = {
+  codigo: string;
+  material: string;
+  color: string | null;
+  estado: Exclude<EstadoPiel, "CERRADA">;
+  disponible: string;
+};
+
+export type AlternativaCuero = {
+  material: string;
+  color: string | null;
+  disponible: string;
+};
+
+export type AlcanzaCuero = {
+  producto: string;
+  cantidad: string;
+  necesario: string | null;
+  disponible: string;
+  alcanza: boolean;
+  faltante: string | null;
+  piezas: PiezaDisponible[];
+  alternativas: AlternativaCuero[];
+  mensaje: string | null;
+};

@@ -21,7 +21,7 @@ export function Badge({
   return (
     <span
       title={title}
-      className={`inline-block max-w-full truncate rounded-full px-2.5 py-0.5 align-middle text-xs tracking-caps-sm ${TONES[tone]}`}
+      className={`inline-block max-w-full truncate rounded-full px-2.5 py-0.5 align-middle text-sm tracking-caps-sm sm:text-xs ${TONES[tone]}`}
     >
       {children}
     </span>
@@ -43,7 +43,7 @@ export function PageHeader({
     <div className="mb-6 flex flex-wrap items-end justify-between gap-4 border-b border-line pb-5 sm:mb-10 sm:pb-6">
       <div>
         {eyebrow ? (
-          <p className="mb-2 text-xs uppercase tracking-caps-md text-gold-deep">
+          <p className="mb-2 text-sm uppercase tracking-caps-md text-gold-deep sm:text-xs">
             {eyebrow}
           </p>
         ) : null}
@@ -157,6 +157,6 @@ export function CardItem({ children }: { children: ReactNode }) {
   );
 }
 export const thClass =
-  "border-b border-line bg-paper-mid px-3 py-3 text-xs font-normal uppercase tracking-caps-sm text-muted sm:px-4";
+  "border-b border-line bg-paper-mid px-3 py-3 text-sm font-normal uppercase tracking-caps-sm text-muted sm:px-4 sm:text-xs";
 export const tdClass = "border-b border-line/70 px-3 py-3 align-top sm:px-4";
 export const numClass = "text-right tabular-nums";
