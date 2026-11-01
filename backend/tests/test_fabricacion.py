@@ -13,7 +13,7 @@ from backend import servicios
 from backend.servicios import (
     ItemDatos, LoteDatos, PrecioDeTaller, avisos_de_lote, avisos_de_renglon, confeccion_de_renglon,
     controles_de_producto, es_taller_de_ejemplo, estado_de_parametro, hallazgos_de_precios,
-    precios_parecidos, precios_por_taller, resumen_casa_vs_taller, severidad_de_aviso, ultimos_meses,
+    precios_parecidos, precios_por_taller, referencia_de_precio, resumen_casa_vs_taller, severidad_de_aviso, ultimos_meses,
 )
 
 # --- Pure rules (plantilla: Lote_Productos P / AA, Lotes Q, Casa_vs_Taller, Precios_Talleres) -------------------
@@ -126,6 +126,44 @@ def test_similar_products_share_category_and_size_and_mark_the_same_product():
     todos = precios_parecidos(PRECIOS, "PRD-0001", "Carteras", "CHICO", False)
     assert "PRD-0003" in {f["producto"] for f in todos} and "PRD-0004" not in {f["producto"] for f in todos}
     assert precios_parecidos(PRECIOS, "PRD-0001", None, None, True) == []  # no category, nothing to compare
+
+
+HOY = date(2026, 11, 1)
+
+
+def test_reference_same_product_uses_the_latest_paid_per_workshop_with_days_and_change():
+    ref = referencia_de_precio(PRECIOS, "PRD-0001", "Carteras", "CHICO", HOY)
+    assert ref["nivel"] == "MISMO_PRODUCTO" and ref["categoria"] == "Carteras" and ref["tamano"] == "CHICO"
+    primero, segundo = ref["items"]  # newest first
+    assert (primero["taller"], primero["precio"], primero["fecha"], primero["dias"]) == ("TAL-0001", D("11000"), date(2026, 10, 10), 22)
+    assert (primero["lote"], primero["cantidad"], primero["precio_anterior"], primero["variacion_pct"]) == ("LOT-0001", D("3"), D("10000"), D("10.00"))
+    assert (segundo["taller"], segundo["precio"], segundo["dias"]) == ("TAL-0002", D("12000"), 31)
+    assert segundo["precio_anterior"] is None and segundo["variacion_pct"] is None
+
+
+def test_reference_same_category_and_size_when_the_product_has_no_paid_price():
+    ref = referencia_de_precio(PRECIOS, "PRD-0009", "Carteras", "CHICO", HOY)
+    assert ref["nivel"] == "MISMA_CATEGORIA_Y_TAMANO"
+    assert [(f["producto"], f["taller"], f["precio"], f["dias"]) for f in ref["items"]] == [
+        ("PRD-0001", "TAL-0001", D("11000"), 22), ("PRD-0002", "TAL-0003", D("9000"), 29), ("PRD-0001", "TAL-0002", D("12000"), 31)]
+    assert all(f["tamano"] == "CHICO" for f in ref["items"])  # PRD-0003 (GRANDE) and PRD-0004 (Billeteras) stay out
+
+
+def test_reference_same_category_other_size_is_capped_at_five_comparables():
+    mas = [precio("TAL-0003", f"PRD-010{i}", date(2026, 9, i + 1), "5000", 10 + i, tamano="GRANDE") for i in range(4)]
+    ref = referencia_de_precio(PRECIOS + mas, "PRD-0009", "Carteras", "MEDIANO", HOY)
+    assert ref["nivel"] == "MISMA_CATEGORIA" and ref["tamano"] == "MEDIANO"
+    assert len(ref["items"]) == 5  # 8 comparables exist; only the 5 newest come back
+    assert [f["fecha"] for f in ref["items"]] == sorted((f["fecha"] for f in ref["items"]), reverse=True)
+    assert [f["producto"] for f in ref["items"]] == ["PRD-0001", "PRD-0003", "PRD-0002", "PRD-0001", "PRD-0103"]  # newest first
+    assert ref["items"][0]["dias"] == 22 and all(f["precio_anterior"] is None for f in ref["items"])
+
+
+def test_reference_without_paid_prices_says_so_and_never_invents_one():
+    ref = referencia_de_precio(PRECIOS, "PRD-0009", "Bolsos", "CHICO", HOY)
+    assert ref == {"nivel": "SIN_DATOS", "categoria": "Bolsos", "tamano": "CHICO", "items": []}
+    assert referencia_de_precio(PRECIOS, "PRD-0009", None, None, HOY)["nivel"] == "SIN_DATOS"
+    assert referencia_de_precio([], "PRD-0001", "Carteras", "CHICO", HOY)["items"] == []
 
 
 def test_example_workshops_are_recognised_by_their_note():
@@ -397,6 +435,10 @@ def test_workshop_prices_for_a_product_and_for_similar_ones(api):
     parecidos = {(f["producto"], f["taller"]): f for f in datos["parecidos"]}
     assert parecidos[(b, "TAL-0003")]["es_mismo_producto"] is False and parecidos[(a, "TAL-0001")]["es_mismo_producto"] is True
     assert c not in {f["producto"] for f in datos["parecidos"]}  # another category
+    referencia = datos["referencia"]  # paid prices only: TAL-0002 just quoted, so it is not a reference
+    assert referencia["nivel"] == "MISMO_PRODUCTO" and [f["taller"] for f in referencia["items"]] == ["TAL-0001"]
+    assert referencia["items"][0]["precio"] == "11000.0000" and referencia["items"][0]["precio_anterior"] == "10000.0000"
+    assert referencia["items"][0]["fecha"] == "2026-10-10" and isinstance(referencia["items"][0]["dias"], int)
     assert api.get(f"/productos/{a}/precios-talleres", params={"mismo_tamano": "false"}).status_code == 200
     assert api.get("/productos/PRD-9999/precios-talleres").status_code == 404
 

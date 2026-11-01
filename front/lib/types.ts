@@ -310,6 +310,35 @@ export type PrecioParecido = {
   es_mismo_producto: boolean;
 };
 
+export type ReferenciaNivel =
+  | "MISMO_PRODUCTO"
+  | "MISMA_CATEGORIA_Y_TAMANO"
+  | "MISMA_CATEGORIA"
+  | "SIN_DATOS";
+
+export type ReferenciaItem = {
+  fecha: string;
+  dias: number;
+  producto: string;
+  nombre: string;
+  tamano: string | null;
+  taller: string;
+  taller_nombre: string | null;
+  cantidad: string;
+  precio: string;
+  lote: string;
+  veces: number;
+  precio_anterior: string | null;
+  variacion_pct: string | null;
+};
+
+export type Referencia = {
+  nivel: ReferenciaNivel;
+  categoria: string | null;
+  tamano: string | null;
+  items: ReferenciaItem[];
+};
+
 export type PreciosTalleres = {
   producto: string;
   nombre: string;
@@ -318,6 +347,7 @@ export type PreciosTalleres = {
   veces_en_taller: number;
   por_taller: PrecioDeTaller[];
   parecidos: PrecioParecido[];
+  referencia: Referencia;
 };
 
 export type Gasto = {
