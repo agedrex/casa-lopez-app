@@ -683,6 +683,29 @@ class PrecioParecidoOut(Salida):
     es_mismo_producto: bool
 
 
+class ReferenciaItemOut(Salida):
+    fecha: date
+    dias: int
+    producto: str
+    nombre: str
+    tamano: str | None
+    taller: str
+    taller_nombre: str | None
+    cantidad: Decimal
+    precio: Decimal
+    lote: str
+    veces: int
+    precio_anterior: Decimal | None
+    variacion_pct: Decimal | None
+
+
+class ReferenciaOut(Salida):
+    nivel: Literal["MISMO_PRODUCTO", "MISMA_CATEGORIA_Y_TAMANO", "MISMA_CATEGORIA", "SIN_DATOS"]
+    categoria: str | None
+    tamano: str | None
+    items: list[ReferenciaItemOut]
+
+
 class PreciosTalleresOut(Salida):
     producto: str
     nombre: str
@@ -691,6 +714,7 @@ class PreciosTalleresOut(Salida):
     veces_en_taller: int
     por_taller: list[PrecioPorTallerOut]
     parecidos: list[PrecioParecidoOut]
+    referencia: ReferenciaOut
 
 
 class HallazgoOut(Salida):
@@ -882,7 +906,7 @@ def casa_vs_taller(session: Sesion, hasta: Annotated[str | None, Query(pattern=P
 
 @router.get("/productos/{codigo}/precios-talleres", response_model=PreciosTalleresOut)
 def precios_de_talleres(codigo: str, session: Sesion, mismo_tamano: bool = True):
-    return servicios.precios_de_talleres(session, codigo, mismo_tamano)
+    return servicios.precios_de_talleres(session, codigo, date.today(), mismo_tamano)
 
 
 @router.get("/calidad", response_model=CalidadOut)

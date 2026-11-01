@@ -904,6 +904,8 @@ MESES_CASA_VS_TALLER = 12
 # SUPUESTO: validar. The sheet lists the last 10 workshop prices of the category; the app lists the latest price per
 # (workshop, similar product) instead, up to this many rows.
 MAX_PARECIDOS = 20
+# SUPUESTO: validar con Gerardo. The negotiation reference lists at most this many comparables per level.
+MAX_COMPARABLES_REFERENCIA = 5
 CENTAVOS = Decimal("0.01")
 
 
@@ -1095,6 +1097,45 @@ def precios_parecidos(
         "taller_nombre": p.taller_nombre, "cantidad": p.cantidad, "precio": p.precio, "lote": p.lote,
         "es_mismo_producto": p.producto == producto,
     } for p in sorted(ultimo.values(), key=_por_fecha, reverse=True)[:limite]]
+
+
+def _dias_desde(fecha: date, hoy: date) -> int:
+    """Whole days from a lot date to today; a lot dated in the future counts as 0 (never a negative "hace")."""
+    return max((hoy - fecha).days, 0)
+
+
+def referencia_de_precio(
+    pagados: list[PrecioDeTaller], producto: str, categoria: str | None, tamano: str | None, hoy: date,
+    limite: int = MAX_COMPARABLES_REFERENCIA,
+) -> dict:
+    """Price to negotiate against: only what was PAID, from the closest level that has data.
+
+    `pagados` holds paid prices only (never quoted ones). Levels, in order: MISMO_PRODUCTO (latest paid per workshop),
+    MISMA_CATEGORIA_Y_TAMANO, MISMA_CATEGORIA (up to `limite` comparables, latest paid each) and SIN_DATOS.
+    SUPUESTO: validar. A product without size skips the same-size level; "comparable" is the category/size match.
+    """
+    def con_dias(fila: dict) -> dict:
+        return {**fila, "dias": _dias_desde(fila["fecha"], hoy)}
+
+    def respuesta(nivel: str, items: list[dict]) -> dict:
+        return {"nivel": nivel, "categoria": categoria, "tamano": tamano, "items": items}
+
+    talleres = sorted({(p.taller, p.taller_nombre or p.taller) for p in pagados if p.producto == producto})
+    propios = [f for f in precios_por_taller(pagados, producto, talleres) if f["hizo"]]
+    if propios:
+        base = next(p for p in pagados if p.producto == producto)
+        return respuesta("MISMO_PRODUCTO", [
+            con_dias({**f, "producto": producto, "nombre": base.nombre, "tamano": base.tamano})
+            for f in sorted(propios, key=lambda f: (f["fecha"], f["lote"]), reverse=True)])
+    niveles = []
+    if tamano is not None:
+        niveles.append(("MISMA_CATEGORIA_Y_TAMANO", True))
+    niveles.append(("MISMA_CATEGORIA", False))
+    for nivel, mismo_tamano in niveles:
+        parecidos = precios_parecidos(pagados, producto, categoria, tamano, mismo_tamano, limite)
+        if parecidos:
+            return respuesta(nivel, [con_dias({**f, "veces": 1, "precio_anterior": None, "variacion_pct": None}) for f in parecidos])
+    return respuesta("SIN_DATOS", [])
 
 
 # --- Lots: loading and costing -----------------------------------------------------------------------------
@@ -1302,35 +1343,44 @@ def casa_vs_taller(session: Session, hasta: str | None = None) -> dict:
     }
 
 
-def _precios_de_taller(session: Session) -> list[PrecioDeTaller]:
+def _precios_de_taller(session: Session) -> tuple[list[PrecioDeTaller], list[PrecioDeTaller]]:
+    """External-workshop prices per lot line: (paid else quoted, paid only). The second one feeds the negotiation reference."""
     lotes = {lote.codigo: lote for lote in _cargar_lotes(session)}
     items = _cargar_items(session, [lote.id for lote in lotes.values()])
     info = _info_productos(session, {item.producto for item in items}, con_costo=False)
-    precios = []
+    precios, pagados = [], []
     for item in items:
         lote = lotes[item.lote]
-        precio = confeccion_de_renglon(lote.donde, lote.fecha, item.cotizado, item.pagado)
-        if lote.donde != "EXTERNA" or lote.taller is None or not precio or precio <= 0:
+        if lote.donde != "EXTERNA" or lote.taller is None or lote.fecha is None:
             continue
         producto = info[item.producto]
-        precios.append(PrecioDeTaller(
-            fecha=lote.fecha, orden=item.id, producto=item.producto, nombre=producto.nombre, categoria=producto.categoria,
-            tamano=producto.tamano, taller=lote.taller, taller_nombre=lote.taller_nombre, cantidad=item.cantidad,
-            precio=precio, lote=lote.codigo,
-        ))
-    return precios
+
+        def precio_de(valor: Decimal) -> PrecioDeTaller:
+            return PrecioDeTaller(
+                fecha=lote.fecha, orden=item.id, producto=item.producto, nombre=producto.nombre, categoria=producto.categoria,
+                tamano=producto.tamano, taller=lote.taller, taller_nombre=lote.taller_nombre, cantidad=item.cantidad,
+                precio=valor, lote=lote.codigo,
+            )
+
+        precio = confeccion_de_renglon(lote.donde, lote.fecha, item.cotizado, item.pagado)
+        if precio and precio > 0:
+            precios.append(precio_de(precio))
+        if item.pagado and item.pagado > 0:
+            pagados.append(precio_de(item.pagado))
+    return precios, pagados
 
 
-def precios_de_talleres(session: Session, codigo: str, mismo_tamano: bool = True) -> dict:
+def precios_de_talleres(session: Session, codigo: str, hoy: date, mismo_tamano: bool = True) -> dict:
     """What each workshop charged for this product and for similar ones (same category and, by default, size)."""
     datos, _ = _cargar_uno(session, codigo)
-    precios = _precios_de_taller(session)
+    precios, pagados = _precios_de_taller(session)
     talleres = [(t["codigo"], t["nombre"]) for t in listar_talleres(session)]
     por_taller = precios_por_taller(precios, codigo, talleres)
     return {
         "producto": datos.codigo, "nombre": datos.nombre, "categoria": datos.categoria, "tamano": datos.tamano,
         "veces_en_taller": sum(fila["veces"] for fila in por_taller), "por_taller": por_taller,
         "parecidos": precios_parecidos(precios, codigo, datos.categoria, datos.tamano, mismo_tamano),
+        "referencia": referencia_de_precio(pagados, codigo, datos.categoria, datos.tamano, hoy),
     }
 
 
