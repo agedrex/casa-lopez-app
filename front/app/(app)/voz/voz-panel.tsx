@@ -6,7 +6,6 @@ import { Card } from "@/components/ui";
 import { useRecorder } from "@/lib/use-recorder";
 import { INTERPRETAR_IDLE, VOZ_MAX_CHARS } from "@/lib/voz";
 import { interpretarVoz } from "./actions";
-import { Cerebro } from "./cerebro";
 import { ExampleList } from "./examples";
 import { PropuestaCard } from "./propuesta-card";
 
@@ -28,6 +27,9 @@ export function VozPanel({ configured }: { configured: boolean }) {
   const countId = `${textId}-count`;
   const clock = `${String(Math.floor(recorder.seconds / 60)).padStart(2, "0")}:${String(recorder.seconds % 60).padStart(2, "0")}`;
 
+  const recording =
+    recorder.state === "recording" || recorder.state === "paused";
+
   const trimmed = text.trim();
   const canInterpret = configured && trimmed.length > 0 && !pending;
 
@@ -46,55 +48,45 @@ export function VozPanel({ configured }: { configured: boolean }) {
       )}
 
       <Card className="text-center">
-        <Cerebro state={recorder.state} visible={recorder.visible} />
-        <p className="mt-2 text-sm text-muted" aria-live="polite">
-          {recorder.state === "recording"
-            ? "Escuchando"
-            : recorder.state === "paused"
-              ? "Pausado"
-              : recorder.state === "requesting"
-                ? "Pidiendo permiso para el micrófono…"
-                : "Listo para grabar"}
-        </p>
-        <p
-          className="mt-1 font-display text-3xl tabular-nums"
-          role="timer"
-          aria-label={`Tiempo grabado: ${clock}`}
+        {/* One toggle button; the red dot and label make it obvious the mic is live. */}
+        <button
+          type="button"
+          onClick={() =>
+            recorder.state === "recording" || recorder.state === "paused"
+              ? recorder.stop()
+              : void recorder.start()
+          }
+          disabled={!configured || recorder.state === "requesting"}
+          aria-pressed={recording}
+          className={`min-h-14 w-full rounded-card px-5 py-3 text-base disabled:opacity-40 sm:w-auto sm:min-w-56 ${
+            recording ? "bg-bordeaux text-white" : "bg-ink text-white"
+          }`}
         >
-          {clock}
+          {recording
+            ? "Detener grabación"
+            : recorder.state === "requesting"
+              ? "Pidiendo permiso…"
+              : "Grabar"}
+        </button>
+        <p
+          className="mt-3 flex items-center justify-center gap-2 text-sm text-muted"
+          aria-live="polite"
+        >
+          {recording ? (
+            <>
+              <span
+                aria-hidden="true"
+                className="inline-block size-2.5 rounded-full bg-bordeaux"
+              />
+              <span>Grabando voz</span>
+              <span role="timer" className="tabular-nums">
+                {clock}
+              </span>
+            </>
+          ) : (
+            "Micrófono apagado"
+          )}
         </p>
-        <div className="mt-5 grid gap-3 sm:grid-cols-3">
-          <button
-            type="button"
-            onClick={() => void recorder.start()}
-            disabled={!configured || recorder.state !== "idle"}
-            className="min-h-14 rounded-card bg-ink px-5 py-3 text-base text-white disabled:opacity-40"
-          >
-            Grabar
-          </button>
-          <button
-            type="button"
-            onClick={
-              recorder.state === "paused" ? recorder.resume : recorder.pause
-            }
-            disabled={
-              recorder.state !== "recording" && recorder.state !== "paused"
-            }
-            className="min-h-14 rounded-card border border-ink px-5 py-3 text-base disabled:opacity-40"
-          >
-            {recorder.state === "paused" ? "Seguir" : "Pausar"}
-          </button>
-          <button
-            type="button"
-            onClick={recorder.stop}
-            disabled={
-              recorder.state !== "recording" && recorder.state !== "paused"
-            }
-            className="min-h-14 rounded-card border border-ink px-5 py-3 text-base disabled:opacity-40"
-          >
-            Terminar
-          </button>
-        </div>
         {recorder.error ? (
           <p role="alert" className="mt-4 text-sm text-bordeaux">
             {recorder.error}
