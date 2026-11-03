@@ -77,6 +77,71 @@ const CORTE_NAV: NavGroup[] = [
   },
 ];
 
+/** Simpler, flatter menu for the desktop sidebar. Mobile keeps NAV_ITEMS. */
+const DESKTOP_NAV: NavGroup[] = [
+  {
+    title: "",
+    items: [
+      { href: "/", label: "Panel del negocio" },
+      { href: "/productos", label: "Productos" },
+    ],
+  },
+  {
+    title: "Costos",
+    items: [
+      { href: "/materiales", label: "Materiales y precios" },
+      { href: "/cueros", label: "Cueros" },
+      { href: "/dolar", label: "Dólar" },
+      { href: "/admin/modelos", label: "Modelos", adminOnly: true },
+    ],
+  },
+  {
+    title: "Producción",
+    items: [
+      { href: "/fabricacion", label: "Lotes" },
+      { href: "/talleres", label: "Talleres" },
+      { href: "/costos-fijos", label: "Costos fijos" },
+    ],
+  },
+  {
+    title: "Revisión",
+    items: [
+      { href: "/grilla", label: "Grilla completa" },
+      { href: "/calidad", label: "Alertas" },
+    ],
+  },
+  {
+    title: "",
+    items: [
+      { href: "/voz", label: "Voz" },
+      { href: "/admin", label: "Administración", adminOnly: true },
+    ],
+  },
+];
+
+function isCorteOnlyRoles(roles: Role[]) {
+  return (
+    roles.includes("corte") &&
+    !roles.includes("admin") &&
+    !roles.includes("cotizador")
+  );
+}
+
+function filterByRole(groups: NavGroup[], roles: Role[]): NavGroup[] {
+  return groups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter(
+        (item) => !item.adminOnly || roles.includes("admin"),
+      ),
+    }))
+    .filter((group) => group.items.length > 0);
+}
+
+export function desktopNavForRole(roles: Role[]): NavGroup[] {
+  return isCorteOnlyRoles(roles) ? CORTE_NAV : filterByRole(DESKTOP_NAV, roles);
+}
+
 export function navForRole(roles: Role[]): NavGroup[] {
   if (
     roles.includes("corte") &&

@@ -5,7 +5,7 @@ import { MainNav } from "@/components/main-nav";
 import { MobileNav } from "@/components/mobile-nav";
 import { UserMenu } from "@/components/user-menu";
 import { Wordmark } from "@/components/wordmark";
-import { mobileTabs, navForRole } from "@/lib/nav";
+import { desktopNavForRole, mobileTabs, navForRole } from "@/lib/nav";
 import {
   canWrite,
   isCorteOnly,
@@ -51,7 +51,7 @@ async function AuthenticatedShell({ children }: { children: React.ReactNode }) {
       </header>
       <div className="lg:grid lg:grid-cols-[16rem_1fr]">
         <aside className="hidden border-r border-line bg-surface lg:block lg:min-h-[calc(100vh-4.5rem)]">
-          <MainNav groups={groups} />
+          <MainNav groups={desktopNavForRole(roles)} />
         </aside>
         <main className="min-w-0 px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-6 sm:px-10 sm:py-10 lg:px-14 lg:pb-10">
           {children}
