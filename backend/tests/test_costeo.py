@@ -168,3 +168,44 @@ def test_recotizar_on_cost_deviation_or_dolar_move_beyond_tolerance():
     assert necesita_recotizar(D("94"), D("100"), D("1000"), D("1000"), **kw)
     assert necesita_recotizar(D("100"), D("100"), D("1000"), D("1150"), **kw)
     assert not necesita_recotizar(D("100"), D("100"), D("1000"), D("1090"), **kw)
+
+
+# --- Cost-volume view: fixed cost per unit and break-even (SUPUESTO: validar) ---
+
+from backend.costeo import costo_por_unidad, punto_de_equilibrio  # noqa: E402
+
+
+def test_fixed_cost_per_unit_spreads_the_month_over_produced_units():
+    r = costo_por_unidad(D("100000"), D("50"), D("2000"))
+    assert r.fijo_por_unidad == D("2000")
+    assert r.total_por_unidad == D("4000")
+
+
+def test_cost_per_unit_without_produced_units_has_no_fixed_share():
+    r = costo_por_unidad(D("100000"), D("0"), D("2000"))
+    assert r.fijo_por_unidad is None
+    assert r.total_por_unidad is None
+
+
+def test_break_even_is_fixed_over_margin_per_unit():
+    r = punto_de_equilibrio(D("100000"), D("2000"), D("2500"))
+    assert r.margen_por_unidad == D("500")
+    assert r.unidades == D("200")
+    assert r.motivo is None
+
+
+def test_break_even_rounds_units_up_to_whole_units():
+    r = punto_de_equilibrio(D("1000"), D("10"), D("13"))
+    assert r.unidades == D("334")
+
+
+def test_break_even_needs_a_price_above_variable_cost():
+    for price in (D("2000"), D("1500")):
+        r = punto_de_equilibrio(D("100000"), D("2000"), price)
+        assert r.unidades is None
+        assert r.motivo == "PRECIO_NO_CUBRE_COSTO_VARIABLE"
+
+
+def test_break_even_without_price_gives_no_number():
+    r = punto_de_equilibrio(D("100000"), D("2000"), None)
+    assert r.unidades is None and r.motivo == "SIN_PRECIO"
