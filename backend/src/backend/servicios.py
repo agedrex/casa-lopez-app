@@ -9,7 +9,7 @@ import logging
 import re
 import unicodedata
 from collections import Counter
-from dataclasses import dataclass, field, replace
+from dataclasses import asdict, dataclass, field, replace
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session, aliased
 from backend import dolar_bna
 from backend.costeo import (
     Desglose, ItemLote, PrecioVigente, Precios, ZERO, confeccion_externa, costo_kit, costo_por_unidad,
-    necesita_recotizar, punto_de_equilibrio,
+    necesita_recotizar, punto_de_equilibrio, resultado_cvu,
 )
 from backend.models import (
     Categoria, Color, Cotizacion, Etapa, GastoPeriodo, Impuesto, KitComponente, Material, Modelo,
@@ -1415,7 +1415,15 @@ def _bloque_del_panel(
         "fijo_por_unidad": por_unidad.fijo_por_unidad,
         "total_por_unidad": por_unidad.total_por_unidad if variable is not None else None,
         "equilibrio": equilibrio,
+        "cvu": _cvu_del_mes(precio, variable, fijos, unidades),
     }
+
+
+def _cvu_del_mes(precio: Decimal | None, variable: Decimal | None, fijos: FijosDelMes, unidades: Decimal) -> dict | None:
+    if precio is None or variable is None or not fijos.cargados:
+        return None
+    resultado = resultado_cvu(fijos.total_fabrica, unidades, variable, precio)
+    return None if resultado is None else asdict(resultado)
 
 
 def _variacion_del_panel(anterior: Decimal | None, actual: Decimal | None) -> Decimal | None:

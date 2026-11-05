@@ -108,7 +108,7 @@ def test_price_updates_rise_between_three_and_twelve_percent_and_one_stays_old()
     assert len(cuero) >= 4
     for anterior, actual in zip(cuero, cuero[1:]):
         assert D(3) <= (actual.precio - anterior.precio) / anterior.precio * 100 <= D(12)
-    rojo = por_serie[("MAT-CU02", "Rojo (ejemplo)")]  # the only price of its (material, color): it ages untouched
+    rojo = por_serie[("MAT-CU02", "Rojo")]  # the only price of its (material, color): it ages untouched
     assert len(rojo) == 1 and (HOY - rojo[0].fecha).days > 90
     assert all(p.fecha <= HOY for p in precios)
 
@@ -119,8 +119,8 @@ def test_products_only_use_quotable_leather_and_colors_that_the_plan_creates():
     assert {x.cuero for x in p.productos} <= {"MAT-CU01", "MAT-CU02"}  # lagarto and yacaré are blocked
     colores = {c.nombre for c in p.colores}
     assert all(x.color in colores for x in p.productos if x.color)
-    assert all(x.nombre.endswith("(ejemplo)") for x in p.productos)
-    assert all(c.nombre.endswith("(ejemplo)") for c in p.colores)
+    assert all("ejemplo" not in x.nombre.lower() for x in p.productos)
+    assert all("ejemplo" not in c.nombre.lower() for c in p.colores)
 
 
 def test_each_month_has_two_to_four_lots_in_house_and_at_workshops():

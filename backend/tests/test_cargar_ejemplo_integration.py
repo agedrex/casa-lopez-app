@@ -106,7 +106,7 @@ def test_the_corrected_month_shows_the_new_amount_once(api):
     assert len(nuevos) == 1 and float(nuevos[0]["monto_ars_del_mes"]) == float(correccion.monto)
     original = next(g for g in resumen.plan.gastos if g.clave == correccion.clave_gasto)
     assert sum(1 for g in mes["gastos"] if g["concepto"] == original.concepto) == 1
-    assert "EJEMPLO" in nuevos[0]["nota_fuente"] and nuevos[0]["ficticio"] is True
+    assert "EJEMPLO" in nuevos[0]["nota_fuente"] and nuevos[0]["ficticio"] is False
     # the replaced row is kept, only it no longer counts
     assert api.session.scalar(select(func.count()).select_from(GastoPeriodo).where(
         GastoPeriodo.periodo == correccion.periodo, GastoPeriodo.concepto == original.concepto)) == 2

@@ -568,6 +568,19 @@ export type EquilibrioPanel = {
   motivo: MotivoEquilibrio | null;
 };
 
+export type CvuMes = {
+  ingresos: string;
+  costo_variable_total: string;
+  margen_contribucion: string;
+  margen_contribucion_unidad: string;
+  margen_contribucion_pct: string;
+  costos_fijos: string;
+  utilidad: string;
+  equilibrio_unidades: string;
+  equilibrio_ingresos: string;
+  margen_seguridad_pct: string;
+};
+
 export type BloqueCostoMes = {
   periodo: string;
   unidades: string;
@@ -580,6 +593,7 @@ export type BloqueCostoMes = {
   fijo_por_unidad: string | null;
   total_por_unidad: string | null;
   equilibrio: EquilibrioPanel;
+  cvu: CvuMes | null;
 };
 
 export type PrecioQueSubio = {

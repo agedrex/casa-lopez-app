@@ -1,49 +1,23 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import Link from "next/link";
-import { Card, ErrorNotice, PageHeader } from "@/components/ui";
+import { Card, PageHeader } from "@/components/ui";
 import { apiGet } from "@/lib/api";
+import { formatDate, formatRate } from "@/lib/format";
+import { PRECIO_COOKIE, precioValido } from "@/lib/precio-panel";
+import type { PanelCostos } from "@/lib/types";
 import {
-  formatDate,
-  formatPeriod,
-  formatRate,
-  parseDecimalInput,
-} from "@/lib/format";
-import type { Calidad, PanelCostos, TendenciaCostos } from "@/lib/types";
-import {
-  Avisos,
   BloqueConError,
-  CostoDelMes,
-  QueEstaViejo,
-  QueSubio,
-} from "./panel-costos";
-import { Simulador } from "./panel-simulador";
-import { ComoVieneElNegocio } from "./panel-tendencia";
+  FormularioPrecio,
+  PanelCvu,
+  PorRevisar,
+} from "./panel-cvu";
 
 export const metadata: Metadata = { title: "Panel del negocio" };
 
-type Search = Promise<{ precio?: string | string[] }>;
+type Search = Promise<{ precio_invalido?: string | string[] }>;
 
 const linkClass = "underline decoration-gold underline-offset-4";
-// The API accepts up to 14 digits with 4 decimals and a price above zero.
-const PRECIO_VALIDO = /^\d{1,10}(\.\d{1,4})?$/;
-const SOLO_CEROS = /^0+(\.0+)?$/;
-
-function leerPrecio(raw: string): {
-  precio: string | null;
-  invalido: string | null;
-} {
-  const text = raw.trim();
-  if (!text) return { precio: null, invalido: null };
-  const parsed = parseDecimalInput(text);
-  if (
-    parsed === null ||
-    !PRECIO_VALIDO.test(parsed) ||
-    SOLO_CEROS.test(parsed)
-  ) {
-    return { precio: null, invalido: text };
-  }
-  return { precio: parsed, invalido: null };
-}
 
 export default async function PanelPage({
   searchParams,
@@ -51,109 +25,39 @@ export default async function PanelPage({
   searchParams: Search;
 }) {
   const params = await searchParams;
-  const raw = Array.isArray(params.precio) ? params.precio[0] : params.precio;
-  const { precio, invalido } = leerPrecio(raw ?? "");
+  const invalidoRaw = params.precio_invalido;
+  const invalido = Array.isArray(invalidoRaw) ? invalidoRaw[0] : invalidoRaw;
+  const guardado = (await cookies()).get(PRECIO_COOKIE)?.value ?? "";
+  const precio = precioValido(guardado);
   const query = precio === null ? "" : `?precio=${encodeURIComponent(precio)}`;
-  // Each block reads its own endpoint and degrades alone: a failure only replaces that block.
-  const [panel, tendencia, quality] = await Promise.all([
-    apiGet<PanelCostos>(`/panel/costos${query}`),
-    apiGet<TendenciaCostos>("/panel/tendencia"),
-    apiGet<Calidad>("/calidad"),
-  ]);
+  const panel = await apiGet<PanelCostos>(`/panel/costos${query}`);
 
   return (
     <>
       <PageHeader
-        eyebrow="Resumen"
         title="Panel del negocio"
-        description="Cómo viene el negocio, cuánto cuesta producir, qué subió y qué hay que actualizar."
+        description="Cuánto vendés, cuánto gastás y cuánto te queda."
       />
       <div className="space-y-5">
-        {panel.ok && (
-          <p className="text-sm text-muted">
-            Mes: <strong>{formatPeriod(panel.data.periodo)}</strong> (se compara
-            con {formatPeriod(panel.data.periodo_anterior)})
-          </p>
-        )}
+        <FormularioPrecio precio={precio} invalido={invalido ?? null} />
         {panel.ok ? (
-          <Avisos avisos={panel.data.avisos} />
-        ) : (
-          <ErrorNotice
-            title="No pudimos cargar los avisos."
-            message={panel.message}
-          />
-        )}
-        {tendencia.ok ? (
-          <ComoVieneElNegocio tendencia={tendencia.data} />
-        ) : (
-          <BloqueConError
-            titulo="Cómo viene el negocio"
-            message={tendencia.message}
-          />
-        )}
-        {panel.ok ? (
-          <CostoDelMes panel={panel.data} />
-        ) : (
-          <BloqueConError
-            titulo="Cuánto cuesta producir este mes"
-            message={panel.message}
-          />
-        )}
-        <div className="grid gap-5 lg:grid-cols-2">
-          {panel.ok ? (
-            <>
-              <QueSubio panel={panel.data} />
-              <QueEstaViejo panel={panel.data} />
-            </>
-          ) : (
-            <>
-              <BloqueConError titulo="Qué subió" message={panel.message} />
-              <BloqueConError titulo="Qué está viejo" message={panel.message} />
-            </>
-          )}
-        </div>
-        {panel.ok ? (
-          <Simulador
-            panel={panel.data}
-            precio={precio}
-            precioInvalido={invalido}
-          />
-        ) : (
-          <BloqueConError
-            titulo="Punto de equilibrio"
-            message={panel.message}
-          />
-        )}
-        <Card className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 text-sm">
-          <p>
-            Dólar vigente:{" "}
-            {!panel.ok ? (
-              "no se pudo leer "
-            ) : panel.data.dolar ? (
-              <>
+          <>
+            <PanelCvu panel={panel.data} precio={precio} />
+            <PorRevisar panel={panel.data} />
+            {panel.data.dolar && (
+              <Card className="text-sm">
+                Dólar:{" "}
                 <strong>{formatRate(panel.data.dolar.ars_por_usd)}</strong>{" "}
-                pesos · {formatDate(panel.data.dolar.fecha)} ·{" "}
-                {panel.data.dolar.fuente}{" "}
-              </>
-            ) : (
-              "no hay ninguno cargado "
+                pesos · {formatDate(panel.data.dolar.fecha)}{" "}
+                <Link className={linkClass} href="/dolar">
+                  Ver dólar
+                </Link>
+              </Card>
             )}
-            <Link className={linkClass} href="/dolar">
-              Ver dólar
-            </Link>
-          </p>
-          <p>
-            Alertas de calidad:{" "}
-            {quality.ok ? (
-              <strong>{quality.data.resumen.total}</strong>
-            ) : (
-              "no se pudieron leer"
-            )}{" "}
-            <Link className={linkClass} href="/calidad">
-              Revisar
-            </Link>
-          </p>
-        </Card>
+          </>
+        ) : (
+          <BloqueConError message={panel.message} />
+        )}
       </div>
     </>
   );

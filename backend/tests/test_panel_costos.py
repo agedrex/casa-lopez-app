@@ -320,3 +320,46 @@ def test_the_price_is_optional(client, monkeypatch):
     monkeypatch.setattr(servicios, "panel_de_costos", lambda s, periodo, precio, hoy=None: llamadas.append((periodo, precio)) or panel())
     assert client.get("/panel/costos").status_code == 200
     assert llamadas == [(None, None)]
+
+
+# --- CVU (cost-volume-profit) block -------------------------------------------------------------------------------
+# November: 40 units, variable 175 per unit (7000 in total), fixed 4000.
+
+
+def test_cvu_without_a_price_is_none():
+    assert panel()["actual"]["cvu"] is None
+
+
+def test_cvu_with_a_price_gives_revenue_contribution_and_profit():
+    cvu = panel(precio_simulado=D("275"))["actual"]["cvu"]
+    assert cvu["ingresos"] == D("11000")  # 40 x 275
+    assert cvu["costo_variable_total"] == D("7000")  # 40 x 175
+    assert cvu["margen_contribucion"] == D("4000")  # 11000 - 7000
+    assert cvu["margen_contribucion_unidad"] == D("100")
+    assert cvu["margen_contribucion_pct"].quantize(D("0.01")) == D("36.36")  # 4000 / 11000
+    assert cvu["costos_fijos"] == D("4000")
+    assert cvu["utilidad"] == D("0")
+    assert cvu["equilibrio_unidades"] == D("40")
+    assert cvu["equilibrio_ingresos"] == D("11000")  # 40 x 275
+    assert cvu["margen_seguridad_pct"] == D("0")
+
+
+def test_cvu_profit_and_safety_margin_above_break_even():
+    cvu = panel(precio_simulado=D("375"))["actual"]["cvu"]  # margin 200 -> break-even 20 units
+    assert cvu["utilidad"] == D("4000")  # 40 x 200 - 4000
+    assert cvu["equilibrio_unidades"] == D("20")
+    assert cvu["margen_seguridad_pct"] == D("50")  # (40 - 20) / 40
+
+
+def test_cvu_loss_when_the_price_covers_variable_but_not_fixed_costs():
+    cvu = panel(precio_simulado=D("225"))["actual"]["cvu"]  # margin 50 -> 40 x 50 - 4000 = -2000
+    assert cvu["utilidad"] == D("-2000")
+    assert cvu["equilibrio_unidades"] == D("80")
+    assert cvu["margen_seguridad_pct"] == D("-100")  # (40 - 80) / 40
+
+
+def test_cvu_is_none_when_the_price_does_not_cover_the_variable_cost_or_data_is_missing():
+    assert panel(precio_simulado=D("150"))["actual"]["cvu"] is None
+    assert panel(precio_simulado=D("275"), fijos_por_mes={})["actual"]["cvu"] is None
+    assert panel(precio_simulado=D("275"), costos={})["actual"]["cvu"] is None
+    assert panel(precio_simulado=D("275"), lotes=[], items=[])["actual"]["cvu"] is None

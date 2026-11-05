@@ -83,12 +83,6 @@ export default async function TallerPage({
         actions={<TallerBadges taller={taller} />}
       />
       <div className="space-y-10">
-        {taller.ejemplo ? (
-          <Notice title="Este es un taller de ejemplo">
-            Se cargó para probar la aplicación: reemplácelo por el taller real
-            antes de registrar precios verdaderos.
-          </Notice>
-        ) : null}
         <section aria-label="Resumen del taller">
           <dl className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
             <Metric label="Lotes" value={String(taller.lotes)} />

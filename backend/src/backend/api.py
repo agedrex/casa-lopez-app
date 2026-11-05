@@ -575,6 +575,19 @@ class EquilibrioOut(Salida):
     motivo: str | None
 
 
+class CvuOut(Salida):
+    ingresos: Decimal
+    costo_variable_total: Decimal
+    margen_contribucion: Decimal
+    margen_contribucion_unidad: Decimal
+    margen_contribucion_pct: Decimal
+    costos_fijos: Decimal
+    utilidad: Decimal
+    equilibrio_unidades: Decimal
+    equilibrio_ingresos: Decimal
+    margen_seguridad_pct: Decimal
+
+
 class PanelPeriodoOut(Salida):
     periodo: str
     unidades: Decimal
@@ -587,6 +600,7 @@ class PanelPeriodoOut(Salida):
     fijo_por_unidad: Decimal | None
     total_por_unidad: Decimal | None
     equilibrio: EquilibrioOut
+    cvu: CvuOut | None = None
 
 
 class PanelVariacionOut(Salida):

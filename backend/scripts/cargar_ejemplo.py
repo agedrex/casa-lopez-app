@@ -44,19 +44,19 @@ REGLAS_DE_PRECIOS = (
     ("MAT-FO02", "ARS", "m2", Decimal("4053"), 2, Decimal("5"), Decimal("50")),
     ("MAT-FL01", "ARS", "m2", Decimal("10000"), 3, Decimal("8"), Decimal("100")),
 )
-COLOR_VIEJO = "Rojo (ejemplo)"
+COLOR_VIEJO = "Rojo"
 # The only price of its color: it is never updated, so "Qué está viejo" has something to show.
 PRECIO_VIEJO = ("MAT-CU02", COLOR_VIEJO, "USD", "m2", Decimal("82"))
 # model, leather, color, who makes it, name, sewing per unit at a workshop (ARS). The models are seeded (MOD-nnnn).
 PRODUCTOS = (
-    ("MOD-0001", "MAT-CU01", None, "EXTERNA", "Portafolio simple chico (ejemplo)", Decimal("12000")),
-    ("MOD-0011", "MAT-CU01", None, "INTERNA", "Cartera Peter chica (ejemplo)", Decimal("8000")),
-    ("MOD-0012", "MAT-CU01", None, "EXTERNA", "Cartera Peter Jenny (ejemplo)", Decimal("12000")),
-    ("MOD-0024", "MAT-CU01", None, "INTERNA", "Billetera dama (ejemplo)", Decimal("6000")),
-    ("MOD-0024", "MAT-CU02", COLOR_VIEJO, "INTERNA", "Billetera dama carpincho rojo (ejemplo)", Decimal("6000")),
-    ("MOD-0005", "MAT-CU01", None, "EXTERNA", "Necesaire Elio (ejemplo)", Decimal("16000")),
-    ("MOD-0013", "MAT-CU01", None, "INTERNA", "Portarretratos chico (ejemplo)", Decimal("8000")),
-    ("MOD-0016", "MAT-CU01", None, "INTERNA", "Portavalores (ejemplo)", Decimal("8000")),
+    ("MOD-0001", "MAT-CU01", None, "EXTERNA", "Portafolio simple chico", Decimal("12000")),
+    ("MOD-0011", "MAT-CU01", None, "INTERNA", "Cartera Peter chica", Decimal("8000")),
+    ("MOD-0012", "MAT-CU01", None, "EXTERNA", "Cartera Peter Jenny", Decimal("12000")),
+    ("MOD-0024", "MAT-CU01", None, "INTERNA", "Billetera dama", Decimal("6000")),
+    ("MOD-0024", "MAT-CU02", COLOR_VIEJO, "INTERNA", "Billetera dama carpincho rojo", Decimal("6000")),
+    ("MOD-0005", "MAT-CU01", None, "EXTERNA", "Necesaire Elio", Decimal("16000")),
+    ("MOD-0013", "MAT-CU01", None, "INTERNA", "Portarretratos chico", Decimal("8000")),
+    ("MOD-0016", "MAT-CU01", None, "INTERNA", "Portavalores", Decimal("8000")),
 )
 SUELDOS_FABRICA = {"CONSUMO_MOLDES": 1_200_000, "CORTE": 1_100_000, "CONFECCION": 1_150_000, "ENCARGADO": 1_500_000}
 SUELDO_VENDEDOR = 900_000
@@ -212,19 +212,19 @@ def _planificar_gastos(periodo: str, ultimo: bool, personas: list[dict]) -> list
         return _redondear(Decimal(base) * (1 + Decimal("0.02") * distancia), Decimal(10_000))
 
     filas = [
-        ("alquiler-fabrica", "Alquiler de la fábrica (ejemplo)", "FABRICA", "ALQUILER", None, Decimal(850_000 + 50_000 * escalon)),
-        ("luz-gas", "Luz y gas de la fábrica (ejemplo)", "FABRICA", "SERVICIOS", None, Decimal(LUZ_Y_GAS[mes] * 1000)),
-        ("mantenimiento", "Mantenimiento de máquinas (ejemplo)", "FABRICA", "OTROS", None, Decimal(60_000 + 10_000 * (indice % 3))),
+        ("alquiler-fabrica", "Alquiler de la fábrica", "FABRICA", "ALQUILER", None, Decimal(850_000 + 50_000 * escalon)),
+        ("luz-gas", "Luz y gas de la fábrica", "FABRICA", "SERVICIOS", None, Decimal(LUZ_Y_GAS[mes] * 1000)),
+        ("mantenimiento", "Mantenimiento de máquinas", "FABRICA", "OTROS", None, Decimal(60_000 + 10_000 * (indice % 3))),
     ]
     activas = [p for p in personas if p.get("activo", True)]
     for persona in activas:
         if persona["rol"] in SUELDOS_FABRICA:
-            filas.append((f"sueldo-{persona['codigo']}", f"Sueldo {persona['nombre']} (ejemplo)", "FABRICA", "SUELDOS",
+            filas.append((f"sueldo-{persona['codigo']}", f"Sueldo {persona['nombre']}", "FABRICA", "SUELDOS",
                           persona["codigo"], sueldo(SUELDOS_FABRICA[persona["rol"]])))
-    filas.append(("alquiler-local", "Alquiler del local (ejemplo)", "TIENDA", "ALQUILER", None, Decimal(700_000 + 40_000 * escalon)))
+    filas.append(("alquiler-local", "Alquiler del local", "TIENDA", "ALQUILER", None, Decimal(700_000 + 40_000 * escalon)))
     vendedor = next((p for p in activas if p["rol"] == "VENTAS"), None)
     if vendedor:
-        filas.append((f"sueldo-{vendedor['codigo']}", f"Sueldo {vendedor['nombre']} (ejemplo)", "TIENDA", "SUELDOS",
+        filas.append((f"sueldo-{vendedor['codigo']}", f"Sueldo {vendedor['nombre']}", "TIENDA", "SUELDOS",
                       vendedor["codigo"], sueldo(SUELDO_VENDEDOR)))
     pendientes = {"luz-gas", "mantenimiento"} if ultimo else set()  # the last month still waits for two bills
     return [
@@ -405,7 +405,7 @@ def cargar_ejemplo(session: Session, hasta: str, hoy: date, escribir: bool = Tru
         else:
             crear("gastos fijos", lambda g=gasto: servicios.crear_gasto(
                 session, periodo=g.periodo, concepto=g.concepto, fabrica_o_tienda=g.lado, categoria=g.categoria,
-                persona=g.persona, monto_ars_del_mes=g.monto, ficticio=True, nota_fuente=g.marca))
+                persona=g.persona, monto_ars_del_mes=g.monto, ficticio=False, nota_fuente=g.marca))
             nuevos.add(gasto.marca)
     existentes = _marcados(session, GastoPeriodo.codigo, GastoPeriodo.nota_fuente)
     for correccion in plan.correcciones:
@@ -417,7 +417,7 @@ def cargar_ejemplo(session: Session, hasta: str, hoy: date, escribir: bool = Tru
         else:
             try:
                 crear("correcciones", lambda c=correccion, k=existentes.get(original.marca): servicios.corregir_gasto(
-                    session, k, c.monto, nota=c.marca, ficticio=True))
+                    session, k, c.monto, nota=c.marca, ficticio=False))
             except servicios.Conflicto:
                 omitir("correcciones", f"El gasto de ejemplo de {correccion.periodo} ya fue corregido por otra persona.")
 

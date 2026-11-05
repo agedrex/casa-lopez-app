@@ -173,3 +173,39 @@ def punto_de_equilibrio(fijos: Decimal, variable_por_unidad: Decimal, precio: De
     if margen <= 0:
         return Equilibrio(margen, None, "PRECIO_NO_CUBRE_COSTO_VARIABLE")
     return Equilibrio(margen, (fijos / margen).to_integral_value(rounding=ROUND_CEILING), None)
+
+
+@dataclass(frozen=True)
+class ResultadoCvu:
+    ingresos: Decimal
+    costo_variable_total: Decimal
+    margen_contribucion: Decimal
+    margen_contribucion_unidad: Decimal
+    margen_contribucion_pct: Decimal
+    costos_fijos: Decimal
+    utilidad: Decimal
+    equilibrio_unidades: Decimal
+    equilibrio_ingresos: Decimal
+    margen_seguridad_pct: Decimal
+
+
+def resultado_cvu(
+    fijos: Decimal, unidades: Decimal, variable_por_unidad: Decimal, precio: Decimal,
+) -> ResultadoCvu | None:
+    """Cost-volume-profit for one month at a typed price; None unless the price is above the variable cost and there is volume.
+
+    SUPUESTO: validar con Gerardo. The volume is what was produced in lots, not what was sold.
+    """
+    margen_unidad = precio - variable_por_unidad
+    if unidades <= 0 or margen_unidad <= 0:
+        return None
+    ingresos = precio * unidades
+    variable_total = variable_por_unidad * unidades
+    contribucion = ingresos - variable_total
+    equilibrio = (fijos / margen_unidad).to_integral_value(rounding=ROUND_CEILING)
+    return ResultadoCvu(
+        ingresos=ingresos, costo_variable_total=variable_total, margen_contribucion=contribucion,
+        margen_contribucion_unidad=margen_unidad, margen_contribucion_pct=contribucion / ingresos * 100,
+        costos_fijos=fijos, utilidad=contribucion - fijos, equilibrio_unidades=equilibrio,
+        equilibrio_ingresos=equilibrio * precio, margen_seguridad_pct=(unidades - equilibrio) / unidades * 100,
+    )

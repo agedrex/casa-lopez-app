@@ -67,7 +67,7 @@ export default async function NuevoLotePage() {
             .filter((t) => t.activo)
             .map((t) => ({
               codigo: t.codigo,
-              label: `${t.nombre}${t.ejemplo ? " (ejemplo)" : ""}`,
+              label: t.nombre,
             }))}
           personas={personas.data
             .filter((p) => p.activo)
