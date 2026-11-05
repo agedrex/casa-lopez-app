@@ -1,7 +1,7 @@
 # CVU: rentabilidad del precio de venta
 
 Objective: the owner types a sale price and sees if it is profitable following cost-volume-profit (contribution margin first, break-even with sales mix later).
-Branch: feat/panel-cvu. Delivery: single PR for U1+U2 (ask-on-risk). Test runner: backend `.venv/bin/python -m pytest -q`.
+Branch: feat/panel-cvu. Delivery: stacked chain of 3 PRs (decided by the agent, user said "lo que sea mejor"): PR1 = 17e7478 + 8e08a61 + 3e722f2 (engine + precio_venta migration, ~300 lines, the migration is the high-risk part), PR2 = f9bc20d (endpoints, ~790 lines but mostly tests: one behavior, not split), PR3 = screens (U5). Each PR is based on the previous one. Push/PR creation is the user's decision. Test runner: backend `.venv/bin/python -m pytest -q`.
 
 ## Specs
 
@@ -23,6 +23,13 @@ Branch: feat/panel-cvu. Delivery: single PR for U1+U2 (ask-on-risk). Test runner
 - [x] T2 (S3, S4, S5) `margen_de_contribucion` in costeo.py + tests. Route: inline. Commit 17e7478. RED observed (ImportError), then GREEN.
 - [x] T3 (S7) `equilibrio_con_mezcla` pure engine + tests (RED first). Route: delegated (context backstop). Commit 3e722f2. RED: 9 failed (ImportError) then 42 passed.
 - [x] T4 (S8, S9, S10, S11) service functions + endpoints + tests (store, history, rentabilidad, escenario). Route: delegated (context backstop). Commit f9bc20d. Check: 1220 passed, 151 skipped; worker also ran the Postgres integration test on a throwaway DB. Parent fixed test_integration head (0006) and made the latest-price query ignore future-dated prices (not covered by a test).
+- S12 Product page (ficha): block "¿Es rentable este precio?" with a price field prefilled with the latest saved price, a button to see the result (calls `GET /productos/{codigo}/rentabilidad`), the verdict as a plain Spanish sentence per code (NO_CUBRE_VARIABLE, MC_BAJO, SALUDABLE, SIN_PRECIO, SIN_COSTO_VARIABLE), the figures the API returns (margen por unidad, MC %, markup %), a "Guardar este precio" button only for roles that can write, and the saved-price history. The front computes nothing.
+- S13 Panel: block "Escenario de ventas": rows of product + unidades (+ optional price), calls `POST /cvu/escenario`, shows equilibrio (ingresos and unidades), utilidad, margen de seguridad, the contribution of each product, `omitidos` and `avisos`. When `confiable` is false the figures are shown with a visible "no es confiable" banner. Plain copy: "margen de contribución" is explained as what is left of each unit to pay the fixed costs.
+
+## Tasks (U5)
+
+- [ ] T5 (S12) product page block + server actions + types. Route: delegated (context backstop).
+- [ ] T6 (S13) panel scenario block. Route: delegated together with T5 (shared lib/types.ts and API helpers).
 
 ## Log
 
