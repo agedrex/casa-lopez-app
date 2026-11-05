@@ -8,7 +8,7 @@ The document and the text read from it are UNTRUSTED data: the system prompt say
 tool schema and re-validated, and the text is stored and shown as plain text (never in HTML, SQL strings or another prompt).
 
 Modelled on `voz_llm.py` (same Messages API over `httpx`, same retry and error-safety rules, which it reuses). Configuration
-comes ONLY from the environment: `ANTHROPIC_API_KEY` (shared with the voice module; never logged, never in a repr, never
+comes ONLY from the environment: `AI_GATEWAY_API_KEY` (Vercel AI Gateway, preferred) or `ANTHROPIC_API_KEY` (both shared with the voice module; never logged, never in a repr, never
 returned), optional `OCR_LLM_MODEL` and optional `OCR_LLM_BASE_URL` (tests point it at a fake server). Errors that reach the
 caller carry a fixed Spanish message: the provider's text, the key and the document text are dropped on purpose. The log line
 holds the mime, the size, the latency and the outcome class, nothing else.
@@ -31,6 +31,7 @@ from pydantic import BaseModel, Field
 from backend.voz_llm import (
     ESTADOS_CON_REINTENTO, URL_POR_DEFECTO as DEFAULT_URL, VERSION_DE_LA_API as API_VERSION,
     _espera as _wait, _rechaza_herramienta_forzada as _refuses_forced_tool, _url_valida as _valid_url,
+    credencial_del_modelo as _model_credential,
 )
 
 # Audit lines go to uvicorn's logger (the app's root logger is left at WARNING and would drop them).
@@ -313,7 +314,7 @@ def _iso_date(value: object) -> date | None:
 
 
 def is_configured() -> bool:
-    return bool(os.getenv(KEY_VARIABLE, "").strip())
+    return _model_credential() is not None
 
 
 @lru_cache(maxsize=4)
@@ -323,7 +324,8 @@ def _client_for(key: str, model: str, base_url: str) -> AnthropicOcrLLM:
 
 def create_client() -> AnthropicOcrLLM | None:
     """The real client while the key is set (building it makes no network call), else None."""
-    key = os.getenv(KEY_VARIABLE, "").strip()
-    if not key:
+    credential = _model_credential()
+    if credential is None:
         return None
-    return _client_for(key, os.getenv(MODEL_VARIABLE, "").strip(), os.getenv(URL_VARIABLE, "").strip())
+    key, model, url = credential
+    return _client_for(key, os.getenv(MODEL_VARIABLE, "").strip() or model, os.getenv(URL_VARIABLE, "").strip() or url)

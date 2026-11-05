@@ -10,7 +10,7 @@ import { ExampleList } from "./examples";
 import { PropuestaCard } from "./propuesta-card";
 
 const NOT_CONFIGURED =
-  "El módulo de voz no está configurado: falta la clave del modelo. Pídale a un administrador que cargue ANTHROPIC_API_KEY en el servicio del backend.";
+  "El módulo de voz no está configurado: falta la clave del modelo. Pídale a un administrador que cargue AI_GATEWAY_API_KEY en el servicio del backend.";
 
 /**
  * Text box, local audio recorder, and the proposal that comes back.

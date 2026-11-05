@@ -240,7 +240,7 @@ def test_the_key_never_reaches_the_log_or_the_repr(caplog):
 
 @pytest.fixture
 def env(monkeypatch):
-    for name in ("ANTHROPIC_API_KEY", "OCR_LLM_MODEL", "OCR_LLM_BASE_URL"):
+    for name in ("ANTHROPIC_API_KEY", "AI_GATEWAY_API_KEY", "OCR_LLM_MODEL", "OCR_LLM_BASE_URL"):
         monkeypatch.delenv(name, raising=False)
     ocr_llm._client_for.cache_clear()
     return monkeypatch
@@ -261,6 +261,22 @@ def test_with_a_key_the_client_uses_the_default_model_unless_overridden(env):
     other = ocr_llm.create_client()
     assert other.model == "claude-sonnet-5-5" and other.base_url == "http://127.0.0.1:9"
     assert KEY not in repr(other)
+
+
+def test_the_vercel_gateway_key_switches_the_default_url_and_model(env):
+    env.setenv("AI_GATEWAY_API_KEY", KEY)
+    assert ocr_llm.is_configured() is True
+    c = ocr_llm.create_client()
+    assert c.base_url == "https://ai-gateway.vercel.sh" and c.model == "anthropic/claude-haiku-5-5"
+    assert KEY not in repr(c)
+    env.setenv("ANTHROPIC_API_KEY", "otra-clave")
+    assert ocr_llm.create_client().base_url == "https://ai-gateway.vercel.sh"  # the gateway wins
+    env.setenv("OCR_LLM_MODEL", "anthropic/claude-sonnet-5-5")
+    assert ocr_llm.create_client().model == "anthropic/claude-sonnet-5-5"
+    env.setenv("AI_GATEWAY_API_KEY", "   ")
+    env.delenv("OCR_LLM_MODEL")
+    direct = ocr_llm.create_client()
+    assert direct.base_url == ocr_llm.DEFAULT_URL and direct.model == "claude-haiku-5-5"
 
 
 def test_a_malformed_base_url_falls_back_to_the_default(env):

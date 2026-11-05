@@ -233,7 +233,7 @@ def test_logs_carry_action_latency_outcome_and_length_but_not_the_text(caplog):
 # --- configuration from the environment -------------------------------------------------------------------------------
 
 def test_configuration_comes_only_from_the_environment(monkeypatch):
-    for nombre in ("ANTHROPIC_API_KEY", "VOZ_LLM_MODEL", "VOZ_LLM_BASE_URL"):
+    for nombre in ("ANTHROPIC_API_KEY", "AI_GATEWAY_API_KEY", "VOZ_LLM_MODEL", "VOZ_LLM_BASE_URL"):
         monkeypatch.delenv(nombre, raising=False)
     assert voz_llm.configurado() is False and voz_llm.crear_cliente() is None
     monkeypatch.setenv("ANTHROPIC_API_KEY", "   ")
@@ -249,6 +249,26 @@ def test_configuration_comes_only_from_the_environment(monkeypatch):
     monkeypatch.setenv("VOZ_LLM_BASE_URL", "http://127.0.0.1:8765/")
     propio = voz_llm.crear_cliente()
     assert propio.modelo == "claude-sonnet-5-5" and propio.base_url == "http://127.0.0.1:8765"
+
+
+def test_the_vercel_gateway_key_switches_the_default_url_and_model(monkeypatch):
+    for nombre in ("ANTHROPIC_API_KEY", "AI_GATEWAY_API_KEY", "VOZ_LLM_MODEL", "VOZ_LLM_BASE_URL"):
+        monkeypatch.delenv(nombre, raising=False)
+    voz_llm._cliente_para.cache_clear()
+    monkeypatch.setenv("AI_GATEWAY_API_KEY", CLAVE)
+    assert voz_llm.configurado() is True
+    cliente = voz_llm.crear_cliente()
+    assert cliente.base_url == "https://ai-gateway.vercel.sh" and cliente.modelo == "anthropic/claude-haiku-5-5"
+    assert CLAVE not in repr(cliente)
+    # The gateway wins when both keys exist, and an explicit model / url still overrides the gateway defaults.
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "otra-clave")
+    assert voz_llm.crear_cliente().base_url == "https://ai-gateway.vercel.sh"
+    monkeypatch.setenv("VOZ_LLM_MODEL", "anthropic/claude-sonnet-5-5")
+    assert voz_llm.crear_cliente().modelo == "anthropic/claude-sonnet-5-5"
+    monkeypatch.setenv("AI_GATEWAY_API_KEY", "   ")  # blank gateway key: fall back to the direct Anthropic key
+    monkeypatch.delenv("VOZ_LLM_MODEL")
+    directo = voz_llm.crear_cliente()
+    assert directo.base_url == "https://api.anthropic.com" and directo.modelo == "claude-haiku-5-5"
 
 
 def test_a_malformed_base_url_is_ignored_not_trusted(monkeypatch):

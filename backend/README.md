@@ -247,7 +247,8 @@ Layout: `voz_llm.py` is the model client behind the `VozLLM` protocol (`interpre
 
 | Variable | What it is |
 |---|---|
-| `ANTHROPIC_API_KEY` | Required to enable the module. Never logged, never in a repr, never returned. |
+| `AI_GATEWAY_API_KEY` | Vercel AI Gateway key (preferred). Switches the default URL to `https://ai-gateway.vercel.sh` and the default model to `anthropic/claude-haiku-5-5`. |
+| `ANTHROPIC_API_KEY` | Direct Anthropic key, used only when no gateway key is set. Required to enable the module otherwise. Never logged, never in a repr, never returned. |
 | `VOZ_LLM_MODEL` | Optional. Default `claude-haiku-5-5`. |
 | `VOZ_LLM_BASE_URL` | Optional, for tests (a fake server). Default `https://api.anthropic.com`; anything that is not an `http(s)` URL is ignored. |
 

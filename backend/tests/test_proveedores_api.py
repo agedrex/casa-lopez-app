@@ -41,6 +41,7 @@ class FakeOcr:
 def environment(monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("AI_GATEWAY_API_KEY", raising=False)
     yield
     app.dependency_overrides.clear()
 
