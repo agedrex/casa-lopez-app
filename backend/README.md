@@ -164,6 +164,29 @@ Groups (`clave`): `productos`, `recotizar`, `modelos_sin_validar`, `modelos`, `m
 
 The integration cases of the API (`tests/test_api_integration.py`) also need `TEST_DATABASE_URL`; each one runs inside a transaction that is rolled back, so the seeded database is left untouched.
 
+## Example data for demos (`scripts/cargar_ejemplo.py`)
+
+Loads **synthetic example data** so the dashboard (panel, 6-month trend, fixed costs, corrections, copy month) can be tried end to end. **For staging demos only**: it refuses to run unless both `--entorno staging` and `--confirmar` are passed (exit code 2), and also refuses when `RAILWAY_ENVIRONMENT_NAME` is set to anything but `staging`. Loading it into the real staging database needs the project owner's explicit authorization first; locally, run it only against a disposable PostgreSQL.
+
+```sh
+cd backend
+DATABASE_URL=... .venv/bin/python scripts/cargar_ejemplo.py --entorno staging --confirmar [--hasta AAAA-MM] [--solo-mostrar]
+```
+
+- `--hasta` is the last month to load (default: the current month); it loads the 6 months ending there.
+- `--solo-mostrar` prints what it would create and writes nothing.
+- It prints the database `host:port/name` (never the user or password) before writing, and a Spanish summary at the end: rows created per kind and months covered.
+
+What it loads, all through the `servicios` functions (so their validations apply; no raw SQL writes): one dollar per month rising 2 % to 4 %; price updates of cuero estándar, tela and flex (3 % to 12 % per update) plus one price of a "Rojo (ejemplo)" carpincho that is never updated (so "Qué está viejo" has something to show); 8 example products built on seeded models; fixed costs of the factory (rent, electricity and gas, maintenance, the seeded people's salaries) and of the store (rent, one seller) with `ficticio = true`; one salary correction in a past month (`corregir_gasto`); two pending amounts in the last month; and 3 to 4 lots per month with 1 to 3 lines each, alternating in house and the seeded workshops, with states that follow the calendar (past months delivered, the current month in progress) and asked and paid workshop prices.
+
+How to recognize and re-run it:
+
+- Every row it creates has the literal text `EJEMPLO` in its note (`nota`, `nota_fuente`), names end with "(ejemplo)". The only column that cannot carry it is the dollar's `fuente`: `tipo_cambio.fuente` only accepts `BNA`, `EXCEL_VIEJO` or `MANUAL`, so the example dollars use `MANUAL` and the marker goes in `nota`.
+- It is idempotent: it looks each planned row up by its marker and creates only what is missing, so a second run creates nothing. A run that stopped halfway continues the lots from their current state.
+- A month that already has fixed costs of its own (for example the seeded `2026-10`) is **not** touched: example rows are never added on top of real ones, and the summary says so.
+- Rows are never deleted because the project forbids it. To remove the examples from a demo database, restore it from a backup or recreate it; search by `EJEMPLO` to see what they are.
+- The planning part is a pure function (`planificar`) tested in `tests/test_cargar_ejemplo.py`; `tests/test_cargar_ejemplo_integration.py` runs the loader against a disposable PostgreSQL.
+
 ## Google Sheet display copy (T6)
 
 **The Sheet is display only.** The app calculates everything (costing stays in `costeo.py` / `receta.py`, reached through `servicios.py`); it pushes plain values to a Google Sheet and **nothing is ever read back**. Editing the Sheet changes nothing in the app and is overwritten on the next sync. No formulas, no migrations, no new tables. Runbook for the people who set it up (Spanish): [`docs/sheets-sync.md`](../docs/sheets-sync.md).
