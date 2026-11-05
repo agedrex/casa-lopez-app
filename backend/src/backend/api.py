@@ -556,6 +556,77 @@ class CostosFijosOut(Salida):
     gastos: list[GastoOut]
 
 
+class EquilibrioOut(Salida):
+    margen_por_unidad: Decimal | None
+    unidades: Decimal | None
+    motivo: str | None
+
+
+class PanelPeriodoOut(Salida):
+    periodo: str
+    unidades: Decimal
+    unidades_sin_costo: Decimal
+    costo_variable_por_unidad: Decimal | None
+    fijos_fabrica: Decimal
+    fijos_cargados: bool
+    fijos_pendientes: int
+    fijos_ficticios: bool
+    fijo_por_unidad: Decimal | None
+    total_por_unidad: Decimal | None
+    equilibrio: EquilibrioOut
+
+
+class PanelVariacionOut(Salida):
+    costo_variable_por_unidad: Decimal | None
+    fijos_fabrica: Decimal | None
+    total_por_unidad: Decimal | None
+
+
+class PanelPrecioSubioOut(Salida):
+    material: str
+    color: str | None
+    precio: Decimal
+    moneda: str
+    vigente_desde: date
+    variacion_pct: Decimal
+    salto_grande: bool
+
+
+class PanelPrecioViejoOut(Salida):
+    material: str
+    color: str | None
+    vigente_desde: date
+
+
+class PanelPreciosViejosOut(Salida):
+    cantidad: int
+    mas_viejos: list[PanelPrecioViejoOut]
+
+
+class PanelDolarOut(Salida):
+    fecha: date
+    ars_por_usd: Decimal
+    fuente: str
+
+
+class PanelAvisoOut(Salida):
+    codigo: str
+    texto: str
+
+
+class PanelCostosOut(Salida):
+    periodo: str
+    periodo_anterior: str
+    actual: PanelPeriodoOut
+    anterior: PanelPeriodoOut
+    variacion_pct: PanelVariacionOut
+    precios_que_subieron: list[PanelPrecioSubioOut]
+    precios_viejos: PanelPreciosViejosOut
+    dolar: PanelDolarOut | None
+    dolar_viejo: bool
+    avisos: list[PanelAvisoOut]
+
+
 class ItemOut(Salida):
     codigo: str
     producto: str
@@ -878,6 +949,15 @@ def taller(codigo: str, session: Sesion):
 @router.get("/costos-fijos", response_model=CostosFijosOut)
 def costos_fijos(session: Sesion, periodo: Annotated[str | None, Query(pattern=PERIODO)] = None):
     return servicios.costos_fijos(session, periodo)
+
+
+@router.get("/panel/costos", response_model=PanelCostosOut)
+def panel_de_costos(
+    session: Sesion, periodo: Annotated[str | None, Query(pattern=PERIODO)] = None,
+    precio: Annotated[Decimal | None, Query(gt=0, max_digits=14, decimal_places=4)] = None,
+):
+    """Cost of the month (default: this calendar month) against the previous one; `precio` only feeds the break-even simulator."""
+    return servicios.panel_de_costos(session, periodo, precio)
 
 
 @router.get("/costos-fijos/periodos", response_model=PeriodosOut)

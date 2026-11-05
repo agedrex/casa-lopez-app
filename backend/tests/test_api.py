@@ -201,6 +201,9 @@ def test_reads_are_open_to_the_consulta_role(monkeypatch, metodo, ruta):
     # The heavy reads are covered against PostgreSQL; here only the gate matters, so the service answers an empty body.
     monkeypatch.setattr(servicios, "listar_ordenes", lambda *a, **k: [])
     monkeypatch.setattr(servicios, "casa_vs_taller", lambda *a, **k: {"talleres": [], "meses": []})
+    monkeypatch.setattr(servicios, "panel_de_costos", lambda *a, **k: servicios.armar_panel_de_costos(
+        periodo="2026-11", precio=None, hoy=date(2026, 11, 4), lotes=[], items=[], costos={}, fijos={}, precios=[],
+        dolar=None))
     monkeypatch.setattr(servicios, "periodos_de_costos_fijos", lambda *a, **k: {"vigente": None, "periodos": []})
     monkeypatch.setattr(servicios, "calidad_de_datos", lambda *a, **k: {
         "resumen": {"alta": 0, "media": 0, "baja": 0, "total": 0}, "grupos": []})
@@ -217,7 +220,7 @@ def test_the_new_reads_are_declared():
     assert {
         ("GET", "/ordenes"), ("GET", "/ordenes/{codigo}"), ("GET", "/fabricacion/casa-vs-taller"),
         ("GET", "/talleres/{codigo}"), ("GET", "/personas"), ("GET", "/costos-fijos/periodos"), ("GET", "/calidad"),
-        ("GET", "/productos/{codigo}/precios-talleres"),
+        ("GET", "/productos/{codigo}/precios-talleres"), ("GET", "/panel/costos"),
     } <= set(RUTAS)
 
 

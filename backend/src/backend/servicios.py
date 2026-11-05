@@ -19,7 +19,8 @@ from sqlalchemy.orm import Session, aliased
 
 from backend import dolar_bna
 from backend.costeo import (
-    Desglose, ItemLote, PrecioVigente, Precios, ZERO, confeccion_externa, costo_kit, necesita_recotizar,
+    Desglose, ItemLote, PrecioVigente, Precios, ZERO, confeccion_externa, costo_kit, costo_por_unidad,
+    necesita_recotizar, punto_de_equilibrio,
 )
 from backend.models import (
     Categoria, Color, Cotizacion, Etapa, GastoPeriodo, Impuesto, KitComponente, Material, Modelo,
@@ -1341,6 +1342,174 @@ def casa_vs_taller(session: Session, hasta: str | None = None) -> dict:
         "talleres": [{"codigo": c, "nombre": n} for c, n in talleres],
         "meses": resumen_casa_vs_taller(lotes, items, talleres, meses),
     }
+
+
+# --- Cost panel (costo-volumen) ---------------------------------------------------------------------------
+
+# SUPUESTO: validar. A price in force for more than this many days is shown as stale on the panel.
+PRECIO_VIEJO_DIAS = 90
+# SUPUESTO: validar. The dollar on record is stale after this many days.
+DOLAR_VIEJO_DIAS = 7
+MAX_FILAS_DEL_PANEL = 5
+AVISO_VOLUMEN_PRODUCIDO = "El volumen es lo producido en lotes, no lo vendido."
+
+
+@dataclass(frozen=True)
+class FijosDelMes:
+    """Factory fixed costs of one month. `cargados` is False when the month has no rows at all."""
+    cargados: bool
+    total_fabrica: Decimal
+    pendientes: int
+    ficticios: bool
+
+
+SIN_FIJOS = FijosDelMes(cargados=False, total_fabrica=ZERO, pendientes=0, ficticios=False)
+
+
+def _bloque_del_panel(
+    periodo: str, precio: Decimal | None, lotes: list[LoteDatos], items: list[ItemDatos],
+    costos: dict[str, Decimal | None], fijos: FijosDelMes,
+) -> dict:
+    del_mes = {lote.codigo for lote in lotes if lote.fecha is not None and mes_de(lote.fecha) == periodo}
+    unidades = sin_costo = con_costo = total_variable = ZERO
+    for item in items:
+        if item.lote not in del_mes:
+            continue
+        unidades += item.cantidad
+        costo = costos.get(item.producto)
+        if costo is None:
+            sin_costo += item.cantidad
+        else:
+            con_costo += item.cantidad
+            total_variable += costo * item.cantidad
+    variable = total_variable / con_costo if con_costo > 0 else None
+    # Fixed costs are spread over every unit produced, with or without a computable cost.
+    por_unidad = costo_por_unidad(fijos.total_fabrica, unidades, ZERO if variable is None else variable)
+    if precio is None:
+        e = punto_de_equilibrio(fijos.total_fabrica, ZERO, None)
+        equilibrio = {"margen_por_unidad": e.margen_por_unidad, "unidades": e.unidades, "motivo": e.motivo}
+    elif variable is None or not fijos.cargados:  # nothing reliable to divide: say why instead of a number
+        equilibrio = {"margen_por_unidad": None, "unidades": None, "motivo": "SIN_COSTO_VARIABLE" if variable is None else "SIN_FIJOS"}
+    else:
+        e = punto_de_equilibrio(fijos.total_fabrica, variable, precio)
+        equilibrio = {"margen_por_unidad": e.margen_por_unidad, "unidades": e.unidades, "motivo": e.motivo}
+    return {
+        "periodo": periodo, "unidades": unidades, "unidades_sin_costo": sin_costo,
+        "costo_variable_por_unidad": variable, "fijos_fabrica": fijos.total_fabrica, "fijos_cargados": fijos.cargados,
+        "fijos_pendientes": fijos.pendientes, "fijos_ficticios": fijos.ficticios,
+        "fijo_por_unidad": por_unidad.fijo_por_unidad,
+        "total_por_unidad": por_unidad.total_por_unidad if variable is not None else None,
+        "equilibrio": equilibrio,
+    }
+
+
+def _variacion_del_panel(anterior: Decimal | None, actual: Decimal | None) -> Decimal | None:
+    if anterior is None or actual is None:
+        return None
+    return variacion_de_precio(anterior, actual)[0]
+
+
+def armar_panel_de_costos(
+    *, periodo: str, precio: Decimal | None, hoy: date, lotes: list[LoteDatos], items: list[ItemDatos],
+    costos: dict[str, Decimal | None], fijos: dict[str, FijosDelMes], precios: list[dict], dolar: dict | None,
+) -> dict:
+    """Pure assembly of the cost panel from plain data; `costos` is the total cost today per product code (None: unknown)."""
+    anterior_periodo = ultimos_meses(periodo, 2)[1]
+    actual = _bloque_del_panel(periodo, precio, lotes, items, costos, fijos.get(periodo, SIN_FIJOS))
+    anterior = _bloque_del_panel(anterior_periodo, precio, lotes, items, costos, fijos.get(anterior_periodo, SIN_FIJOS))
+    comparable_fijos = actual["fijos_cargados"] and anterior["fijos_cargados"]
+    variacion = {
+        "costo_variable_por_unidad": _variacion_del_panel(anterior["costo_variable_por_unidad"], actual["costo_variable_por_unidad"]),
+        "fijos_fabrica": _variacion_del_panel(anterior["fijos_fabrica"], actual["fijos_fabrica"]) if comparable_fijos else None,
+        "total_por_unidad": _variacion_del_panel(anterior["total_por_unidad"], actual["total_por_unidad"]),
+    }
+    subieron = [
+        {"material": p["material"], "color": p["color"], "precio": p["precio"], "moneda": p["moneda"],
+         "vigente_desde": p["vigente_desde"], "variacion_pct": p["variacion_pct"], "salto_grande": p["salto_grande"]}
+        for p in precios
+        if p["vigente_desde"] <= hoy and p["variacion_pct"] is not None and p["variacion_pct"] > 0
+    ][:MAX_FILAS_DEL_PANEL]
+    viejos = sorted(
+        (p for p in precios if p["vigente"] and (hoy - p["vigente_desde"]).days > PRECIO_VIEJO_DIAS),
+        key=lambda p: (p["vigente_desde"], p["material"], p["color"] or ""),
+    )
+    dolar_viejo = dolar is None or (hoy - dolar["fecha"]).days > DOLAR_VIEJO_DIAS
+    avisos = []
+    if not actual["fijos_cargados"]:
+        avisos.append(("FIJOS_NO_CARGADOS", "Todavía no se cargaron los costos fijos de la fábrica de este mes."))
+    if actual["fijos_pendientes"]:
+        avisos.append(("FIJOS_PENDIENTES", "Hay costos fijos de la fábrica sin monto cargado: el punto de equilibrio no es confiable."))
+    if actual["fijos_ficticios"]:
+        avisos.append(("FIJOS_FICTICIOS", "Algunos costos fijos son de ejemplo: el punto de equilibrio no es confiable."))
+    if actual["unidades"] == 0:
+        avisos.append(("SIN_UNIDADES", "No hay lotes en este mes, así que no se puede repartir el costo fijo por unidad."))
+    if actual["unidades_sin_costo"] > 0:
+        avisos.append(("PRODUCTOS_SIN_COSTO", "Hay productos de los lotes del mes cuyo costo no se pudo calcular y quedan fuera del promedio."))
+    if dolar is None:
+        avisos.append(("DOLAR_VIEJO", "No hay ningún dólar cargado."))
+    elif dolar_viejo:
+        avisos.append(("DOLAR_VIEJO", f"El dólar cargado tiene más de {DOLAR_VIEJO_DIAS} días."))
+    if viejos:
+        avisos.append(("PRECIOS_VIEJOS", f"Hay {len(viejos)} precios de materiales sin actualizar hace más de {PRECIO_VIEJO_DIAS} días."))
+    avisos.append(("VOLUMEN_PRODUCIDO", AVISO_VOLUMEN_PRODUCIDO))
+    return {
+        "periodo": periodo, "periodo_anterior": anterior_periodo, "actual": actual, "anterior": anterior,
+        "variacion_pct": variacion, "precios_que_subieron": subieron,
+        "precios_viejos": {
+            "cantidad": len(viejos),
+            "mas_viejos": [{"material": p["material"], "color": p["color"], "vigente_desde": p["vigente_desde"]}
+                           for p in viejos[:MAX_FILAS_DEL_PANEL]],
+        },
+        "dolar": None if dolar is None else {"fecha": dolar["fecha"], "ars_por_usd": dolar["ars_por_usd"], "fuente": dolar["fuente"]},
+        "dolar_viejo": dolar_viejo,
+        "avisos": [{"codigo": codigo, "texto": texto} for codigo, texto in avisos],
+    }
+
+
+def _fijos_de_fabrica(session: Session, periodos: list[str]) -> dict[str, FijosDelMes]:
+    """Factory rows only, per month exactly as asked (no PERIODO_VIGENTE fallback, unlike `costos_fijos`)."""
+    filas = session.scalars(
+        select(GastoPeriodo).where(GastoPeriodo.periodo.in_(periodos), GastoPeriodo.fabrica_o_tienda == "FABRICA")
+    ).all()
+    resultado = {}
+    for periodo in periodos:
+        del_mes = [g for g in filas if g.periodo == periodo]
+        if del_mes:
+            resultado[periodo] = FijosDelMes(
+                cargados=True, total_fabrica=sum((g.monto_ars_del_mes or ZERO for g in del_mes), ZERO),
+                pendientes=sum(1 for g in del_mes if g.monto_ars_del_mes is None),
+                ficticios=any(g.ficticio for g in del_mes),
+            )
+    return resultado
+
+
+def _costos_totales_de_hoy(session: Session, codigos: set[str]) -> dict[str, Decimal | None]:
+    """Total cost today (CONFECCION included) per product code; None when it cannot be computed."""
+    if not codigos:
+        return {}
+    base = cargar_productos(session, sorted(codigos))
+    catalogo = expandir_kits(session, base)
+    ctx = cargar_contexto(session)
+    costos = {codigo: None for codigo in codigos}
+    for datos in base:
+        costo = _desglose_a_dict(_costo_hoy_seguro(datos, ctx, catalogo)[0])
+        costos[datos.codigo] = None if costo is None else costo["total_ars"]
+    return costos
+
+
+def panel_de_costos(session: Session, periodo: str | None = None, precio: Decimal | None = None, hoy: date | None = None) -> dict:
+    hoy = hoy or date.today()
+    periodo = periodo or mes_de(hoy)
+    periodos = ultimos_meses(periodo, 2)
+    lotes = _cargar_lotes(session)
+    items = _cargar_items(session, [lote.id for lote in lotes if lote.fecha is not None and mes_de(lote.fecha) in periodos])
+    dolares = listar_dolar(session)
+    return armar_panel_de_costos(
+        periodo=periodo, precio=precio, hoy=hoy, lotes=lotes, items=items,
+        costos=_costos_totales_de_hoy(session, {item.producto for item in items}),
+        fijos=_fijos_de_fabrica(session, periodos), precios=listar_precios(session, a_fecha=hoy),
+        dolar=dolares[0] if dolares else None,
+    )
 
 
 def _precios_de_taller(session: Session) -> tuple[list[PrecioDeTaller], list[PrecioDeTaller]]:

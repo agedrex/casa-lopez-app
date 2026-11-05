@@ -5,7 +5,7 @@ Rules come from the plantilla's LEEME section 6. All money is Decimal.
 
 from dataclasses import dataclass
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_CEILING, Decimal
 
 ZERO = Decimal(0)
 
@@ -141,3 +141,35 @@ def necesita_recotizar(
     if costo_ultima > 0 and abs(costo_hoy - costo_ultima) / costo_ultima > desvio_tol:
         return True
     return dolar_ultima > 0 and abs(dolar_hoy - dolar_ultima) / dolar_ultima > dolar_tol
+
+
+@dataclass(frozen=True)
+class CostoPorUnidad:
+    variable_por_unidad: Decimal
+    fijo_por_unidad: Decimal | None
+    total_por_unidad: Decimal | None
+
+
+def costo_por_unidad(fijos: Decimal, unidades: Decimal, variable_por_unidad: Decimal) -> CostoPorUnidad:
+    """Spread the month's fixed costs over the units produced. SUPUESTO: validar (volume is produced, not sold)."""
+    if unidades <= 0:
+        return CostoPorUnidad(variable_por_unidad, None, None)
+    fijo = fijos / unidades
+    return CostoPorUnidad(variable_por_unidad, fijo, variable_por_unidad + fijo)
+
+
+@dataclass(frozen=True)
+class Equilibrio:
+    margen_por_unidad: Decimal | None
+    unidades: Decimal | None
+    motivo: str | None
+
+
+def punto_de_equilibrio(fijos: Decimal, variable_por_unidad: Decimal, precio: Decimal | None) -> Equilibrio:
+    """Units needed to cover the fixed costs at a price typed by the user; no number unless price > variable cost."""
+    if precio is None:
+        return Equilibrio(None, None, "SIN_PRECIO")
+    margen = precio - variable_por_unidad
+    if margen <= 0:
+        return Equilibrio(margen, None, "PRECIO_NO_CUBRE_COSTO_VARIABLE")
+    return Equilibrio(margen, (fijos / margen).to_integral_value(rounding=ROUND_CEILING), None)
