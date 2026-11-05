@@ -14,7 +14,7 @@ Verified against the Anthropic docs (platform.claude.com, 2026-10-28):
 - A forced tool call (`tool_choice` of type `tool`) works on Haiku 5.5 and skips thinking, but Opus 5.5, Sonnet 5.5 and
   Fable 5.1 answer 400 to it: on that specific 400 the client retries once with `tool_choice: auto`.
 
-Configuration comes ONLY from the environment: `ANTHROPIC_API_KEY` (never logged, never in a repr, never returned),
+Configuration comes ONLY from the environment: `AI_GATEWAY_API_KEY` (Vercel AI Gateway, preferred) or `ANTHROPIC_API_KEY` (never logged, never in a repr, never returned),
 optional `VOZ_LLM_MODEL` and optional `VOZ_LLM_BASE_URL` (tests point it at a fake server). Errors reaching the caller carry
 a fixed Spanish message: the provider's own text, the prompt and the sentence are dropped on purpose. The log line holds the
 action, the latency, the outcome class and the LENGTH of the sentence, nothing else.
@@ -37,6 +37,11 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 logger = logging.getLogger("uvicorn.error")
 
 VARIABLE_CLAVE = "ANTHROPIC_API_KEY"
+VARIABLE_CLAVE_GATEWAY = "AI_GATEWAY_API_KEY"
+# Vercel AI Gateway speaks the same Messages API at this base URL and names models "provider/model".
+# SUPUESTO: validar. The model slug must match Vercel's model list; override it with VOZ_LLM_MODEL / OCR_LLM_MODEL.
+URL_DEL_GATEWAY = "https://ai-gateway.vercel.sh"
+MODELO_DEL_GATEWAY = "anthropic/claude-haiku-5-5"
 VARIABLE_MODELO = "VOZ_LLM_MODEL"
 VARIABLE_URL = "VOZ_LLM_BASE_URL"
 MODELO_POR_DEFECTO = "claude-haiku-5-5"
@@ -324,8 +329,20 @@ def _rechaza_herramienta_forzada(respuesta: httpx.Response) -> bool:
     return "tool_choice" in mensaje or "forced tool" in mensaje
 
 
+def credencial_del_modelo() -> tuple[str, str, str] | None:
+    """(key, default model, default base URL) of the model provider, or None while no key is set.
+
+    The Vercel AI Gateway key wins over a direct Anthropic key; an empty default means "use the client's own default".
+    """
+    gateway = os.getenv(VARIABLE_CLAVE_GATEWAY, "").strip()
+    if gateway:
+        return gateway, MODELO_DEL_GATEWAY, URL_DEL_GATEWAY
+    directa = os.getenv(VARIABLE_CLAVE, "").strip()
+    return (directa, "", "") if directa else None
+
+
 def configurado() -> bool:
-    return bool(os.getenv(VARIABLE_CLAVE, "").strip())
+    return credencial_del_modelo() is not None
 
 
 @lru_cache(maxsize=4)
@@ -335,7 +352,9 @@ def _cliente_para(clave: str, modelo: str, base_url: str) -> AnthropicVozLLM:
 
 def crear_cliente() -> AnthropicVozLLM | None:
     """The real client while the key is set (building it makes no network call), else None."""
-    clave = os.getenv(VARIABLE_CLAVE, "").strip()
-    if not clave:
+    credencial = credencial_del_modelo()
+    if credencial is None:
         return None
-    return _cliente_para(clave, os.getenv(VARIABLE_MODELO, "").strip(), os.getenv(VARIABLE_URL, "").strip())
+    clave, modelo, url = credencial
+    return _cliente_para(
+        clave, os.getenv(VARIABLE_MODELO, "").strip() or modelo, os.getenv(VARIABLE_URL, "").strip() or url)

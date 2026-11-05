@@ -1,0 +1,31 @@
+# Proveedores: facturas e imágenes con OCR
+
+Objective: a Proveedores module where an admin uploads invoices and images, sees them, and finds them by their text read with OCR (option A: archive + searchable text; OCR does NOT create prices).
+Branch: feat/proveedores-facturas-ocr (from main). Delivery: 2 stacked PRs (backend, then front), ask-on-risk. Test runner: backend `.venv/bin/python -m pytest -q`; front `./node_modules/.bin/tsc --noEmit` and `./node_modules/.bin/biome check .`.
+
+## Specs
+
+- S1 "el modulo de proovedores anadas la posibilidad de poder cargar facturas y todas las imagenes para que se presenten usando un OCR". (L1) Option A chosen by the user: "A -> sigue" = keep the file linked to the supplier, show it, and use the OCR text to search. The OCR never creates or changes a price.
+- S2 Tables (new Alembic migration 0007 on top of 0006, schema `costos`; follow the conventions of models.py: `IdentityAndCreatedAt`/`BusinessKey`, `money()`, naming_convention, CHECKs with `one_of`):
+  - `proveedor`: BusinessKey `codigo` (pattern `PRV-NNNN`; optional on create, otherwise the next free number; SUPUESTO: validar, it matches the codes `precio_material.proveedor` already holds from the external supplier file), `nombre` (required, unique ignoring case), `cuit` (nullable, unique), `contacto`, `telefono`, `direccion`, `nota` (all nullable), `activo` bool default true. Nothing is deleted; archiving = `activo=false`.
+  - `documento_proveedor`: `proveedor_id` FK, `tipo` in (FACTURA, IMAGEN, OTRO), `nombre_archivo`, `mime` in (image/jpeg, image/png, image/webp, application/pdf), `tamano_bytes`, `sha256`, `contenido` bytea (deferred, never loaded in lists), `numero` text null, `fecha_documento` date null, `total` money null and `moneda` (ARS/USD) null (these four are typed or confirmed by a person), `ocr_estado` in (PENDIENTE, LISTO, ERROR, NO_CONFIGURADO), `ocr_texto` text null, `ocr_sugerencia` jsonb null (what the OCR thinks the number/date/total are; only a suggestion), `ocr_error` text null (a safe short message, never the raw provider error or the key), `subido_por` text (auth user id). Unique (`proveedor_id`, `sha256`) so the same file is not stored twice for a supplier (409 with a plain Spanish message).
+- S3 Files are stored in the database (bytea) for now (no new infrastructure). Limits: 10 MB per file; the type is checked by the file's magic bytes (JPEG, PNG, WebP, PDF), never only by the declared mime or extension; `nombre_archivo` is sanitized and used only as a label (never as a path).
+- S4 OCR with Anthropic vision, same key as the voice: env `ANTHROPIC_API_KEY` (never logged, never returned), optional `OCR_LLM_MODEL` (default `claude-haiku-5-5`) and optional `OCR_LLM_BASE_URL` (tests only). New module `ocr_llm.py` modelled on `voz_llm.py` (Protocol + Anthropic implementation + injectable fake for tests; same error-safety rules). Output: the transcribed text plus a suggestion `{numero, fecha, total, moneda}`. The LLM never calculates money; the suggestion is shown to the person, who confirms it. OCR text is UNTRUSTED data: stored and shown as plain text, never executed or interpolated into prompts or HTML. If the key is missing the upload still works and `ocr_estado = NO_CONFIGURADO`. An OCR failure never loses the file: `ocr_estado = ERROR` with a safe `ocr_error`, and it can be retried.
+- S5 API (all admin only; add each route to the role matrix test `backend/tests/test_roles.py`, which fails on any route without a documented gate):
+  - `GET /proveedores?q=&activo=`, `POST /proveedores`, `GET /proveedores/{codigo}`, `POST /proveedores/{codigo}` (edit data), `POST /proveedores/{codigo}/activo`.
+  - `GET /proveedores/{codigo}/documentos?q=` (q searches nombre_archivo, numero and ocr_texto, case-insensitive; list items never include `contenido`), `POST /proveedores/{codigo}/documentos` (multipart: `archivo`, `tipo`, optional `numero`, `fecha_documento`, `total`, `moneda`; stores the file, then runs the OCR; the response shows the stored document and its OCR state).
+  - `GET /documentos-proveedor/{id}/archivo` returns the bytes with the stored `Content-Type`, `X-Content-Type-Options: nosniff` and `Content-Disposition: inline` for images and `attachment` for PDF.
+  - `POST /documentos-proveedor/{id}/ocr` retries the OCR; `POST /documentos-proveedor/{id}/datos` sets the person-confirmed `numero`, `fecha_documento`, `total`, `moneda`, `tipo` (the only allowed update of a document).
+  - Money as Decimal serialised as string, 404 via `NoEncontrado`, plain Spanish messages like the rest of the API.
+- S6 Front (admin only; update `canAccessPath`/nav so gerente and taller never reach it): a `Proveedores` item in the "Datos de base" nav group; `/proveedores` (list with search, create form); `/proveedores/[codigo]` (supplier data and edit; documents list with a search box that uses `?q=`; upload form accepting several files; each document shows its type, date, number, total, OCR badge (Pendiente / Listo / Error / Sin OCR), a thumbnail or icon, a link to open the file, the OCR text in a collapsible block, the suggestion with a "Confirmar datos" form, and "Reintentar OCR" when the state is ERROR or NO_CONFIGURADO). Raise the Next.js server action body limit in `next.config.ts` (default 1 MB) to 12 MB. The front computes nothing; UI copy in plain Spanish. Files travel front -> backend as multipart through a server action; never expose the backend URL or key to the browser.
+- S7 Out of scope: creating or changing prices from invoices (option B), linking `precio_material.proveedor` to the new table, object storage (bucket), virus scanning, deleting documents.
+
+## Tasks
+
+- [ ] T1 (S2, S3, S4, S5) backend: models, migration 0007, ocr_llm.py, endpoints, role matrix, tests (RED first). Route: delegated (parallel unit, backend/).
+- [ ] T2 (S6) front: nav, pages, actions, types, next.config. Route: delegated (parallel unit, front/). Uses the API contract of S5.
+
+## Log
+
+- L1 (2026-11-05) User: "tambien quiero que el modulo de proovedores anadas la psoibilidad de poder cargar facturas y todas las imagenes para que se presenten usando un OCR."
+- L2 (2026-11-05) Question "A: solo archivo + texto OCR para buscar; B: el OCR propone precios de materiales" -> user: "A -> sigue".

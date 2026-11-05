@@ -43,7 +43,7 @@ Tests replace or remove `DATABASE_URL` and use mocks or in-memory SQLite. They n
 
 ## DER v3 schema and migrations
 
-The 25 DER v3 models are in `src/backend/models.py` (summary in [`docs/der-v3.md`](../docs/der-v3.md); the v1 design in `docs/der.md` is superseded). All application tables
+The DER v3 models (plus `proveedor` and `documento_proveedor`, revision `0007`) are in `src/backend/models.py` (summary in [`docs/der-v3.md`](../docs/der-v3.md); the v1 design in `docs/der.md` is superseded). All application tables
 and Alembic's version table live in `costos`; Alembic excludes `public`, reserved
 for Better Auth. Revisions: `0001`/`0002` (v1, kept for history), `0003_der_v3`
 (drops the v1 tables with `IF EXISTS`, creates v3) and `0004_semillas_v3` (reference
@@ -247,7 +247,8 @@ Layout: `voz_llm.py` is the model client behind the `VozLLM` protocol (`interpre
 
 | Variable | What it is |
 |---|---|
-| `ANTHROPIC_API_KEY` | Required to enable the module. Never logged, never in a repr, never returned. |
+| `AI_GATEWAY_API_KEY` | Vercel AI Gateway key (preferred). Switches the default URL to `https://ai-gateway.vercel.sh` and the default model to `anthropic/claude-haiku-5-5`. |
+| `ANTHROPIC_API_KEY` | Direct Anthropic key, used only when no gateway key is set. Required to enable the module otherwise. Never logged, never in a repr, never returned. |
 | `VOZ_LLM_MODEL` | Optional. Default `claude-haiku-5-5`. |
 | `VOZ_LLM_BASE_URL` | Optional, for tests (a fake server). Default `https://api.anthropic.com`; anything that is not an `http(s)` URL is ignored. |
 
@@ -259,3 +260,25 @@ Layout: `voz_llm.py` is the model client behind the `VozLLM` protocol (`interpre
 - Fixed costs are pesos only: dollars are not converted.
 - No history of interpreted commands is kept (it would need storage).
 
+
+## Suppliers and their documents (revision `0007_proveedores_documentos`)
+
+Two tables in `costos`: `proveedor` (code `PRV-NNNN`, name unique ignoring case, CUIT unique, `activo`; nothing is deleted) and `documento_proveedor` (an invoice or image stored as `bytea`, with its OCR text). Files live in the database for now (no object storage). `precio_material.proveedor` is **not** linked to the new table, and the OCR **never creates or changes a price**. Downgrading `0007` drops both tables (the files included): back them up first.
+
+All routes are **admin only** (gerente and taller get 403):
+
+| Endpoint | What it does |
+|---|---|
+| `GET /proveedores?q=&activo=` | List (every word of `q` in code, name, CUIT, contact, phone or address). |
+| `POST /proveedores` | Create (`nombre` required; optional `codigo` `PRV-NNNN`, else the next free number). 409 on a repeated name (any case), CUIT or code. |
+| `GET /proveedores/{codigo}` · `POST /proveedores/{codigo}` · `POST /proveedores/{codigo}/activo` | Detail, edit the data (the code never changes) and archive / restore. |
+| `GET /proveedores/{codigo}/documentos?q=` | Documents, newest first; `q` searches file name, number and OCR text (case-insensitive). Items never carry the file. |
+| `POST /proveedores/{codigo}/documentos` | Multipart: `archivo`, `tipo` (FACTURA, IMAGEN, OTRO), optional `numero`, `fecha_documento`, `total`, `moneda`. Stores the file, then runs the OCR; answers 201 with the document and its `ocr_estado`. 413 over 10 MB, 422 if the bytes are not a JPEG, PNG, WebP or PDF, 409 if the same file is already stored for that supplier. |
+| `GET /documentos-proveedor/{id}/archivo` | The bytes with the detected `Content-Type`, `X-Content-Type-Options: nosniff`, `inline` for images and `attachment` for PDF. |
+| `POST /documentos-proveedor/{id}/ocr` | Retry the OCR. |
+| `POST /documentos-proveedor/{id}/datos` | The only update of a document: the `tipo`, `numero`, `fecha_documento`, `total` and `moneda` a person confirms (a total needs its currency). |
+
+- **File checks.** The type comes from the magic bytes, never from the declared mime or the extension; the stored mime is the detected one. `nombre_archivo` is sanitized (no directories, no control characters) and is only a label. Money (`total`) leaves as a string.
+- **OCR** (`ocr_llm.py`, same Anthropic Messages API and error-safety rules as the voice module). `ocr_estado` is `PENDIENTE`, `LISTO`, `ERROR` (with a short safe `ocr_error`) or `NO_CONFIGURADO` (no key: the upload still works). An OCR failure never loses the file and can be retried. The model only transcribes and copies number, date, total and currency; the total is parsed with code, and the result is a **suggestion** (`ocr_sugerencia`) that a person confirms: it never fills the typed fields. The OCR text is untrusted: stored and returned as plain text, never put into HTML, SQL or another prompt.
+- **Environment.** `ANTHROPIC_API_KEY` (shared with the voice module; never logged or returned), optional `OCR_LLM_MODEL` (default `claude-haiku-5-5`) and optional `OCR_LLM_BASE_URL` (tests only).
+- **SUPUESTO (`validar`).** `PRV-NNNN` matches the codes already in `precio_material.proveedor`; a lone separator followed by exactly three digits (`14.000`) is read as thousands when parsing the OCR total.

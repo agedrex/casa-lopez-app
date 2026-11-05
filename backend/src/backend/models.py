@@ -10,9 +10,10 @@ from decimal import Decimal
 
 from sqlalchemy import (
     BigInteger, Boolean, CHAR, CheckConstraint, Date, DateTime, ForeignKey,
-    Identity, Index, Integer, MetaData, Numeric, SmallInteger, Text,
+    Identity, Index, Integer, LargeBinary, MetaData, Numeric, SmallInteger, Text,
     UniqueConstraint, func, text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -54,6 +55,10 @@ ARS_USD = ("ARS", "USD")
 UNITS = ("m2", "cm", "juego", "unidad", "USD")
 LOT_STATES = ("PLANIFICADA", "EN_CORTE", "CORTADA", "EN_CONFECCION", "LISTA", "CERRADA")
 WHERE_MADE = ("EXTERNA", "INTERNA")
+DOCUMENT_TYPES = ("FACTURA", "IMAGEN", "OTRO")
+# The file type is checked by its magic bytes (proveedores.detect_mime); these are the only ones stored.
+DOCUMENT_MIMES = ("image/jpeg", "image/png", "image/webp", "application/pdf")
+OCR_STATES = ("PENDIENTE", "LISTO", "ERROR", "NO_CONFIGURADO")
 
 
 class IdentityAndCreatedAt:
@@ -325,6 +330,62 @@ class PrecioVenta(IdentityAndCreatedAt, Base):
     # The auth user id as text, like cotizacion.creado_por (no FK: Better Auth lives in `public`).
     creado_por: Mapped[str | None] = mapped_column(Text)
     nota: Mapped[str | None] = mapped_column(Text)
+
+
+# --- Suppliers and their documents (invoices, images) ---------------------------------------------------------
+
+class Proveedor(BusinessKey, Base):
+    """A supplier. Nothing is deleted: archiving is `activo = false`. `codigo` is `PRV-NNNN`."""
+    __tablename__ = "proveedor"
+    # The name is unique ignoring case through the index below, so it carries no plain UNIQUE.
+    nombre: Mapped[str] = mapped_column(Text)
+    cuit: Mapped[str | None] = mapped_column(Text, unique=True)
+    contacto: Mapped[str | None] = mapped_column(Text)
+    telefono: Mapped[str | None] = mapped_column(Text)
+    direccion: Mapped[str | None] = mapped_column(Text)
+    nota: Mapped[str | None] = mapped_column(Text)
+    activo: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+
+
+Index("proveedor_nombre_uq", func.lower(Proveedor.nombre), unique=True)
+
+
+class DocumentoProveedor(IdentityAndCreatedAt, Base):
+    """An invoice or image of a supplier, stored in the database. The only update is the person-confirmed data and the OCR.
+
+    `numero`, `fecha_documento`, `total` and `moneda` are typed or confirmed by a person; what the OCR thinks they are lives
+    apart in `ocr_sugerencia`. `ocr_texto` is untrusted text: it is shown as plain text, never as HTML.
+    """
+    __tablename__ = "documento_proveedor"
+    __table_args__ = (
+        one_of("tipo", DOCUMENT_TYPES, "tipo"),
+        one_of("mime", DOCUMENT_MIMES, "mime"),
+        one_of("moneda", ARS_USD, "moneda"),
+        one_of("ocr_estado", OCR_STATES, "ocr_estado"),
+        CheckConstraint("tamano_bytes > 0", name="tamano_positivo"),
+        CheckConstraint("total IS NULL OR total >= 0", name="total_no_negativo"),
+        UniqueConstraint("proveedor_id", "sha256", name="uq_documento_proveedor_proveedor_id_sha256"),
+    )
+    proveedor_id: Mapped[int] = mapped_column(ForeignKey("costos.proveedor.id"))
+    tipo: Mapped[str] = mapped_column(Text)
+    # A label only: sanitized on the way in and never used as a path.
+    nombre_archivo: Mapped[str] = mapped_column(Text)
+    mime: Mapped[str] = mapped_column(Text)
+    tamano_bytes: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str] = mapped_column(CHAR(64))
+    # Deferred: a list of documents never loads the file.
+    contenido: Mapped[bytes] = mapped_column(LargeBinary, deferred=True)
+    numero: Mapped[str | None] = mapped_column(Text)
+    fecha_documento: Mapped[date | None] = mapped_column(Date)
+    total: Mapped[Decimal | None] = mapped_column(money())
+    moneda: Mapped[str | None] = mapped_column(CHAR(3))
+    ocr_estado: Mapped[str] = mapped_column(Text)
+    ocr_texto: Mapped[str | None] = mapped_column(Text)
+    ocr_sugerencia: Mapped[dict | None] = mapped_column(JSONB)
+    # A short safe message, never the provider's raw error or the key.
+    ocr_error: Mapped[str | None] = mapped_column(Text)
+    # The auth user id as text (no FK: Better Auth lives in `public`).
+    subido_por: Mapped[str] = mapped_column(Text)
 
 
 # --- Production orders ---------------------------------------------------------

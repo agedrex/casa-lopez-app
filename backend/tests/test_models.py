@@ -5,7 +5,7 @@ from sqlalchemy import CheckConstraint, Float, Numeric, UniqueConstraint
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.schema import CreateIndex, CreateTable
 
-from backend.models import Base
+from backend.models import Base, DocumentoProveedor
 
 
 EXPECTED_TABLES = {
@@ -13,12 +13,13 @@ EXPECTED_TABLES = {
     "orden_item", "gasto_periodo", "etapa", "material", "categoria", "color", "persona", "taller",
     "impuesto", "parametro", "molde", "modelo_molde", "orden_estado", "registro_tarea",
     "pieza_cuero", "movimiento_cuero", "conteo_inventario", "kit_componente", "cotizacion", "precio_venta",
+    "proveedor", "documento_proveedor",
 }
 # Tables whose sheet has a "Código" column: the business key, unique and immutable.
 WITH_CODIGO = {
     "modelo", "producto", "receta_linea", "precio_material", "orden_fabricacion", "orden_item",
     "gasto_periodo", "etapa", "material", "categoria", "color", "persona", "taller", "impuesto",
-    "parametro", "molde", "pieza_cuero",
+    "parametro", "molde", "pieza_cuero", "proveedor",
 }
 NUMERIC_PRECISIONS = {(14, 4), (12, 6), (12, 4), (6, 3)}
 
@@ -31,9 +32,9 @@ def check_text(name):
     return {c.name: str(c.sqltext) for c in table(name).constraints if isinstance(c, CheckConstraint)}
 
 
-def test_der_v3_has_the_26_tables_in_schema_costos():
+def test_der_v3_plus_proveedores_has_the_28_tables_in_schema_costos():
     assert {t.name for t in Base.metadata.tables.values()} == EXPECTED_TABLES
-    assert len(EXPECTED_TABLES) == 26
+    assert len(EXPECTED_TABLES) == 28
     assert Base.metadata.schema == "costos"
     assert all(t.schema == "costos" for t in Base.metadata.tables.values())
 
@@ -100,10 +101,14 @@ def test_money_is_numeric_with_decimals_never_float():
     ("persona", "ck_persona_rol",
      ["CONSUMO_MOLDES", "CORTE", "CONFECCION", "VENTAS", "ENCARGADO", "ADMINISTRACION", "OTRO"]),
     ("persona", "ck_persona_vinculo", ["SUELDO_FIJO", "OTRO"]),
+    ("documento_proveedor", "ck_documento_proveedor_tipo", ["FACTURA", "IMAGEN", "OTRO"]),
+    ("documento_proveedor", "ck_documento_proveedor_mime", ["image/jpeg", "image/png", "image/webp", "application/pdf"]),
+    ("documento_proveedor", "ck_documento_proveedor_moneda", ["ARS", "USD"]),
+    ("documento_proveedor", "ck_documento_proveedor_ocr_estado", ["PENDIENTE", "LISTO", "ERROR", "NO_CONFIGURADO"]),
 ])
 def test_dropdown_lists_of_the_sheet_are_check_constraints(name, constraint, values):
     sql = check_text(name)[constraint]
-    assert set(re.findall(r"'([A-Z_]+)'", sql)) == set(values)
+    assert set(re.findall(r"'([A-Za-z_/+]+)'", sql)) == set(values)
 
 
 def test_other_checks_and_unique_rules():
@@ -160,3 +165,40 @@ def test_gasto_periodo_reemplaza_a_id_is_a_nullable_self_reference():
     column = table("gasto_periodo").c.reemplaza_a_id
     assert column.nullable and str(column.type.compile(dialect=postgresql.dialect())) == "BIGINT"
     assert {fk.target_fullname for fk in column.foreign_keys} == {"costos.gasto_periodo.id"}
+
+
+def test_proveedor_is_a_business_key_table_with_unique_cuit_and_a_case_insensitive_unique_name():
+    t = table("proveedor")
+    assert set(t.c.keys()) == {"id", "created_at", "codigo", "nombre", "cuit", "contacto", "telefono", "direccion",
+                               "nota", "activo"}
+    assert t.c.nombre.nullable is False and t.c.cuit.nullable is True and t.c.activo.nullable is False
+    assert t.c.activo.server_default is not None
+    unique = [tuple(c.columns.keys()) for c in t.constraints if isinstance(c, UniqueConstraint)]
+    assert ("cuit",) in unique and ("nombre",) not in unique  # the name is unique through lower(nombre)
+    index = next(i for i in t.indexes if i.name == "proveedor_nombre_uq")
+    ddl = str(CreateIndex(index).compile(dialect=postgresql.dialect())).lower()
+    assert "unique" in ddl and "lower(nombre)" in ddl
+
+
+def test_documento_proveedor_shape_defers_the_bytes_and_keeps_money_as_numeric():
+    t = table("documento_proveedor")
+    assert set(t.c.keys()) == {
+        "id", "created_at", "proveedor_id", "tipo", "nombre_archivo", "mime", "tamano_bytes", "sha256", "contenido",
+        "numero", "fecha_documento", "total", "moneda", "ocr_estado", "ocr_texto", "ocr_sugerencia", "ocr_error",
+        "subido_por"}
+    dialect = postgresql.dialect()
+    assert str(t.c.contenido.type.compile(dialect=dialect)) == "BYTEA" and t.c.contenido.nullable is False
+    assert str(t.c.ocr_sugerencia.type.compile(dialect=dialect)) == "JSONB" and t.c.ocr_sugerencia.nullable
+    assert (t.c.total.type.precision, t.c.total.type.scale) == (14, 4) and t.c.total.nullable
+    assert str(t.c.fecha_documento.type.compile(dialect=dialect)) == "DATE" and t.c.fecha_documento.nullable
+    for nullable in ("numero", "moneda", "ocr_texto", "ocr_error", "ocr_sugerencia"):
+        assert t.c[nullable].nullable, nullable
+    for required in ("proveedor_id", "tipo", "nombre_archivo", "mime", "tamano_bytes", "sha256", "contenido",
+                     "ocr_estado", "subido_por"):
+        assert not t.c[required].nullable, required
+    assert {fk.target_fullname for fk in t.foreign_keys} == {"costos.proveedor.id"}
+    unique = [tuple(c.columns.keys()) for c in t.constraints if isinstance(c, UniqueConstraint)]
+    assert ("proveedor_id", "sha256") in unique
+    assert "contenido" in DocumentoProveedor.__mapper__.column_attrs  # mapped, but...
+    assert DocumentoProveedor.__mapper__.column_attrs["contenido"].deferred is True  # ...never loaded in a list
+    assert "total >= 0" in check_text("documento_proveedor")["ck_documento_proveedor_total_no_negativo"]

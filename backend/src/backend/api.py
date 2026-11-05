@@ -17,15 +17,15 @@ from decimal import Decimal
 from functools import lru_cache
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, Path, Query, Request, UploadFile
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.orm import Session
 
-from backend import cueros, servicios, sheets_client, voz, voz_llm
+from backend import cueros, ocr_llm, proveedores, servicios, sheets_client, voz, voz_llm
 from backend.auth import CORTE, CUALQUIER_ROL, PRODUCTOS, SOLO_ADMIN, Usuario, require_user
 from backend.database import get_session
-from backend.models import ARS_USD, LOT_STATES, UNITS, WHERE_MADE
+from backend.models import ARS_USD, DOCUMENT_TYPES, LOT_STATES, UNITS, WHERE_MADE
 from backend.sheets_client import ErrorDeSheets, SheetsClient
 from backend.sheets_export import NOMBRES_DE_PESTANAS, Fuente, FuenteSQL, _catalogo, _costos_variables, construir_tab, construir_tabs
 
@@ -1534,6 +1534,157 @@ def _resumen(simular: bool, configurado: bool, iniciado: datetime, reloj: float,
     }
 
 
+# --- Suppliers and their documents (invoices, images) ------------------------------------------------------------------
+# Admin only, reads and writes alike. The files live in the database; the OCR text is untrusted data and travels as plain
+# JSON text. The OCR never fills the typed fields (a person confirms them) and never creates or changes a price.
+
+DocumentoId = Annotated[int, Path(ge=1, le=2**63 - 1)]
+NumeroDeDocumento = Annotated[str, Field(max_length=proveedores.MAX_NUMBER_LENGTH)]
+TotalDeDocumento = Annotated[Decimal, Field(ge=0, max_digits=14, decimal_places=4)]
+
+
+class ProveedorDatosIn(Entrada):
+    nombre: Annotated[str, Field(min_length=1, max_length=200)]
+    cuit: Annotated[str, Field(max_length=40)] | None = None
+    contacto: Annotated[str, Field(max_length=200)] | None = None
+    telefono: Annotated[str, Field(max_length=100)] | None = None
+    direccion: Annotated[str, Field(max_length=300)] | None = None
+    nota: Annotated[str, Field(max_length=2000)] | None = None
+
+
+class ProveedorIn(ProveedorDatosIn):
+    # SUPUESTO: validar. Optional PRV-NNNN code; without it the next free number is assigned.
+    codigo: Annotated[str, Field(pattern=r"^PRV-[0-9]{4,}$", max_length=20)] | None = None
+
+
+class DatosDeDocumentoIn(Entrada):
+    """What a person typed or confirmed. Nothing the OCR read, and nothing about the file, can be sent here."""
+    tipo: Literal[*DOCUMENT_TYPES]
+    numero: NumeroDeDocumento | None = None
+    fecha_documento: date | None = None
+    total: TotalDeDocumento | None = None
+    moneda: Literal[*ARS_USD] | None = None
+
+
+class ProveedorOut(Salida):
+    codigo: str
+    nombre: str
+    cuit: str | None
+    contacto: str | None
+    telefono: str | None
+    direccion: str | None
+    nota: str | None
+    activo: bool
+    documentos: int
+
+
+class SugerenciaOcrOut(Salida):
+    """What the OCR thinks the document says; every value is text, the total included."""
+    numero: str | None = None
+    fecha: str | None = None
+    total: str | None = None
+    moneda: str | None = None
+
+
+class DocumentoProveedorOut(Salida):
+    """A stored document without its file (`contenido` is never part of a response model)."""
+    id: int
+    proveedor: str
+    tipo: Literal[*DOCUMENT_TYPES]
+    nombre_archivo: str
+    mime: str
+    tamano_bytes: int
+    sha256: str
+    numero: str | None
+    fecha_documento: date | None
+    total: Decimal | None
+    moneda: Literal[*ARS_USD] | None
+    ocr_estado: Literal["PENDIENTE", "LISTO", "ERROR", "NO_CONFIGURADO"]
+    ocr_texto: str | None
+    ocr_sugerencia: SugerenciaOcrOut | None
+    ocr_error: str | None
+    subido_por: str
+    created_at: datetime
+
+
+def get_ocr_llm() -> ocr_llm.OcrLLM | None:
+    """The real reader while `ANTHROPIC_API_KEY` is set (building it makes no network call), else None."""
+    return ocr_llm.create_client()
+
+
+@router.get("/proveedores", dependencies=LECTURA_ADMIN, response_model=list[ProveedorOut])
+def listar_proveedores(
+    session: Sesion, q: Annotated[str | None, Query(max_length=100)] = None, activo: bool | None = None,
+):
+    return proveedores.list_suppliers(session, q=q, activo=activo)
+
+
+@router.post("/proveedores", dependencies=ESCRITURA, response_model=ProveedorOut, status_code=201)
+def crear_proveedor(cuerpo: ProveedorIn, session: Sesion):
+    return proveedores.create_supplier(session, **cuerpo.model_dump())
+
+
+@router.get("/proveedores/{codigo}", dependencies=LECTURA_ADMIN, response_model=ProveedorOut)
+def detalle_de_proveedor(codigo: str, session: Sesion):
+    return proveedores.get_supplier(session, codigo)
+
+
+@router.post("/proveedores/{codigo}", dependencies=ESCRITURA, response_model=ProveedorOut)
+def editar_proveedor(codigo: str, cuerpo: ProveedorDatosIn, session: Sesion):
+    return proveedores.update_supplier(session, codigo, **cuerpo.model_dump())
+
+
+@router.post("/proveedores/{codigo}/activo", dependencies=ESCRITURA, response_model=ProveedorOut)
+def cambiar_activo_de_proveedor(codigo: str, cuerpo: ActivoIn, session: Sesion):
+    return proveedores.set_supplier_active(session, codigo, cuerpo.activo)
+
+
+@router.get("/proveedores/{codigo}/documentos", dependencies=LECTURA_ADMIN, response_model=list[DocumentoProveedorOut])
+def listar_documentos_de_proveedor(codigo: str, session: Sesion, q: Annotated[str | None, Query(max_length=100)] = None):
+    """Newest first; `q` searches the file name, the number and the OCR text. Never includes the files."""
+    return proveedores.list_documents(session, codigo, q=q)
+
+
+@router.post("/proveedores/{codigo}/documentos", dependencies=ESCRITURA, response_model=DocumentoProveedorOut, status_code=201)
+def subir_documento_de_proveedor(
+    codigo: str, session: Sesion, usuario: Escritor, ocr: Annotated[ocr_llm.OcrLLM | None, Depends(get_ocr_llm)],
+    archivo: Annotated[UploadFile, File()],
+    tipo: Annotated[Literal[*DOCUMENT_TYPES], Form()],
+    numero: Annotated[NumeroDeDocumento | None, Form()] = None,
+    fecha_documento: Annotated[date | None, Form()] = None,
+    total: Annotated[TotalDeDocumento | None, Form()] = None,
+    moneda: Annotated[Literal[*ARS_USD] | None, Form()] = None,
+):
+    """Stores the file (10 MB at most; its type is checked by its bytes), then reads it with the OCR. The answer shows the
+    stored document and its OCR state: without the model key the upload still works and the state is NO_CONFIGURADO."""
+    contenido = archivo.file.read(proveedores.MAX_FILE_BYTES + 1)
+    if len(contenido) > proveedores.MAX_FILE_BYTES:
+        raise proveedores.ArchivoMuyGrande(proveedores.MESSAGE_TOO_BIG)
+    return proveedores.add_document(
+        session, codigo, contenido=contenido, nombre_archivo=archivo.filename, tipo=tipo, numero=numero,
+        fecha_documento=fecha_documento, total=total, moneda=moneda, subido_por=usuario.id, ocr=ocr)
+
+
+@router.get("/documentos-proveedor/{id}/archivo", dependencies=LECTURA_ADMIN, response_class=Response)
+def archivo_de_documento(id: DocumentoId, session: Sesion):
+    """The stored bytes with their detected type, `nosniff`, inline for images and attachment for PDF."""
+    contenido, mime, nombre = proveedores.get_file(session, id)
+    return Response(content=contenido, media_type=mime, headers=proveedores.file_headers(mime, nombre))
+
+
+@router.post("/documentos-proveedor/{id}/ocr", dependencies=ESCRITURA, response_model=DocumentoProveedorOut)
+def reintentar_ocr_de_documento(
+    id: DocumentoId, session: Sesion, ocr: Annotated[ocr_llm.OcrLLM | None, Depends(get_ocr_llm)],
+):
+    return proveedores.retry_ocr(session, id, ocr=ocr)
+
+
+@router.post("/documentos-proveedor/{id}/datos", dependencies=ESCRITURA, response_model=DocumentoProveedorOut)
+def confirmar_datos_de_documento(id: DocumentoId, cuerpo: DatosDeDocumentoIn, session: Sesion):
+    """The only update of a document: the type, number, date, total and currency a person confirms."""
+    return proveedores.confirm_document_data(session, id, **cuerpo.model_dump())
+
+
 # --- Voice module (T7) ---------------------------------------------------------------------------------------------------
 # The model only EXTRACTS intent and raw mentions from one short sentence; `voz.proponer` resolves them against the database
 # with deterministic code and answers a PROPOSAL (resolved fields, candidates, missing data, the endpoint and the body for
@@ -1602,11 +1753,15 @@ def interpretar_voz(
 # --- Errors ----------------------------------------------------------------------------------------------------
 
 def registrar_errores(app: FastAPI) -> None:
-    """Map service errors to HTTP codes: 404 missing, 409 already there, 422 refused, 502 outside source down."""
+    """Map service errors to HTTP codes: 404 missing, 409 already there, 413 file too big, 422 refused, 502 outside source down."""
 
     @app.exception_handler(servicios.FuenteNoDisponible)
     async def fuente_no_disponible(request: Request, error: servicios.FuenteNoDisponible):
         return JSONResponse(status_code=502, content={"detail": str(error)})
+
+    @app.exception_handler(proveedores.ArchivoMuyGrande)
+    async def archivo_muy_grande(request: Request, error: proveedores.ArchivoMuyGrande):
+        return JSONResponse(status_code=413, content={"detail": str(error)})
 
     @app.exception_handler(servicios.NoEncontrado)
     async def no_encontrado(request: Request, error: servicios.NoEncontrado):

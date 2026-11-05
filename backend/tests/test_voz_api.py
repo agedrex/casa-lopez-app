@@ -37,7 +37,7 @@ class LLMFalso:
 
 @pytest.fixture(autouse=True)
 def entorno(monkeypatch):
-    for nombre in ("ANTHROPIC_API_KEY", "VOZ_LLM_MODEL", "VOZ_LLM_BASE_URL"):
+    for nombre in ("ANTHROPIC_API_KEY", "AI_GATEWAY_API_KEY", "VOZ_LLM_MODEL", "VOZ_LLM_BASE_URL"):
         monkeypatch.delenv(nombre, raising=False)
     monkeypatch.setattr(api_module, "_LIMITADOR_VOZ", voz.LimitadorPorUsuario(maximo=20, ventana=60.0))
     yield
