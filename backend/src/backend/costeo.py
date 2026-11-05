@@ -209,3 +209,30 @@ def resultado_cvu(
         costos_fijos=fijos, utilidad=contribucion - fijos, equilibrio_unidades=equilibrio,
         equilibrio_ingresos=equilibrio * precio, margen_seguridad_pct=(unidades - equilibrio) / unidades * 100,
     )
+
+
+@dataclass(frozen=True)
+class MargenContribucion:
+    margen_unidad: Decimal
+    margen_pct: Decimal | None
+    markup_pct: Decimal | None
+    veredicto: str
+
+
+def margen_de_contribucion(
+    precio: Decimal, variable_por_unidad: Decimal, umbral_pct: Decimal | None = None,
+) -> MargenContribucion:
+    """What one unit sold leaves to pay the fixed costs; fixed costs are deliberately not part of this verdict.
+
+    SUPUESTO: validar con Gerardo/Alejandro. The low-margin threshold is optional and has no default value.
+    """
+    margen = precio - variable_por_unidad
+    margen_pct = margen / precio * 100 if precio > 0 else None
+    markup_pct = margen / variable_por_unidad * 100 if variable_por_unidad > 0 else None
+    if margen <= 0:
+        veredicto = "NO_CUBRE_VARIABLE"
+    elif umbral_pct is not None and margen_pct is not None and margen_pct < umbral_pct:
+        veredicto = "MC_BAJO"
+    else:
+        veredicto = "SALUDABLE"
+    return MargenContribucion(margen, margen_pct, markup_pct, veredicto)

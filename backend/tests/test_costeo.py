@@ -209,3 +209,45 @@ def test_break_even_needs_a_price_above_variable_cost():
 def test_break_even_without_price_gives_no_number():
     r = punto_de_equilibrio(D("100000"), D("2000"), None)
     assert r.unidades is None and r.motivo == "SIN_PRECIO"
+
+
+# --- Contribution margin per product (CVU) -----------------------------------
+
+def test_contribution_margin_is_price_minus_variable_cost_over_price_and_over_cost():
+    from backend.costeo import margen_de_contribucion
+    r = margen_de_contribucion(D("125"), D("100"))
+    assert r.margen_unidad == D("25")
+    assert r.margen_pct == D("20")
+    assert r.markup_pct == D("25")
+    assert r.veredicto == "SALUDABLE"
+
+
+def test_price_at_or_below_variable_cost_does_not_cover_it():
+    from backend.costeo import margen_de_contribucion
+    for precio in ("100", "90"):
+        r = margen_de_contribucion(D(precio), D("100"))
+        assert r.veredicto == "NO_CUBRE_VARIABLE"
+        assert r.margen_unidad == D(precio) - D("100")
+
+
+def test_low_margin_is_flagged_only_when_a_threshold_is_given():
+    from backend.costeo import margen_de_contribucion
+    assert margen_de_contribucion(D("125"), D("100")).veredicto == "SALUDABLE"
+    assert margen_de_contribucion(D("125"), D("100"), umbral_pct=D("30")).veredicto == "MC_BAJO"
+    assert margen_de_contribucion(D("125"), D("100"), umbral_pct=D("20")).veredicto == "SALUDABLE"
+
+
+def test_percentages_are_none_when_there_is_nothing_to_divide_by():
+    from backend.costeo import margen_de_contribucion
+    free_input = margen_de_contribucion(D("50"), D("0"))
+    assert free_input.markup_pct is None and free_input.margen_pct == D("100")
+    no_price = margen_de_contribucion(D("0"), D("0"))
+    assert no_price.margen_pct is None and no_price.veredicto == "NO_CUBRE_VARIABLE"
+
+
+def test_contribution_margin_keeps_full_precision_and_ignores_fixed_costs():
+    from backend.costeo import margen_de_contribucion
+    # Row 22 variable cost (subtotal 38760.6) at an example price: no rounding, no fixed costs in the verdict.
+    r = margen_de_contribucion(D("60000"), D("38760.6"))
+    assert r.margen_unidad == D("21239.4")
+    assert r.margen_pct == D("35.399")
