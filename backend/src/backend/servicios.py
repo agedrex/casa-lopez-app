@@ -1528,6 +1528,76 @@ def panel_de_costos(session: Session, periodo: str | None = None, precio: Decima
     )
 
 
+# SUPUESTO: validar con Gerardo. The trend spreads the fixed costs over what was produced in lots, and the variable cost
+# of every month is computed once with today's prices (no price history per month yet).
+NOTA_DE_TENDENCIA = (
+    "El volumen es lo producido en lotes, no lo vendido. El costo variable de todos los meses se calcula con los "
+    "precios de hoy, no con los que regían en cada mes (limitación conocida, supuesto a validar)."
+)
+MESES_DE_TENDENCIA = 6
+MAX_MESES_DE_TENDENCIA = 12
+
+
+def _faltantes_del_mes(bloque: dict) -> list[str]:
+    faltantes = []
+    if not bloque["fijos_cargados"]:
+        faltantes.append("SIN_FIJOS")
+    if bloque["fijos_pendientes"]:
+        faltantes.append("FIJOS_PENDIENTES")
+    if bloque["fijos_ficticios"]:
+        faltantes.append("FIJOS_FICTICIOS")
+    if bloque["unidades"] == 0:
+        faltantes.append("SIN_UNIDADES")
+    if bloque["unidades_sin_costo"] > 0:
+        faltantes.append("PRODUCTOS_SIN_COSTO")
+    return faltantes
+
+
+def armar_tendencia_de_costos(
+    *, hasta: str, meses: int, lotes: list[LoteDatos], items: list[ItemDatos], costos: dict[str, Decimal | None],
+    fijos: dict[str, FijosDelMes],
+) -> dict:
+    """Pure assembly of the monthly trend (oldest month first); a month with missing data is listed with its reasons.
+
+    A month without factory fixed costs has no fixed-per-unit nor total (a total without them would look cheaper than
+    it is). The variation against the previous month of the series is null unless both totals are complete (no pending
+    amounts); example rows (`ficticio`) are flagged but still compared.
+    """
+    filas = []
+    for periodo in reversed(ultimos_meses(hasta, meses)):
+        bloque = _bloque_del_panel(periodo, None, lotes, items, costos, fijos.get(periodo, SIN_FIJOS))
+        faltantes = _faltantes_del_mes(bloque)
+        if not bloque["fijos_cargados"]:
+            bloque["fijo_por_unidad"] = bloque["total_por_unidad"] = None
+        filas.append({**{c: bloque[c] for c in (
+            "periodo", "unidades", "unidades_sin_costo", "fijos_fabrica", "fijos_cargados", "fijos_pendientes",
+            "fijos_ficticios", "costo_variable_por_unidad", "fijo_por_unidad", "total_por_unidad")}, "incompleto": faltantes})
+    anterior = None
+    for fila in filas:
+        comparable = anterior is not None and not anterior["fijos_pendientes"] and not fila["fijos_pendientes"]
+        fila["variacion_pct_total_por_unidad"] = (
+            _variacion_del_panel(anterior["total_por_unidad"], fila["total_por_unidad"]) if comparable else None)
+        anterior = fila
+    return {"hasta": hasta, "meses": filas, "nota": NOTA_DE_TENDENCIA}
+
+
+def tendencia_de_costos(
+    session: Session, hasta: str | None = None, meses: int = MESES_DE_TENDENCIA, hoy: date | None = None,
+) -> dict:
+    """Per-month fixed vs variable cost per unit; products are costed once for all the months of the window."""
+    if not 1 <= meses <= MAX_MESES_DE_TENDENCIA:
+        raise DatosInvalidos(f"Los meses van de 1 a {MAX_MESES_DE_TENDENCIA}.")
+    hasta = hasta or mes_de(hoy or date.today())
+    periodos = ultimos_meses(hasta, meses)
+    lotes = _cargar_lotes(session)
+    items = _cargar_items(session, [lote.id for lote in lotes if lote.fecha is not None and mes_de(lote.fecha) in periodos])
+    return armar_tendencia_de_costos(
+        hasta=hasta, meses=meses, lotes=lotes, items=items,
+        costos=_costos_totales_de_hoy(session, {item.producto for item in items}),
+        fijos=_fijos_de_fabrica(session, periodos),
+    )
+
+
 def _precios_de_taller(session: Session) -> tuple[list[PrecioDeTaller], list[PrecioDeTaller]]:
     """External-workshop prices per lot line: (paid else quoted, paid only). The second one feeds the negotiation reference."""
     lotes = {lote.codigo: lote for lote in _cargar_lotes(session)}

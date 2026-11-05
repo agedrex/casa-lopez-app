@@ -640,6 +640,27 @@ class PanelCostosOut(Salida):
     avisos: list[PanelAvisoOut]
 
 
+class TendenciaMesOut(Salida):
+    periodo: str
+    unidades: Decimal
+    unidades_sin_costo: Decimal
+    fijos_fabrica: Decimal
+    fijos_cargados: bool
+    fijos_pendientes: int
+    fijos_ficticios: bool
+    costo_variable_por_unidad: Decimal | None
+    fijo_por_unidad: Decimal | None
+    total_por_unidad: Decimal | None
+    incompleto: list[str]
+    variacion_pct_total_por_unidad: Decimal | None
+
+
+class TendenciaOut(Salida):
+    hasta: str
+    meses: list[TendenciaMesOut]
+    nota: str
+
+
 class ItemOut(Salida):
     codigo: str
     producto: str
@@ -971,6 +992,15 @@ def panel_de_costos(
 ):
     """Cost of the month (default: this calendar month) against the previous one; `precio` only feeds the break-even simulator."""
     return servicios.panel_de_costos(session, periodo, precio)
+
+
+@router.get("/panel/tendencia", response_model=TendenciaOut)
+def tendencia_de_costos(
+    session: Sesion, hasta: Annotated[str | None, Query(pattern=PERIODO)] = None,
+    meses: Annotated[int, Query(ge=1, le=servicios.MAX_MESES_DE_TENDENCIA)] = servicios.MESES_DE_TENDENCIA,
+):
+    """Last `meses` months ending at `hasta` (default: this calendar month), oldest first; incomplete months are listed with reasons."""
+    return servicios.tendencia_de_costos(session, hasta, meses)
 
 
 @router.get("/costos-fijos/periodos", response_model=PeriodosOut)
