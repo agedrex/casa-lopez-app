@@ -12,7 +12,7 @@ EXPECTED_TABLES = {
     "modelo", "producto", "receta_linea", "precio_material", "tipo_cambio", "orden_fabricacion",
     "orden_item", "gasto_periodo", "etapa", "material", "categoria", "color", "persona", "taller",
     "impuesto", "parametro", "molde", "modelo_molde", "orden_estado", "registro_tarea",
-    "pieza_cuero", "movimiento_cuero", "conteo_inventario", "kit_componente", "cotizacion",
+    "pieza_cuero", "movimiento_cuero", "conteo_inventario", "kit_componente", "cotizacion", "precio_venta",
 }
 # Tables whose sheet has a "Código" column: the business key, unique and immutable.
 WITH_CODIGO = {
@@ -31,9 +31,9 @@ def check_text(name):
     return {c.name: str(c.sqltext) for c in table(name).constraints if isinstance(c, CheckConstraint)}
 
 
-def test_der_v3_has_the_25_tables_in_schema_costos():
+def test_der_v3_has_the_26_tables_in_schema_costos():
     assert {t.name for t in Base.metadata.tables.values()} == EXPECTED_TABLES
-    assert len(EXPECTED_TABLES) == 25
+    assert len(EXPECTED_TABLES) == 26
     assert Base.metadata.schema == "costos"
     assert all(t.schema == "costos" for t in Base.metadata.tables.values())
 

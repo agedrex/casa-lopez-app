@@ -312,6 +312,21 @@ class TipoCambio(IdentityAndCreatedAt, Base):
 Index("tipo_cambio_uq", TipoCambio.fecha, func.coalesce(TipoCambio.tipo, text("''")), TipoCambio.fuente, unique=True)
 
 
+class PrecioVenta(IdentityAndCreatedAt, Base):
+    """The sale price a person sets for a product on a date. Only appended: a new price is a new row."""
+    __tablename__ = "precio_venta"
+    __table_args__ = (
+        CheckConstraint("precio_ars > 0", name="precio_positivo"),
+        Index("precio_venta_producto_fecha", "producto_id", "vigente_desde"),
+    )
+    producto_id: Mapped[int] = mapped_column(ForeignKey("costos.producto.id"))
+    precio_ars: Mapped[Decimal] = mapped_column(money())
+    vigente_desde: Mapped[date] = mapped_column(Date)
+    # The auth user id as text, like cotizacion.creado_por (no FK: Better Auth lives in `public`).
+    creado_por: Mapped[str | None] = mapped_column(Text)
+    nota: Mapped[str | None] = mapped_column(Text)
+
+
 # --- Production orders ---------------------------------------------------------
 
 class OrdenFabricacion(BusinessKey, Base):

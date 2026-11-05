@@ -66,6 +66,10 @@ class RecordedOperations:
         self.dropped.append(name)
 
 
+# Tables created by revisions after 0003, so 0003 neither creates nor drops them.
+ADDED_AFTER_DER_V3 = {"precio_venta"}
+
+
 def load_revision(monkeypatch, filename):
     operations = RecordedOperations()
     monkeypatch.setitem(sys.modules, "alembic", SimpleNamespace(op=operations))
@@ -75,21 +79,22 @@ def load_revision(monkeypatch, filename):
 def test_revision_chain_replaces_v1_with_v3_then_seeds(monkeypatch):
     chain = {}
     for filename in ("0001_esquema_costos.py", "0002_semillas.py", "0003_der_v3.py", "0004_semillas_v3.py",
-                     "0005_gasto_reemplaza_a.py"):
+                     "0005_gasto_reemplaza_a.py", "0006_precio_venta.py"):
         _, revision = load_revision(monkeypatch, filename)
         chain[revision["revision"]] = revision["down_revision"]
     assert chain == {
         "0001_esquema_costos": None, "0002_semillas": "0001_esquema_costos",
         "0003_der_v3": "0002_semillas", "0004_semillas_v3": "0003_der_v3",
-        "0005_gasto_reemplaza_a": "0004_semillas_v3",
+        "0005_gasto_reemplaza_a": "0004_semillas_v3", "0006_precio_venta": "0005_gasto_reemplaza_a",
     }
 
 
 def test_der_v3_revision_matches_orm_and_reverses_dependencies(monkeypatch):
     operations, revision = load_revision(monkeypatch, "0003_der_v3.py")
     revision["upgrade"]()
-    # The ORM also carries what 0005 adds on top of DER v3 (gasto_periodo.reemplaza_a_id).
+    # The ORM also carries what 0005 and 0006 add on top of DER v3 (gasto_periodo.reemplaza_a_id, precio_venta).
     runpy.run_path(str(VERSIONS / "0005_gasto_reemplaza_a.py"))["upgrade"]()
+    runpy.run_path(str(VERSIONS / "0006_precio_venta.py"))["upgrade"]()
     assert set(operations.metadata.tables) == set(Base.metadata.tables)
     dialect = postgresql.dialect()
     for key, declared in operations.metadata.tables.items():
@@ -117,7 +122,8 @@ def test_der_v3_revision_matches_orm_and_reverses_dependencies(monkeypatch):
             if fk.target_fullname.rsplit(".", 1)[0] != key:
                 assert created.index(fk.target_fullname.rsplit(".", 1)[0]) < created.index(key)
     revision["downgrade"]()
-    assert sorted(operations.dropped) == sorted(table.name for table in Base.metadata.tables.values())
+    assert sorted(operations.dropped) == sorted(
+        table.name for table in Base.metadata.tables.values() if table.name not in ADDED_AFTER_DER_V3)
 
 
 def test_der_v3_upgrade_drops_only_v1_tables_in_costos_with_if_exists(monkeypatch):
@@ -137,6 +143,8 @@ def test_der_v3_downgrade_drops_children_before_parents_and_documents_v1_is_gone
     revision["downgrade"]()
     position = {name: index for index, name in enumerate(operations.dropped)}
     for table in Base.metadata.tables.values():
+        if table.name in ADDED_AFTER_DER_V3:
+            continue
         for fk in table.foreign_keys:
             parent = fk.target_fullname.split(".")[1]
             if parent != table.name:
@@ -240,3 +248,16 @@ def test_gasto_reemplaza_a_revision_adds_the_column_fk_and_partial_unique_index_
     assert operations.dropped_indexes == ["gasto_periodo_reemplaza_a_uq"]
     assert operations.dropped_constraints == ["fk_gasto_periodo_reemplaza_a_id_gasto_periodo"]
     assert operations.dropped_columns == [("costos", "gasto_periodo", "reemplaza_a_id")]
+
+
+def test_precio_venta_revision_creates_an_append_only_price_table_and_drops_it(monkeypatch):
+    operations, base = load_revision(monkeypatch, "0003_der_v3.py")
+    base["upgrade"]()
+    revision = runpy.run_path(str(VERSIONS / "0006_precio_venta.py"))
+    assert revision["revision"] == "0006_precio_venta" and revision["down_revision"] == "0005_gasto_reemplaza_a"
+    revision["upgrade"]()
+    precio = operations.metadata.tables["costos.precio_venta"]
+    assert set(precio.c.keys()) == {"id", "created_at", "producto_id", "precio_ars", "vigente_desde", "creado_por", "nota"}
+    assert {fk.target_fullname for fk in precio.foreign_keys} == {"costos.producto.id"}
+    revision["downgrade"]()
+    assert "precio_venta" in operations.dropped
