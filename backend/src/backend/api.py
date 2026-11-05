@@ -23,7 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.orm import Session
 
 from backend import cueros, servicios, sheets_client, voz, voz_llm
-from backend.auth import CORTE, Usuario, require_role, require_user
+from backend.auth import CORTE, CUALQUIER_ROL, PRODUCTOS, SOLO_ADMIN, Usuario, require_user
 from backend.database import get_session
 from backend.models import ARS_USD, LOT_STATES, UNITS, WHERE_MADE
 from backend.sheets_client import ErrorDeSheets, SheetsClient
@@ -32,14 +32,22 @@ from backend.sheets_export import NOMBRES_DE_PESTANAS, Fuente, FuenteSQL, _catal
 logger = logging.getLogger("uvicorn.error")
 
 router = APIRouter(dependencies=[Depends(require_user)])
-# Roles that may write. `require_role` builds on `require_user`, so no session still answers 401, not 403.
-ESCRITURA = [Depends(require_role("admin", "cotizador"))]
-# Cutting and remainder routes have their own gate; ESCRITURA stays unchanged.
+# Access matrix, deny by default: EVERY endpoint carries one of these gates (test_roles.py fails otherwise).
+# `require_role` builds on `require_user`, so no session still answers 401, not 403. SUPUESTO: validar.
+#   admin    everything.
+#   gerente  read only: product and quote data (LECTURA_PRODUCTOS) and the plain catalogs (LECTURA_GENERAL).
+#   taller   voice, cutting and what the corte / cueros / voz pages read (CORTES, LECTURA_CORTE); no costs screens.
+# Every write is admin only (ESCRITURA) except cutting and the voice interpreter (CORTES).
+ESCRITURA = [Depends(SOLO_ADMIN)]
 CORTES = [Depends(CORTE)]
-# The admin area: only `admin` (the front also hides it, and re-checks the role in every server action).
-ADMINISTRACION = [Depends(require_role("admin"))]
-SoloAdmin = Annotated[Usuario, Depends(require_role("admin"))]
-Escritor = Annotated[Usuario, Depends(require_role("admin", "cotizador"))]
+# The admin area (the front also hides it, and re-checks the role in every server action).
+ADMINISTRACION = [Depends(SOLO_ADMIN)]
+LECTURA_ADMIN = [Depends(SOLO_ADMIN)]  # costs, prices, fixed costs, orders' money, quality, sync: admin only
+LECTURA_PRODUCTOS = [Depends(PRODUCTOS)]  # admin + gerente
+LECTURA_CORTE = [Depends(CORTE)]  # admin + taller
+LECTURA_GENERAL = [Depends(CUALQUIER_ROL)]  # any of the three roles
+SoloAdmin = Annotated[Usuario, Depends(SOLO_ADMIN)]
+Escritor = SoloAdmin
 Sesion = Annotated[Session, Depends(get_session)]
 
 PERIODO = r"^[0-9]{4}-(0[1-9]|1[0-2])$"
@@ -953,7 +961,7 @@ class CalidadOut(Salida):
 
 # --- Read ----------------------------------------------------------------------------------------------------
 
-@router.get("/productos", response_model=list[ProductoResumen])
+@router.get("/productos", dependencies=LECTURA_GENERAL, response_model=list[ProductoResumen])
 def productos(
     session: Sesion, limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0),
     q: str | None = Query(None, max_length=100), categoria: str | None = None,
@@ -962,17 +970,17 @@ def productos(
 
 
 # Declared before `/productos/{codigo}` so "conteo" is not read as a product code.
-@router.get("/productos/conteo", response_model=ConteoOut)
+@router.get("/productos/conteo", dependencies=LECTURA_PRODUCTOS, response_model=ConteoOut)
 def productos_conteo(session: Sesion, q: str | None = Query(None, max_length=100), categoria: str | None = None):
     return {"total": servicios.contar_productos(session, q, categoria)}
 
 
-@router.get("/productos/{codigo}", response_model=FichaOut)
+@router.get("/productos/{codigo}", dependencies=LECTURA_PRODUCTOS, response_model=FichaOut)
 def ficha(codigo: str, session: Sesion):
     return servicios.ficha_producto(session, codigo)
 
 
-@router.get("/modelos", response_model=list[ModeloOut])
+@router.get("/modelos", dependencies=LECTURA_ADMIN, response_model=list[ModeloOut])
 def modelos(
     session: Sesion, limit: int = Query(500, ge=1, le=1000), offset: int = Query(0, ge=0),
     q: str | None = Query(None, max_length=100), categoria: str | None = None, validado: bool | None = None,
@@ -981,29 +989,29 @@ def modelos(
     return servicios.listar_modelos(session, limit, offset, q, categoria, validado, tamano)
 
 
-@router.get("/modelos/{codigo}", response_model=ModeloDetalleOut)
+@router.get("/modelos/{codigo}", dependencies=LECTURA_ADMIN, response_model=ModeloDetalleOut)
 def modelo(codigo: str, session: Sesion):
     return servicios.detalle_modelo(session, codigo)
 
 
-@router.get("/materiales", response_model=list[MaterialOut])
+@router.get("/materiales", dependencies=LECTURA_GENERAL, response_model=list[MaterialOut])
 def materiales(session: Sesion):
     return servicios.listar_materiales(session)
 
 
-@router.get("/cueros", response_model=list[GrupoCueroOut])
+@router.get("/cueros", dependencies=LECTURA_CORTE, response_model=list[GrupoCueroOut])
 def listar_cueros(session: Sesion, material: str | None = None, color: str | None = None):
     return cueros.listar_cueros(session, material, color)
 
 
-@router.get("/cueros/alcanza", response_model=AlcanzaCueroOut)
+@router.get("/cueros/alcanza", dependencies=LECTURA_CORTE, response_model=AlcanzaCueroOut)
 def alcanza_cuero(
     session: Sesion, producto: str, cantidad: Annotated[Decimal, Query(gt=0, max_digits=12, decimal_places=6)],
 ):
     return cueros.alcanza(session, producto, cantidad)
 
 
-@router.get("/cueros/{codigo}", response_model=PiezaCueroDetalleOut)
+@router.get("/cueros/{codigo}", dependencies=LECTURA_CORTE, response_model=PiezaCueroDetalleOut)
 def detalle_cuero(codigo: str, session: Sesion):
     return cueros.detalle_pieza(session, codigo)
 
@@ -1023,12 +1031,12 @@ def sobrante_cuero(codigo: str, cuerpo: SobranteCueroIn, session: Sesion):
     return cueros.decidir_sobrante(session, codigo, decision=cuerpo.decision, fecha=cuerpo.fecha or date.today())
 
 
-@router.get("/precios", response_model=list[PrecioOut])
+@router.get("/precios", dependencies=LECTURA_ADMIN, response_model=list[PrecioOut])
 def precios(session: Sesion, material: str | None = None, a_fecha: date | None = None):
     return servicios.listar_precios(session, material, a_fecha)
 
 
-@router.get("/precios/chequeo", response_model=PrecioChequeoOut)
+@router.get("/precios/chequeo", dependencies=LECTURA_ADMIN, response_model=PrecioChequeoOut)
 def precio_chequeo(
     session: Sesion, material: str, precio: Annotated[Decimal, Query(ge=0, max_digits=14, decimal_places=4)],
     moneda: Literal[*ARS_USD], vigente_desde: date, color: str | None = None,
@@ -1037,58 +1045,58 @@ def precio_chequeo(
     return servicios.chequear_precio(session, material, color, precio, moneda, vigente_desde)
 
 
-@router.get("/catalogos", response_model=CatalogosOut)
+@router.get("/catalogos", dependencies=LECTURA_PRODUCTOS, response_model=CatalogosOut)
 def catalogos(session: Sesion):
     return servicios.listar_catalogos(session)
 
 
-@router.get("/colores", response_model=list[CatalogoItemOut])
+@router.get("/colores", dependencies=LECTURA_CORTE, response_model=list[CatalogoItemOut])
 def colores(session: Sesion):
     return servicios.listar_colores(session)
 
 
-@router.get("/categorias", response_model=list[CatalogoItemOut])
+@router.get("/categorias", dependencies=LECTURA_ADMIN, response_model=list[CatalogoItemOut])
 def categorias(session: Sesion):
     return servicios.listar_categorias(session)
 
 
-@router.get("/impuestos", response_model=list[ImpuestoOut])
+@router.get("/impuestos", dependencies=LECTURA_ADMIN, response_model=list[ImpuestoOut])
 def impuestos(session: Sesion):
     """Read only: whether VAT counts as a product cost is an open business decision."""
     return servicios.listar_impuestos(session)
 
 
-@router.get("/dolar", response_model=list[DolarOut])
+@router.get("/dolar", dependencies=LECTURA_ADMIN, response_model=list[DolarOut])
 def dolar(session: Sesion):
     return servicios.listar_dolar(session)
 
 
-@router.get("/parametros", response_model=list[ParametroOut])
+@router.get("/parametros", dependencies=LECTURA_ADMIN, response_model=list[ParametroOut])
 def parametros(session: Sesion):
     return servicios.listar_parametros(session)
 
 
-@router.get("/talleres", response_model=list[TallerOut])
+@router.get("/talleres", dependencies=LECTURA_ADMIN, response_model=list[TallerOut])
 def talleres(session: Sesion):
     return servicios.listar_talleres(session)
 
 
-@router.get("/personas", response_model=list[PersonaOut])
+@router.get("/personas", dependencies=LECTURA_ADMIN, response_model=list[PersonaOut])
 def personas(session: Sesion):
     return servicios.listar_personas(session)
 
 
-@router.get("/talleres/{codigo}", response_model=TallerDetalleOut)
+@router.get("/talleres/{codigo}", dependencies=LECTURA_ADMIN, response_model=TallerDetalleOut)
 def taller(codigo: str, session: Sesion):
     return servicios.detalle_taller(session, codigo)
 
 
-@router.get("/costos-fijos", response_model=CostosFijosOut)
+@router.get("/costos-fijos", dependencies=LECTURA_ADMIN, response_model=CostosFijosOut)
 def costos_fijos(session: Sesion, periodo: Annotated[str | None, Query(pattern=PERIODO)] = None):
     return servicios.costos_fijos(session, periodo)
 
 
-@router.get("/panel/costos", response_model=PanelCostosOut)
+@router.get("/panel/costos", dependencies=LECTURA_ADMIN, response_model=PanelCostosOut)
 def panel_de_costos(
     session: Sesion, periodo: Annotated[str | None, Query(pattern=PERIODO)] = None,
     precio: Annotated[Decimal | None, Query(gt=0, max_digits=14, decimal_places=4)] = None,
@@ -1097,13 +1105,13 @@ def panel_de_costos(
     return servicios.panel_de_costos(session, periodo, precio)
 
 
-@router.get("/productos/{codigo}/precio-venta", response_model=list[PrecioVentaOut])
+@router.get("/productos/{codigo}/precio-venta", dependencies=LECTURA_PRODUCTOS, response_model=list[PrecioVentaOut])
 def historial_de_precio_de_venta(codigo: str, session: Sesion):
     """Saved sale prices of the product, newest first."""
     return servicios.listar_precios_de_venta(session, codigo)
 
 
-@router.get("/productos/{codigo}/rentabilidad", response_model=RentabilidadOut)
+@router.get("/productos/{codigo}/rentabilidad", dependencies=LECTURA_PRODUCTOS, response_model=RentabilidadOut)
 def rentabilidad_de_producto(
     codigo: str, session: Sesion,
     precio: Annotated[Decimal | None, Query(gt=0, max_digits=14, decimal_places=4)] = None,
@@ -1112,7 +1120,7 @@ def rentabilidad_de_producto(
     return servicios.rentabilidad_de_producto(session, codigo, precio)
 
 
-@router.get("/panel/tendencia", response_model=TendenciaOut)
+@router.get("/panel/tendencia", dependencies=LECTURA_ADMIN, response_model=TendenciaOut)
 def tendencia_de_costos(
     session: Sesion, hasta: Annotated[str | None, Query(pattern=PERIODO)] = None,
     meses: Annotated[int, Query(ge=1, le=servicios.MAX_MESES_DE_TENDENCIA)] = servicios.MESES_DE_TENDENCIA,
@@ -1121,12 +1129,12 @@ def tendencia_de_costos(
     return servicios.tendencia_de_costos(session, hasta, meses)
 
 
-@router.get("/costos-fijos/periodos", response_model=PeriodosOut)
+@router.get("/costos-fijos/periodos", dependencies=LECTURA_ADMIN, response_model=PeriodosOut)
 def periodos_de_costos_fijos(session: Sesion):
     return servicios.periodos_de_costos_fijos(session)
 
 
-@router.get("/ordenes", response_model=list[OrdenResumenOut])
+@router.get("/ordenes", dependencies=LECTURA_CORTE, response_model=list[OrdenResumenOut])
 def ordenes(
     session: Sesion, estado: Literal[*LOT_STATES] | None = None, donde: Literal[*WHERE_MADE] | None = None,
     taller: str | None = None,
@@ -1134,23 +1142,23 @@ def ordenes(
     return servicios.listar_ordenes(session, estado, donde, taller)
 
 
-@router.get("/ordenes/{codigo}", response_model=OrdenDetalleOut)
+@router.get("/ordenes/{codigo}", dependencies=LECTURA_CORTE, response_model=OrdenDetalleOut)
 def orden(codigo: str, session: Sesion):
     return servicios.detalle_orden(session, codigo)
 
 
-@router.get("/fabricacion/casa-vs-taller", response_model=CasaVsTallerOut)
+@router.get("/fabricacion/casa-vs-taller", dependencies=LECTURA_ADMIN, response_model=CasaVsTallerOut)
 def casa_vs_taller(session: Sesion, hasta: Annotated[str | None, Query(pattern=PERIODO)] = None):
     """The last 12 months up to `hasta` (default: this month). A lot counts in the month of its delivery date, else of its shipping date."""
     return servicios.casa_vs_taller(session, hasta)
 
 
-@router.get("/productos/{codigo}/precios-talleres", response_model=PreciosTalleresOut)
+@router.get("/productos/{codigo}/precios-talleres", dependencies=LECTURA_ADMIN, response_model=PreciosTalleresOut)
 def precios_de_talleres(codigo: str, session: Sesion, mismo_tamano: bool = True):
     return servicios.precios_de_talleres(session, codigo, date.today(), mismo_tamano)
 
 
-@router.get("/calidad", response_model=CalidadOut)
+@router.get("/calidad", dependencies=LECTURA_ADMIN, response_model=CalidadOut)
 def calidad(session: Sesion):
     return servicios.calidad_de_datos(session)
 
@@ -1171,7 +1179,7 @@ def guardar_precio_de_venta(codigo: str, cuerpo: PrecioVentaIn, session: Sesion,
     )
 
 
-@router.post("/cvu/escenario", response_model=EscenarioOut)
+@router.post("/cvu/escenario", dependencies=ESCRITURA, response_model=EscenarioOut)
 def escenario_cvu(cuerpo: EscenarioIn, session: Sesion):
     """Break-even of the factory for a mix typed by the owner. A POST only because of the body: it reads and saves nothing."""
     return servicios.escenario_cvu(session, cuerpo.periodo, [item.model_dump() for item in cuerpo.items])
@@ -1317,7 +1325,7 @@ def cambiar_consumos_de_modelo(codigo: str, cuerpo: ConsumosIn, session: Sesion,
 
 # --- Google Sheet display copy (T6) ------------------------------------------------------------------------------
 # The Sheet is DISPLAY ONLY: the app builds the tabs (sheets_export.py), pushes them (sheets_client.py) and never reads
-# anything back. Admin only to run or preview; any signed-in user can read the status.
+# anything back. Admin only to run, preview or read the status.
 
 # SUPUESTO: validar. Argentina has no daylight saving time, so a fixed UTC-3 offset keeps the "today" of the export
 # (which price is in force) the local one without needing the tz database in the container.
@@ -1421,7 +1429,7 @@ def _texto_de_celda(valor: object) -> str:
     return format(valor, "f") if isinstance(valor, Decimal) else str(valor)
 
 
-@router.get("/grilla", response_model=GrillaOut)
+@router.get("/grilla", dependencies=LECTURA_PRODUCTOS, response_model=GrillaOut)
 def obtener_grilla(
     fuente: Annotated[Fuente, Depends(get_fuente_sheets)],
     texto: str = "",
@@ -1452,7 +1460,7 @@ def obtener_grilla(
     }
 
 
-@router.get("/sync/sheets/estado", response_model=EstadoSincronizacionOut)
+@router.get("/sync/sheets/estado", dependencies=LECTURA_ADMIN, response_model=EstadoSincronizacionOut)
 def estado_de_sync():
     faltantes = sheets_client.faltantes()
     return {
@@ -1556,14 +1564,14 @@ def get_fuente_voz(session: Sesion) -> voz.FuenteVoz:
     return voz.FuenteSQL(session)
 
 
-@router.get("/voz/estado", response_model=EstadoVozOut)
+@router.get("/voz/estado", dependencies=LECTURA_CORTE, response_model=EstadoVozOut)
 def estado_de_voz(llm: Annotated[voz_llm.VozLLM | None, Depends(get_voz_llm)]):
     """Whether the model is configured, yes or no: never the key, the model name or the address."""
     return {"configurado": llm is not None, "acciones": list(voz_llm.ACCIONES), "max_caracteres": voz_llm.MAX_TEXTO,
             "limite_por_minuto": _LIMITADOR_VOZ.maximo}
 
 
-@router.post("/voz/interpretar", dependencies=ESCRITURA, response_model=voz.PropuestaOut)
+@router.post("/voz/interpretar", dependencies=CORTES, response_model=voz.PropuestaOut)
 def interpretar_voz(
     cuerpo: InterpretarIn, usuario: Annotated[Usuario, Depends(require_user)],
     llm: Annotated[voz_llm.VozLLM | None, Depends(get_voz_llm)],

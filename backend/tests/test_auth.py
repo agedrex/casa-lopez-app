@@ -137,13 +137,13 @@ def test_require_role_allows_a_matching_role():
 
 
 def test_require_role_accepts_any_of_several_roles_in_a_comma_separated_value():
-    body = {"user": {"id": "u2", "role": "consulta,cotizador"}}
-    client, _ = build_app(lambda request: httpx.Response(200, json=body), roles=("admin", "cotizador"))
+    body = {"user": {"id": "u2", "role": "gerente,admin"}}
+    client, _ = build_app(lambda request: httpx.Response(200, json=body), roles=("admin", "taller"))
     assert client.get("/solo", headers={"cookie": COOKIE}).status_code == 200
 
 
 def test_require_role_rejects_the_wrong_role_with_403():
-    body = {"user": {"id": "u3", "role": "consulta"}}
+    body = {"user": {"id": "u3", "role": "gerente"}}
     client, _ = build_app(lambda request: httpx.Response(200, json=body), roles=("admin",))
     response = client.get("/solo", headers={"cookie": COOKIE})
     assert response.status_code == 403
@@ -157,4 +157,4 @@ def test_require_role_still_answers_401_when_not_signed_in():
 
 def test_a_user_without_role_holds_no_roles():
     assert Usuario(id="u").roles == frozenset()
-    assert Usuario(id="u", role=" admin , cotizador ").roles == frozenset({"admin", "cotizador"})
+    assert Usuario(id="u", role=" admin , taller ").roles == frozenset({"admin", "taller"})

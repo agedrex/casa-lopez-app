@@ -27,7 +27,7 @@ def sin_base(monkeypatch):
     app.dependency_overrides.clear()
 
 
-def con_usuario(role: str | None = "cotizador"):
+def con_usuario(role: str | None = "admin"):
     session = MagicMock()
     app.dependency_overrides[get_session] = lambda: session
     app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="usuario-de-prueba", role=role))
@@ -128,29 +128,29 @@ def test_invalid_period_is_rejected():
     assert client.get("/costos-fijos", params={"periodo": "octubre"}).status_code == 422
 
 
-# --- Roles: existing writes need admin or cotizador; only cutting writes also allow corte -------------------
+# --- Roles: every write needs admin; only the cutting writes and the voice route also allow taller ---------------
 
-# The admin area (T5c) writes are admin only; test_admin.py covers their gate. Every other POST is admin or cotizador.
-# POST /sync/sheets (T6) is admin only too; test_sheets_api.py covers its gate.
+# Every POST is admin only. The routes below are checked by their own tests (test_admin.py, test_sheets_api.py,
+# test_cvu_rentabilidad.py and test_roles.py), so the generic body-validation tests here leave them out.
+# /cvu/escenario is a POST only because of its body: it computes and saves nothing, but it is admin only anyway.
 SOLO_ADMIN = {"/parametros/{codigo}", "/personas", "/personas/{codigo}/activo", "/colores", "/categorias",
-              "/modelos/{codigo}/consumos", "/sync/sheets"}
-SOLO_CORTE = {"/cueros/{codigo}/cortes", "/cueros/{codigo}/sobrante"}
-# A POST only because of its body: it computes and saves nothing, so any logged user may call it.
-LECTURA_CON_CUERPO = {"/cvu/escenario"}
-ESCRITURAS = [(m, r) for m, r in RUTAS if m == "POST" and r not in SOLO_ADMIN | SOLO_CORTE | LECTURA_CON_CUERPO]
+              "/modelos/{codigo}/consumos", "/sync/sheets", "/cvu/escenario"}
+# Admin and taller: cutting and the voice interpreter.
+SOLO_CORTE = {"/cueros/{codigo}/cortes", "/cueros/{codigo}/sobrante", "/voz/interpretar"}
+ESCRITURAS = [(m, r) for m, r in RUTAS if m == "POST" and r not in SOLO_ADMIN | SOLO_CORTE]
 LECTURAS = [(m, r) for m, r in RUTAS if m == "GET"]
 SIN_PERMISO = {"detail": "No tenés permiso para esta acción."}
 
 
 def test_every_write_route_is_covered_by_the_role_tests():
-    assert len(ESCRITURAS) == 22 and {r for _, r in ESCRITURAS} >= {"/modelos", "/modelos/{codigo}/validado", "/voz/interpretar",
+    assert len(ESCRITURAS) == 21 and {r for _, r in ESCRITURAS} >= {"/modelos", "/modelos/{codigo}/validado",
         "/productos", "/productos/{codigo}/precio-venta", "/precios", "/cueros", "/dolar", "/dolar/actualizar-bna", "/ordenes", "/talleres", "/talleres/{codigo}/activo",
         "/ordenes/{codigo}/estado", "/ordenes/{codigo}/items", "/ordenes/{codigo}/items/{item}/precios",
         "/costos-fijos/{codigo}/monto", "/costos-fijos/{codigo}/corregir", "/costos-fijos/copiar"}
 
 
 @pytest.mark.parametrize("metodo, ruta", ESCRITURAS)
-@pytest.mark.parametrize("role", ["consulta", "corte", None, "otro"])
+@pytest.mark.parametrize("role", ["gerente", "taller", None, "otro"])
 def test_a_user_without_a_writing_role_gets_403_on_every_post(monkeypatch, metodo, ruta, role):
     client, session = con_usuario(role)
     monkeypatch.setattr(servicios, "crear_producto", lambda *a, **k: pytest.fail("the service must not be called"))
@@ -161,8 +161,8 @@ def test_a_user_without_a_writing_role_gets_403_on_every_post(monkeypatch, metod
 
 
 @pytest.mark.parametrize("metodo, ruta", ESCRITURAS)
-@pytest.mark.parametrize("role", ["admin", "cotizador", "consulta,cotizador"])
-def test_admin_and_cotizador_pass_the_role_gate_on_every_post(monkeypatch, metodo, ruta, role):
+@pytest.mark.parametrize("role", ["admin", "cotizador", "gerente,admin"])
+def test_admin_passes_the_role_gate_on_every_post(monkeypatch, metodo, ruta, role):
     client, _ = con_usuario(role)
     if ruta == "/dolar/actualizar-bna":
         # Bodyless route: stub the service so the test never reaches bna.com.ar.
@@ -189,7 +189,7 @@ def test_posts_without_a_session_stay_401_not_403(metodo, ruta):
     ("/cueros/PZC-0001/cortes", {"m2": "1", "orden_item": "LIT-0001"}, "cortar"),
     ("/cueros/PZC-0001/sobrante", {"decision": "REUTILIZABLE"}, "decidir_sobrante"),
 ])
-@pytest.mark.parametrize("role,permitido", [("corte", True), ("admin", True), ("cotizador", True), ("consulta", False)])
+@pytest.mark.parametrize("role,permitido", [("taller", True), ("admin", True), ("corte", True), ("cotizador", True), ("gerente", False), (None, False), ("otro", False)])
 def test_cutting_writes_have_their_own_role_gate(monkeypatch, ruta, cuerpo, servicio, role, permitido):
     client, _ = con_usuario(role)
     monkeypatch.setattr(cueros, servicio, lambda *a, **k: (_ for _ in ()).throw(servicios.DatosInvalidos("Llegó al servicio.")))
@@ -199,8 +199,8 @@ def test_cutting_writes_have_their_own_role_gate(monkeypatch, ruta, cuerpo, serv
 
 
 @pytest.mark.parametrize("metodo, ruta", [(m, r) for m, r in LECTURAS if "{" not in r and r != "/productos/conteo"])
-def test_reads_are_open_to_the_consulta_role(monkeypatch, metodo, ruta):
-    client, session = con_usuario("consulta")
+def test_reads_are_open_to_the_admin_role(monkeypatch, metodo, ruta):
+    client, session = con_usuario("admin")
     # The heavy reads are covered against PostgreSQL; here only the gate matters, so the service answers an empty body.
     monkeypatch.setattr(servicios, "listar_ordenes", lambda *a, **k: [])
     monkeypatch.setattr(servicios, "casa_vs_taller", lambda *a, **k: {"talleres": [], "meses": []})
@@ -264,7 +264,7 @@ def test_invalid_months_are_rejected_on_the_new_reads():
 
 
 def test_the_product_search_reaches_the_service(monkeypatch):
-    client, _ = con_usuario("consulta")
+    client, _ = con_usuario("gerente")
     visto = {}
 
     def listar(session, limit, offset, q=None, categoria=None):
@@ -278,6 +278,6 @@ def test_the_product_search_reaches_the_service(monkeypatch):
 
 
 def test_the_count_is_a_separate_route_so_the_list_keeps_its_shape(monkeypatch):
-    client, _ = con_usuario("consulta")
+    client, _ = con_usuario("gerente")
     monkeypatch.setattr(servicios, "contar_productos", lambda session, q=None, categoria=None: 7)
     assert client.get("/productos/conteo", params={"q": "x"}).json() == {"total": 7}

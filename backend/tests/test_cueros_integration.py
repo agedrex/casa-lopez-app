@@ -17,7 +17,7 @@ def api(local_postgres, monkeypatch):
     connection = local_postgres.connect()
     outer = connection.begin()
     session = Session(bind=connection, join_transaction_mode="create_savepoint")
-    role = {"value": "cotizador"}
+    role = {"value": "admin"}
     app.dependency_overrides[get_session] = lambda: session
     app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="prueba-cueros", role=role["value"]))
     try:
@@ -57,7 +57,7 @@ def test_purchase_cut_and_irrecoverable_remainder_are_append_only(api):
     assert [(m["tipo"], D(m["m2"]), m["fecha"]) for m in piel["movimientos"]] == [
         ("DESPERDICIO", D("-1"), "2026-10-01")]
     producto, item = lote_para(client)
-    role["value"] = "corte"
+    role["value"] = "taller"
     assert client.post("/cueros", json={"origen": "SOBRANTE_EXISTENTE", "material": "MAT-CU01",
                                          "m2_iniciales": "2"}).status_code == 403
     assert client.post(f"/cueros/{codigo}/cortes", json={"m2": "10", "orden_item": item}).status_code == 422
@@ -136,7 +136,7 @@ def test_availability_suggests_same_leather_other_color_before_other_leather(api
     for color in ("Azul", "Negro"):
         creado = client.post("/colores", json={"nombre": color})
         assert creado.status_code == 201, creado.text
-    role["value"] = "cotizador"
+    role["value"] = "admin"
     producto, _ = lote_para(client, color="Azul")
     for material, color in (("MAT-CU01", "Azul"), ("MAT-CU01", "Negro"), ("MAT-CU02", "Negro")):
         creada = client.post("/cueros", json={"origen": "SOBRANTE_EXISTENTE", "material": material,

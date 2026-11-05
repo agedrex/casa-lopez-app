@@ -26,7 +26,7 @@ def api(local_postgres, monkeypatch):
     outer = connection.begin()
     session = Session(bind=connection, join_transaction_mode="create_savepoint")
     app.dependency_overrides[get_session] = lambda: session
-    app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="prueba-correccion", role="cotizador"))
+    app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="prueba-correccion", role="admin"))
     try:
         with TestClient(app) as client:
             client.session = session

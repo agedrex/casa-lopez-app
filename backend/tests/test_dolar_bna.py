@@ -212,14 +212,14 @@ def test_service_does_not_clash_with_a_manual_dollar_of_the_same_day(sesion):
 
 # --- endpoint --------------------------------------------------------------------------------------------
 
-def con_usuario(role="cotizador"):
+def con_usuario(role="admin"):
     session = MagicMock()
     app.dependency_overrides[get_session] = lambda: session
     app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="usuario-de-prueba", role=role))
     return TestClient(app), session
 
 
-@pytest.mark.parametrize("role", ["consulta", None, "otro"])
+@pytest.mark.parametrize("role", ["gerente", "taller", None, "otro"])
 def test_the_endpoint_requires_a_writing_role(monkeypatch, role):
     client, session = con_usuario(role)
     monkeypatch.setattr(servicios, "actualizar_dolar_bna", lambda *a, **k: pytest.fail("the service must not be called"))
@@ -234,7 +234,7 @@ def test_the_endpoint_needs_a_session():
     assert TestClient(app).post("/dolar/actualizar-bna").status_code == 401
 
 
-@pytest.mark.parametrize("role", ["admin", "cotizador"])
+@pytest.mark.parametrize("role", ["admin", "cotizador"])  # cotizador: legacy name
 def test_the_endpoint_answers_the_service_result(monkeypatch, role):
     client, _ = con_usuario(role)
     visto = {}

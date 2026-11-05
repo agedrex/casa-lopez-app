@@ -186,7 +186,7 @@ def test_copying_validates_both_periods_before_touching_the_session(escrito, des
 
 # --- API: routes, gate and wiring ----------------------------------------------------------------------------
 
-def con_usuario(role="cotizador"):
+def con_usuario(role="admin"):
     session = MagicMock()
     app.dependency_overrides[get_session] = lambda: session
     app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="usuario-de-prueba", role=role))
@@ -256,7 +256,7 @@ def test_domain_errors_map_to_404_409_and_422(monkeypatch):
     ("/costos-fijos/GF-0007/corregir", {"monto_ars_del_mes": "1"}),
     ("/costos-fijos/copiar", {"desde": "2026-10", "hasta": "2026-11"}),
 ])
-@pytest.mark.parametrize("role", ["consulta", "corte", None])
+@pytest.mark.parametrize("role", ["gerente", "taller", None])
 def test_the_new_writes_are_closed_to_read_only_roles(monkeypatch, ruta, cuerpo, role):
     client, session = con_usuario(role)
     for nombre in ("corregir_gasto", "copiar_mes_de_gastos"):
@@ -265,8 +265,8 @@ def test_the_new_writes_are_closed_to_read_only_roles(monkeypatch, ruta, cuerpo,
     session.commit.assert_not_called()
 
 
-def test_reading_the_month_stays_open_to_the_consulta_role(monkeypatch):
-    client, _ = con_usuario("consulta")
+def test_reading_the_month_stays_open_to_the_admin_role(monkeypatch):
+    client, _ = con_usuario("admin")
     monkeypatch.setattr(servicios, "costos_fijos", lambda session, periodo=None: {
         "periodo": "2026-10", "total_fabrica": D("0"), "total_tienda": D("0"), "total": D("0"), "pendientes": 0,
         "incluye_ficticios": False, "gastos": []})

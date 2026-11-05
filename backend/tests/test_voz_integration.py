@@ -43,7 +43,7 @@ def entorno(local_postgres, monkeypatch):
     session = Session(bind=connection, join_transaction_mode="create_savepoint")
     llm = LLMFalso()
     app.dependency_overrides[get_session] = lambda: session
-    app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="usuario-de-prueba", role="cotizador"))
+    app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="usuario-de-prueba", role="admin"))
     app.dependency_overrides[api_module.get_voz_llm] = lambda: llm
     try:
         with TestClient(app) as client:

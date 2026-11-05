@@ -26,7 +26,7 @@ def api(local_postgres, monkeypatch):
     outer = connection.begin()
     session = Session(bind=connection, join_transaction_mode="create_savepoint")
     app.dependency_overrides[get_session] = lambda: session
-    app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="usuario-de-prueba", role="cotizador"))
+    app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="usuario-de-prueba", role="admin"))
     try:
         with TestClient(app) as client:
             yield client
@@ -290,8 +290,11 @@ def test_the_price_check_warns_before_saving_and_saves_nothing(api):
     assert len(api.get("/precios", params={"material": "MAT-CU01"}).json()) == 1
 
 
-def test_consulta_cannot_write_but_can_read(api):
-    app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="u", role="consulta"))
+def test_gerente_cannot_write_nor_read_the_dollar(api):
+    app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="u", role="gerente"))
     assert api.post("/dolar", json={"fecha": "2026-10-01", "ars_por_usd": "1700"}).status_code == 403
+    assert api.get("/dolar").status_code == 403
+    assert api.get("/productos").status_code == 200  # product data is what a gerente reads
+    app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="u", role="admin"))
     assert api.get("/dolar").status_code == 200
     assert len(api.get("/dolar").json()) == 1  # nothing was stored by the refused POST
