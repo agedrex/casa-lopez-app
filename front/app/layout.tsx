@@ -1,17 +1,11 @@
 import type { Metadata, Viewport } from "next";
-import { Lato, Playfair_Display } from "next/font/google";
+import { Nunito } from "next/font/google";
 import "./globals.css";
 
-const playfair = Playfair_Display({
+const nunito = Nunito({
   subsets: ["latin"],
-  variable: "--font-playfair",
-  display: "swap",
-});
-
-const lato = Lato({
-  subsets: ["latin"],
-  weight: ["300", "400", "700"],
-  variable: "--font-lato",
+  weight: ["300", "400", "600", "700"],
+  variable: "--font-nunito",
   display: "swap",
 });
 
@@ -35,7 +29,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="es" className={`${playfair.variable} ${lato.variable}`}>
+    <html lang="es" className={nunito.variable}>
       <body>{children}</body>
     </html>
   );

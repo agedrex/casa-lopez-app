@@ -2,8 +2,8 @@
 
 /*
  * Design tokens taken from casalopez.com.ar (theme stylesheet): warm off-white
- * paper, near-black ink, leather/blush accents, gold detail, Playfair Display for
- * headings and Lato for text. Cards are barely rounded and spaced generously.
+ * paper, near-black ink, leather/blush accents, gold detail, Nunito (a rounded
+ * sans) for headings and text. Cards are barely rounded and spaced generously.
  */
 @theme {
   --color-ink: #1c1c1c;
@@ -30,9 +30,12 @@
 }
 
 @theme inline {
-  --font-display: var(--font-playfair), Georgia, "Times New Roman", serif;
+  --font-display:
+    var(--font-nunito), -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
   --font-sans:
-    var(--font-lato), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    var(--font-nunito), -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
 }
 
 @layer base {
@@ -67,7 +70,7 @@
   h2,
   h3 {
     font-family: var(--font-display);
-    font-weight: 400;
+    font-weight: 600;
     letter-spacing: -0.01em;
     line-height: 1.15;
   }
