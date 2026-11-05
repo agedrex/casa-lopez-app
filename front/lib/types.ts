@@ -735,3 +735,46 @@ export type Escenario = {
   avisos: AvisoPanel[];
   confiable: boolean;
 };
+
+// Proveedores and their invoices/images. The API never sends the file bytes in a document;
+// the file is opened through /proveedores/documentos/{id}/archivo.
+export type Proveedor = {
+  codigo: string;
+  nombre: string;
+  cuit: string | null;
+  contacto: string | null;
+  telefono: string | null;
+  direccion: string | null;
+  nota: string | null;
+  activo: boolean;
+};
+
+export type DocumentoTipo = "FACTURA" | "IMAGEN" | "OTRO";
+
+export type OcrEstado = "PENDIENTE" | "LISTO" | "ERROR" | "NO_CONFIGURADO";
+
+/** What the OCR thinks the document says. Only a suggestion until a person confirms it. */
+export type OcrSugerencia = {
+  numero: string | null;
+  fecha: string | null;
+  total: string | null;
+  moneda: string | null;
+};
+
+export type DocumentoProveedor = {
+  id: number;
+  tipo: DocumentoTipo;
+  nombre_archivo: string;
+  mime: string;
+  tamano_bytes: number;
+  numero: string | null;
+  fecha_documento: string | null;
+  total: string | null;
+  moneda: "ARS" | "USD" | null;
+  ocr_estado: OcrEstado;
+  ocr_texto: string | null;
+  ocr_sugerencia: OcrSugerencia | null;
+  ocr_error: string | null;
+  subido_por: string;
+  created_at: string;
+};

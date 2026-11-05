@@ -12,6 +12,8 @@ export type ApiFailure = {
 export type ApiResult<T> = { ok: true; data: T } | ApiFailure;
 
 const TIMEOUT_MS = 10_000;
+// Uploads run the OCR before answering; file downloads move up to 10 MB.
+const FILE_TIMEOUT_MS = 60_000;
 
 function apiBaseUrl(): string | null {
   const configured = process.env.API_URL?.trim();
@@ -87,14 +89,19 @@ async function apiRequest<T>(
   const forwarded: Record<string, string> = { accept: "application/json" };
   const cookie = incoming.get("cookie");
   if (cookie) forwarded.cookie = cookie;
-  if (body !== undefined) forwarded["content-type"] = "application/json";
+  // FormData sets its own multipart boundary header: never set content-type for it.
+  const isForm = body instanceof FormData;
+  if (body !== undefined && !isForm) {
+    forwarded["content-type"] = "application/json";
+  }
 
   let response: Response;
   try {
     response = await fetch(`${base}${path}`, {
       method,
       headers: forwarded,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body:
+        body === undefined ? undefined : isForm ? body : JSON.stringify(body),
       cache: "no-store",
       signal: AbortSignal.timeout(timeoutMs),
     });
@@ -126,4 +133,47 @@ export function apiPost<T>(
   timeoutMs?: number,
 ): Promise<ApiResult<T>> {
   return apiRequest<T>("POST", path, body, timeoutMs);
+}
+
+/**
+ * Multipart upload (a file plus its fields). Same session forwarding as `apiPost`; the
+ * default timeout is longer because the API reads the text of the file before answering.
+ */
+export function apiPostForm<T>(
+  path: string,
+  body: FormData,
+  timeoutMs: number = FILE_TIMEOUT_MS,
+): Promise<ApiResult<T>> {
+  return apiRequest<T>("POST", path, body, timeoutMs);
+}
+
+/**
+ * Raw (not JSON) GET for files: the caller streams the response to the browser. Returns the
+ * API `Response` untouched when it is OK, so headers such as Content-Type survive.
+ */
+export async function apiGetFile(
+  path: string,
+): Promise<{ ok: true; response: Response } | ApiFailure> {
+  const base = apiBaseUrl();
+  if (!base) return failure(0, "La dirección de la API no está configurada.");
+
+  const incoming = await headers();
+  const forwarded: Record<string, string> = {};
+  const cookie = incoming.get("cookie");
+  if (cookie) forwarded.cookie = cookie;
+
+  let response: Response;
+  try {
+    response = await fetch(`${base}${path}`, {
+      method: "GET",
+      headers: forwarded,
+      cache: "no-store",
+      signal: AbortSignal.timeout(FILE_TIMEOUT_MS),
+    });
+  } catch {
+    return failure(0, "No se pudo conectar con la API de costos.");
+  }
+  if (response.status === 401) redirect("/login");
+  if (!response.ok) return readFailure(response);
+  return { ok: true, response };
 }
