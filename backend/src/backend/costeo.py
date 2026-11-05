@@ -236,3 +236,50 @@ def margen_de_contribucion(
     else:
         veredicto = "SALUDABLE"
     return MargenContribucion(margen, margen_pct, markup_pct, veredicto)
+
+
+@dataclass(frozen=True)
+class ProductoEnMezcla:
+    precio: Decimal
+    variable_por_unidad: Decimal
+    unidades: Decimal
+
+
+@dataclass(frozen=True)
+class EquilibrioGlobal:
+    ingresos: Decimal | None
+    margen_contribucion: Decimal | None
+    margen_contribucion_pct: Decimal | None
+    costos_fijos: Decimal | None
+    utilidad: Decimal | None
+    equilibrio_ingresos: Decimal | None
+    equilibrio_unidades: Decimal | None
+    margen_seguridad_pct: Decimal | None
+    motivo: str | None
+
+
+def equilibrio_con_mezcla(fijos: Decimal, mezcla: list[ProductoEnMezcla]) -> EquilibrioGlobal:
+    """Break-even of the whole business for a sales mix; the fixed costs are global and never spread over products.
+
+    No number unless there are sales and the mix leaves a positive contribution margin (then `motivo` says why).
+    SUPUESTO: validar con Gerardo. The volume is a scenario typed by the owner, not units sold.
+    """
+    def sin_numeros(motivo: str) -> EquilibrioGlobal:
+        return EquilibrioGlobal(None, None, None, None, None, None, None, None, motivo)
+
+    ingresos = sum((p.precio * p.unidades for p in mezcla), ZERO)
+    if ingresos <= 0:
+        return sin_numeros("SIN_VENTAS")
+    contribucion = sum(((p.precio - p.variable_por_unidad) * p.unidades for p in mezcla), ZERO)
+    if contribucion <= 0:
+        return sin_numeros("MC_NO_POSITIVO")
+    unidades = sum((p.unidades for p in mezcla), ZERO)
+    # fijos / (MC % / 100) and unidades x equilibrio_ingresos / ingresos, written with a single division each so exact
+    # cases (like 50.000 units) do not pick up a spurious extra unit from the 28-digit Decimal context.
+    equilibrio_ingresos = fijos * ingresos / contribucion
+    return EquilibrioGlobal(
+        ingresos=ingresos, margen_contribucion=contribucion, margen_contribucion_pct=contribucion / ingresos * 100,
+        costos_fijos=fijos, utilidad=contribucion - fijos, equilibrio_ingresos=equilibrio_ingresos,
+        equilibrio_unidades=(unidades * fijos / contribucion).to_integral_value(rounding=ROUND_CEILING),
+        margen_seguridad_pct=(ingresos - equilibrio_ingresos) / ingresos * 100, motivo=None,
+    )
