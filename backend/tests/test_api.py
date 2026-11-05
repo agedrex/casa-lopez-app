@@ -8,7 +8,7 @@ import pytest
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
-from backend import api, cueros, servicios
+from backend import api, cueros, proveedores, servicios
 from backend.auth import Usuario, get_verifier, require_user
 from backend.database import get_session
 from backend.main import app
@@ -134,7 +134,10 @@ def test_invalid_period_is_rejected():
 # test_cvu_rentabilidad.py and test_roles.py), so the generic body-validation tests here leave them out.
 # /cvu/escenario is a POST only because of its body: it computes and saves nothing, but it is admin only anyway.
 SOLO_ADMIN = {"/parametros/{codigo}", "/personas", "/personas/{codigo}/activo", "/colores", "/categorias",
-              "/modelos/{codigo}/consumos", "/sync/sheets", "/cvu/escenario"}
+              "/modelos/{codigo}/consumos", "/sync/sheets", "/cvu/escenario",
+              # Suppliers and documents (see test_proveedores_api.py and test_roles.py).
+              "/proveedores", "/proveedores/{codigo}", "/proveedores/{codigo}/activo",
+              "/proveedores/{codigo}/documentos", "/documentos-proveedor/{id}/ocr", "/documentos-proveedor/{id}/datos"}
 # Admin and taller: cutting, the voice interpreter and the workshop price a taller loads by voice.
 SOLO_CORTE = {"/cueros/{codigo}/cortes", "/cueros/{codigo}/sobrante", "/voz/interpretar",
               "/ordenes/{codigo}/items/{item}/precios"}
@@ -204,6 +207,7 @@ def test_reads_are_open_to_the_admin_role(monkeypatch, metodo, ruta):
     client, session = con_usuario("admin")
     # The heavy reads are covered against PostgreSQL; here only the gate matters, so the service answers an empty body.
     monkeypatch.setattr(servicios, "listar_ordenes", lambda *a, **k: [])
+    monkeypatch.setattr(proveedores, "list_suppliers", lambda *a, **k: [])
     monkeypatch.setattr(servicios, "casa_vs_taller", lambda *a, **k: {"talleres": [], "meses": []})
     monkeypatch.setattr(servicios, "panel_de_costos", lambda *a, **k: servicios.armar_panel_de_costos(
         periodo="2026-11", precio=None, hoy=date(2026, 11, 4), lotes=[], items=[], costos={}, fijos={}, precios=[],

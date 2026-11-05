@@ -120,6 +120,12 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
         "/talleres", "/talleres/{codigo}/activo", "/parametros/{codigo}",
         "/personas", "/personas/{codigo}/activo", "/colores", "/categorias", "/modelos", "/modelos/{codigo}/validado",
         "/modelos/{codigo}/consumos", "/sync/sheets")},
+    # Suppliers and their invoices / images: admin only, reads and writes alike.
+    ("GET", "/proveedores"): ADMIN, ("GET", "/proveedores/{codigo}"): ADMIN,
+    ("GET", "/proveedores/{codigo}/documentos"): ADMIN, ("GET", "/documentos-proveedor/{id}/archivo"): ADMIN,
+    **{("POST", ruta): ADMIN for ruta in (
+        "/proveedores", "/proveedores/{codigo}", "/proveedores/{codigo}/activo", "/proveedores/{codigo}/documentos",
+        "/documentos-proveedor/{id}/ocr", "/documentos-proveedor/{id}/datos")},
 }
 # Open on purpose: health and fictional demo data for the deploy, and the two read-only catalogs of routers.py that
 # carry no business data (revision number and table count; stage codes). They never needed a session.
@@ -159,7 +165,7 @@ def _cliente(role, session=None):
 
 
 def _estado(cliente, metodo, ruta):
-    return cliente.request(metodo, ruta.replace("{codigo}", "X-1").replace("{item}", "I-1").replace("{pestana}", "Dolar"),
+    return cliente.request(metodo, ruta.replace("{codigo}", "X-1").replace("{item}", "I-1").replace("{pestana}", "Dolar").replace("{id}", "7"),
                            json={} if metodo == "POST" else None).status_code
 
 
@@ -187,7 +193,7 @@ def test_admin_only_routes_refuse_everyone_else_without_calling_the_service(monk
         if Usuario(id="u", role=role).roles & permitidos:
             continue
         respuesta = cliente.request(
-            metodo, ruta.replace("{codigo}", "X-1").replace("{item}", "I-1").replace("{pestana}", "Dolar"),
+            metodo, ruta.replace("{codigo}", "X-1").replace("{item}", "I-1").replace("{pestana}", "Dolar").replace("{id}", "7"),
             json={} if metodo == "POST" else None)
         assert respuesta.status_code == 403 and respuesta.json() == SIN_PERMISO, (role, metodo, ruta)
     session.commit.assert_not_called()
@@ -238,6 +244,6 @@ def test_the_public_routes_stay_open_without_a_session():
 def test_no_session_is_still_401_not_403(metodo, ruta):
     app.dependency_overrides[get_verifier] = lambda: (lambda request: None)
     respuesta = TestClient(app).request(
-        metodo, ruta.replace("{codigo}", "X-1").replace("{item}", "I-1").replace("{pestana}", "Dolar"),
+        metodo, ruta.replace("{codigo}", "X-1").replace("{item}", "I-1").replace("{pestana}", "Dolar").replace("{id}", "7"),
         json={} if metodo == "POST" else None)
     assert respuesta.status_code == 401 and respuesta.json() == {"detail": "No autenticado."}
