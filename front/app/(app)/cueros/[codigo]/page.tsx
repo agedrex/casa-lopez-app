@@ -20,7 +20,7 @@ import {
 import { apiGet } from "@/lib/api";
 import { grupoTitulo, movimientoLabel } from "@/lib/cueros";
 import { formatDate, formatMoney, formatQuantity } from "@/lib/format";
-import { isCorteOnly } from "@/lib/permissions";
+import { isTallerOnly } from "@/lib/permissions";
 import { requireSession } from "@/lib/session";
 import type { Material, PiezaCueroDetalle } from "@/lib/types";
 
@@ -35,7 +35,7 @@ export default async function PielPage({
 }) {
   const { user } = await requireSession();
   const { codigo } = await params;
-  const showMoney = !isCorteOnly(user.role);
+  const showMoney = !isTallerOnly(user.role);
   const [pieza, materiales] = await Promise.all([
     apiGet<PiezaCueroDetalle>(`/cueros/${encodeURIComponent(codigo)}`),
     apiGet<Material[]>("/materiales"),

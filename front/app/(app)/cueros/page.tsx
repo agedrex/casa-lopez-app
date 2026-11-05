@@ -21,7 +21,7 @@ import { selectedView, ViewSelector } from "@/components/view-selector";
 import { apiGet } from "@/lib/api";
 import { grupoTitulo, isPositive } from "@/lib/cueros";
 import { parseDecimalInput, todayIso } from "@/lib/format";
-import { canWrite, isCorteOnly } from "@/lib/permissions";
+import { canWrite, isTallerOnly } from "@/lib/permissions";
 import { requireSession } from "@/lib/session";
 import type {
   AlcanzaCuero,
@@ -52,7 +52,7 @@ export default async function CuerosPage({
   const { user } = await requireSession();
   const params = await searchParams;
   const writer = canWrite(user.role);
-  const showMoney = !isCorteOnly(user.role);
+  const showMoney = !isTallerOnly(user.role);
   const view = selectedView(params.vista);
   const material = first(params.material);
   const color = first(params.color);

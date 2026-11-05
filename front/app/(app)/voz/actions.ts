@@ -5,7 +5,12 @@ import { error, type FormState, IDLE } from "@/lib/action-state";
 import { apiGet, apiPost } from "@/lib/api";
 import type { Material, VozPropuesta } from "@/lib/types";
 import { type InterpretarState, VOZ_MAX_CHARS, VOZ_NOTA } from "@/lib/voz";
-import { denyUnlessWriter, fromFailure, text } from "@/lib/write-guard";
+import {
+  denyUnlessVoice,
+  denyUnlessWriter,
+  fromFailure,
+  text,
+} from "@/lib/write-guard";
 import { setMonto } from "../costos-fijos/actions";
 import { createDolar } from "../dolar/actions";
 import { savePrecios } from "../fabricacion/actions";
@@ -23,7 +28,7 @@ export async function interpretarVoz(
   _previous: InterpretarState,
   formData: FormData,
 ): Promise<InterpretarState> {
-  const denied = await denyUnlessWriter();
+  const denied = await denyUnlessVoice();
   if (denied) return { status: "error", message: denied.message };
 
   const texto = text(formData, "texto");

@@ -17,13 +17,14 @@ export function MobileNav({
   groups,
   tabs,
   canCreate = false,
-  isCorte = false,
+  restricted = false,
 }: {
   groups: NavGroup[];
   tabs: NavItem[];
   /** Shows the centered "+" button with the quick actions. */
   canCreate?: boolean;
-  isCorte?: boolean;
+  /** Non-admin roles: no "Más" sheet and no quick action that creates products. */
+  restricted?: boolean;
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -144,7 +145,7 @@ export function MobileNav({
               <Icon path={ICONS.mic} />
               <span>Grabar por voz</span>
             </Link>
-            {isCorte ? null : (
+            {restricted ? null : (
               <Link
                 href="/productos/nuevo"
                 className="flex min-h-14 items-center gap-3 rounded-card px-4 text-base text-ink"
@@ -189,7 +190,7 @@ export function MobileNav({
           </div>
         ) : null}
         {rightTabs.map(renderTab)}
-        {isCorte ? null : (
+        {restricted ? null : (
           <button
             type="button"
             aria-expanded={open}

@@ -111,7 +111,9 @@ export default async function FichaPage({
           writer={canWrite(user.role)}
           typedPrice={typedPriceOf((await searchParams).precio)}
         />
-        <NegotiationReference codigo={ficha.codigo} />
+        {canWrite(user.role) ? (
+          <NegotiationReference codigo={ficha.codigo} />
+        ) : null}
         <Recipe ficha={ficha} />
         {ficha.componentes.length > 0 ? <Components ficha={ficha} /> : null}
         <StoredQuotes ficha={ficha} />
