@@ -79,9 +79,84 @@ export async function setMonto(
   );
   if (!result.ok) {
     return fromFailure(result, {
-      409: "Ese gasto ya tiene monto. Para corregirlo, cargue un gasto nuevo.",
+      409: "Ese gasto ya tiene monto. Para cambiarlo, use «Corregir monto» en su fila.",
     });
   }
   refresh();
   return ok("Monto cargado.");
+}
+
+/** Corrects the amount of a row: the API adds a new row that replaces it, the old one stays in the history. */
+export async function corregirGasto(
+  codigo: string,
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const denied = await denyUnlessWriter();
+  if (denied) return denied;
+
+  const monto = parseDecimalInput(text(formData, "monto"));
+  if (monto === null) {
+    return error(
+      "Ingrese el monto nuevo en pesos, por ejemplo 250000 o 250000,50.",
+    );
+  }
+  const result = await apiPost<CostosFijos>(
+    `/costos-fijos/${encodeURIComponent(codigo)}/corregir`,
+    {
+      monto_ars_del_mes: monto,
+      nota: optional(formData, "nota"),
+      ficticio: formData.get("ficticio") === "on",
+    },
+  );
+  if (!result.ok) {
+    if (result.status === 409) {
+      return error(
+        "Ese gasto ya fue corregido. Recargue la página para ver el monto vigente.",
+        [result.message],
+      );
+    }
+    return fromFailure(result, {
+      404: "No encontramos ese gasto. Recargue la página e intente de nuevo.",
+      422: "Revise el monto: tiene que ser un número de cero o más.",
+    });
+  }
+  refresh();
+  return ok("Monto corregido. El anterior quedó en el historial.");
+}
+
+/** Creates the month's rows from the previous month's current rows (with their amounts or pending). */
+export async function copiarMes(
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const denied = await denyUnlessWriter();
+  if (denied) return denied;
+
+  const desde = text(formData, "desde");
+  const hasta = text(formData, "hasta");
+  const modo = text(formData, "modo");
+  if (!PERIODO.test(desde) || !PERIODO.test(hasta)) {
+    return error("No se pudo leer el mes. Recargue la página.");
+  }
+  if (modo !== "con_montos" && modo !== "pendientes") {
+    return error("Elija si quiere copiar los montos o dejarlos pendientes.");
+  }
+  const result = await apiPost<CostosFijos>("/costos-fijos/copiar", {
+    desde,
+    hasta,
+    con_montos: modo === "con_montos",
+  });
+  if (!result.ok) {
+    if (result.status === 422) {
+      return error("El mes anterior no tiene gastos para copiar.", [
+        result.message,
+      ]);
+    }
+    return fromFailure(result, {
+      409: "Este mes ya tiene gastos cargados. No se copia encima de lo que hay.",
+    });
+  }
+  refresh();
+  return ok("Listo: se copiaron los gastos del mes anterior.");
 }

@@ -8,9 +8,16 @@ import {
   formatRate,
   parseDecimalInput,
 } from "@/lib/format";
-import type { Calidad, PanelCostos } from "@/lib/types";
-import { Avisos, CostoDelMes, QueEstaViejo, QueSubio } from "./panel-costos";
+import type { Calidad, PanelCostos, TendenciaCostos } from "@/lib/types";
+import {
+  Avisos,
+  BloqueConError,
+  CostoDelMes,
+  QueEstaViejo,
+  QueSubio,
+} from "./panel-costos";
 import { Simulador } from "./panel-simulador";
+import { ComoVieneElNegocio } from "./panel-tendencia";
 
 export const metadata: Metadata = { title: "Panel del negocio" };
 
@@ -47,8 +54,10 @@ export default async function PanelPage({
   const raw = Array.isArray(params.precio) ? params.precio[0] : params.precio;
   const { precio, invalido } = leerPrecio(raw ?? "");
   const query = precio === null ? "" : `?precio=${encodeURIComponent(precio)}`;
-  const [panel, quality] = await Promise.all([
+  // Each block reads its own endpoint and degrades alone: a failure only replaces that block.
+  const [panel, tendencia, quality] = await Promise.all([
     apiGet<PanelCostos>(`/panel/costos${query}`),
+    apiGet<TendenciaCostos>("/panel/tendencia"),
     apiGet<Calidad>("/calidad"),
   ]);
 
@@ -57,55 +66,95 @@ export default async function PanelPage({
       <PageHeader
         eyebrow="Resumen"
         title="Panel del negocio"
-        description="Cuánto cuesta producir, qué subió y qué hay que actualizar."
+        description="Cómo viene el negocio, cuánto cuesta producir, qué subió y qué hay que actualizar."
       />
-      {panel.ok ? (
-        <div className="space-y-5">
+      <div className="space-y-5">
+        {panel.ok && (
           <p className="text-sm text-muted">
             Mes: <strong>{formatPeriod(panel.data.periodo)}</strong> (se compara
             con {formatPeriod(panel.data.periodo_anterior)})
           </p>
+        )}
+        {panel.ok ? (
           <Avisos avisos={panel.data.avisos} />
+        ) : (
+          <ErrorNotice
+            title="No pudimos cargar los avisos."
+            message={panel.message}
+          />
+        )}
+        {tendencia.ok ? (
+          <ComoVieneElNegocio tendencia={tendencia.data} />
+        ) : (
+          <BloqueConError
+            titulo="Cómo viene el negocio"
+            message={tendencia.message}
+          />
+        )}
+        {panel.ok ? (
           <CostoDelMes panel={panel.data} />
-          <div className="grid gap-5 lg:grid-cols-2">
-            <QueSubio panel={panel.data} />
-            <QueEstaViejo panel={panel.data} />
-          </div>
+        ) : (
+          <BloqueConError
+            titulo="Cuánto cuesta producir este mes"
+            message={panel.message}
+          />
+        )}
+        <div className="grid gap-5 lg:grid-cols-2">
+          {panel.ok ? (
+            <>
+              <QueSubio panel={panel.data} />
+              <QueEstaViejo panel={panel.data} />
+            </>
+          ) : (
+            <>
+              <BloqueConError titulo="Qué subió" message={panel.message} />
+              <BloqueConError titulo="Qué está viejo" message={panel.message} />
+            </>
+          )}
+        </div>
+        {panel.ok ? (
           <Simulador
             panel={panel.data}
             precio={precio}
             precioInvalido={invalido}
           />
-          <Card className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 text-sm">
-            <p>
-              Dólar vigente:{" "}
-              {panel.data.dolar ? (
-                <>
-                  <strong>{formatRate(panel.data.dolar.ars_por_usd)}</strong>{" "}
-                  pesos · {formatDate(panel.data.dolar.fecha)} ·{" "}
-                  {panel.data.dolar.fuente}{" "}
-                </>
-              ) : (
-                "no hay ninguno cargado "
-              )}
-              <Link className={linkClass} href="/dolar">
-                Ver dólar
-              </Link>
-            </p>
-            {quality.ok && (
-              <p>
-                Alertas de calidad:{" "}
-                <strong>{quality.data.resumen.total}</strong>{" "}
-                <Link className={linkClass} href="/calidad">
-                  Revisar
-                </Link>
-              </p>
+        ) : (
+          <BloqueConError
+            titulo="Punto de equilibrio"
+            message={panel.message}
+          />
+        )}
+        <Card className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 text-sm">
+          <p>
+            Dólar vigente:{" "}
+            {!panel.ok ? (
+              "no se pudo leer "
+            ) : panel.data.dolar ? (
+              <>
+                <strong>{formatRate(panel.data.dolar.ars_por_usd)}</strong>{" "}
+                pesos · {formatDate(panel.data.dolar.fecha)} ·{" "}
+                {panel.data.dolar.fuente}{" "}
+              </>
+            ) : (
+              "no hay ninguno cargado "
             )}
-          </Card>
-        </div>
-      ) : (
-        <ErrorNotice message={panel.message} />
-      )}
+            <Link className={linkClass} href="/dolar">
+              Ver dólar
+            </Link>
+          </p>
+          <p>
+            Alertas de calidad:{" "}
+            {quality.ok ? (
+              <strong>{quality.data.resumen.total}</strong>
+            ) : (
+              "no se pudieron leer"
+            )}{" "}
+            <Link className={linkClass} href="/calidad">
+              Revisar
+            </Link>
+          </p>
+        </Card>
+      </div>
     </>
   );
 }
