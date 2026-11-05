@@ -1,4 +1,4 @@
-import type { Role } from "./permissions";
+import { ROLES, type Role } from "./permissions";
 
 export type NavItem = {
   href: string;
@@ -61,12 +61,22 @@ export const NAV_ITEMS: NavGroup[] = [
 
 const MOBILE_TAB_HREFS: Record<Role, readonly string[]> = {
   admin: ["/", "/productos", "/materiales", "/fabricacion"],
-  cotizador: ["/", "/productos", "/materiales", "/fabricacion"],
-  consulta: ["/", "/grilla", "/productos", "/calidad"],
-  corte: ["/corte", "/cueros", "/voz"],
+  gerente: ["/productos", "/grilla"],
+  taller: ["/corte", "/cueros", "/voz"],
 };
 
-const CORTE_NAV: NavGroup[] = [
+// Menus of the restricted roles. They match the paths of ROLE_ACCESS in permissions.ts.
+const GERENTE_NAV: NavGroup[] = [
+  {
+    title: "Consultas",
+    items: [
+      { href: "/productos", label: "Productos" },
+      { href: "/grilla", label: "Grilla completa", shortLabel: "Grilla" },
+    ],
+  },
+];
+
+const TALLER_NAV: NavGroup[] = [
   {
     title: "Producción",
     items: [
@@ -119,14 +129,6 @@ const DESKTOP_NAV: NavGroup[] = [
   },
 ];
 
-function isCorteOnlyRoles(roles: Role[]) {
-  return (
-    roles.includes("corte") &&
-    !roles.includes("admin") &&
-    !roles.includes("cotizador")
-  );
-}
-
 function filterByRole(groups: NavGroup[], roles: Role[]): NavGroup[] {
   return groups
     .map((group) => ({
@@ -138,35 +140,32 @@ function filterByRole(groups: NavGroup[], roles: Role[]): NavGroup[] {
     .filter((group) => group.items.length > 0);
 }
 
+/** Admin gets the full menu; the other roles get only their own groups (none for no role). */
+function restrictedNav(roles: Role[]): NavGroup[] {
+  return [
+    ...(roles.includes("gerente") ? GERENTE_NAV : []),
+    ...(roles.includes("taller") ? TALLER_NAV : []),
+  ];
+}
+
 export function desktopNavForRole(roles: Role[]): NavGroup[] {
-  return isCorteOnlyRoles(roles) ? CORTE_NAV : filterByRole(DESKTOP_NAV, roles);
+  return roles.includes("admin")
+    ? filterByRole(DESKTOP_NAV, roles)
+    : restrictedNav(roles);
 }
 
 export function navForRole(roles: Role[]): NavGroup[] {
-  if (
-    roles.includes("corte") &&
-    !roles.includes("admin") &&
-    !roles.includes("cotizador")
-  ) {
-    return CORTE_NAV;
-  }
-  return NAV_ITEMS.map((group) => ({
-    ...group,
-    items: group.items.filter(
-      (item) => !item.adminOnly || roles.includes("admin"),
-    ),
-  })).filter((group) => group.items.length > 0);
+  return roles.includes("admin")
+    ? filterByRole(NAV_ITEMS, roles)
+    : restrictedNav(roles);
 }
 
 export function mobileTabs(groups: NavGroup[], roles: Role[]): NavItem[] {
   const items = groups.flatMap((group) => group.items);
-  const role = roles.includes("admin")
-    ? "admin"
-    : roles.includes("cotizador")
-      ? "cotizador"
-      : roles.includes("corte")
-        ? "corte"
-        : "consulta";
-  const hrefs = MOBILE_TAB_HREFS[role];
+  const hrefs = roles.includes("admin")
+    ? MOBILE_TAB_HREFS.admin
+    : ROLES.flatMap((role) =>
+        roles.includes(role) ? MOBILE_TAB_HREFS[role] : [],
+      );
   return hrefs.flatMap((href) => items.filter((item) => item.href === href));
 }

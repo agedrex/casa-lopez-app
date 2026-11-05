@@ -1,0 +1,243 @@
+"""Roles admin / gerente / taller: legacy aliasing and the deny-by-default access matrix.
+
+SUPUESTO: validar con Gerardo y Alejandro. The matrix below is the contract; `test_every_route_has_exactly_the_documented_roles`
+fails if a new endpoint is added without a role gate or with a different one.
+"""
+
+from unittest.mock import MagicMock
+
+import pytest
+from fastapi.routing import APIRoute
+from fastapi.testclient import TestClient
+
+from backend import servicios
+from backend.auth import Usuario, get_verifier, require_role
+from backend.database import get_session
+from backend.main import app
+
+SIN_PERMISO = {"detail": "No tenés permiso para esta acción."}
+ADMIN = frozenset({"admin"})
+PRODUCTOS = frozenset({"admin", "gerente"})
+CORTE = frozenset({"admin", "taller"})
+TODOS = frozenset({"admin", "gerente", "taller"})
+
+
+@pytest.fixture(autouse=True)
+def limpiar(monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    yield
+    app.dependency_overrides.clear()
+
+
+# --- Legacy aliasing (S2): applied when the roles are READ ---------------------------------------------------------
+
+@pytest.mark.parametrize("leido, esperado", [
+    ("admin", {"admin"}), ("gerente", {"gerente"}), ("taller", {"taller"}),
+    ("cotizador", {"admin"}), ("corte", {"taller"}), ("consulta", {"gerente"}),
+    ("cotizador,consulta", {"admin", "gerente"}),  # the union, not the strongest one
+    ("consulta, corte", {"gerente", "taller"}),
+    (" cotizador , admin ", {"admin"}),  # the alias and its canonical name collapse
+    ("gerente,taller", {"gerente", "taller"}),
+    ("admin,otro", {"admin"}),  # unknown names are dropped
+    ("otro", set()), ("", set()), (None, set()), (" , ", set()),
+    ("ADMIN", set()),  # names are exact: a different spelling is not a role
+])
+def test_roles_are_normalized_when_read(leido, esperado):
+    assert Usuario(id="u", role=leido).roles == frozenset(esperado)
+
+
+@pytest.mark.parametrize("leido, rutas", [
+    ("cotizador", [("GET", "/panel/costos"), ("POST", "/productos"), ("GET", "/voz/estado")]),
+    ("corte", [("GET", "/cueros"), ("POST", "/cueros/PZC-1/cortes")]),
+    ("consulta", [("GET", "/productos"), ("GET", "/grilla")]),
+])
+def test_a_legacy_role_passes_the_gates_of_its_new_name(leido, rutas):
+    cliente = _cliente(leido)
+    for metodo, ruta in rutas:
+        assert _estado(cliente, metodo, ruta) not in (401, 403), (leido, metodo, ruta)
+
+
+def test_legacy_consulta_and_corte_keep_no_more_than_their_new_role():
+    assert _estado(_cliente("consulta"), "GET", "/panel/costos") == 403
+    assert _estado(_cliente("consulta"), "GET", "/cueros") == 403
+    assert _estado(_cliente("corte"), "GET", "/costos-fijos") == 403
+    assert _estado(_cliente("corte"), "POST", "/productos") == 403
+
+
+def test_a_user_with_only_unknown_roles_is_refused_where_a_role_is_required():
+    for role in ("otro", "superadmin", "x,y", "", None):
+        cliente = _cliente(role)
+        for metodo, ruta in (("GET", "/materiales"), ("GET", "/productos"), ("POST", "/productos"), ("GET", "/voz/estado")):
+            respuesta = cliente.request(metodo, ruta, json={} if metodo == "POST" else None)
+            assert respuesta.status_code == 403 and respuesta.json() == SIN_PERMISO, (role, metodo, ruta)
+
+
+def test_require_role_accepts_legacy_names_in_its_arguments():
+    assert require_role("cotizador").roles_permitidos == frozenset({"admin"})
+    assert require_role("corte", "consulta").roles_permitidos == frozenset({"taller", "gerente"})
+
+
+# --- The matrix (S3) --------------------------------------------------------------------------------------------------
+
+ACCESO: dict[tuple[str, str], frozenset[str]] = {
+    # Product and quote data: admin and gerente. /materiales has no prices, so every role reads it.
+    ("GET", "/productos"): TODOS,  # taller: the "alcanza" selector of the cut pages
+    ("GET", "/productos/conteo"): PRODUCTOS,
+    ("GET", "/productos/{codigo}"): PRODUCTOS,
+    ("GET", "/productos/{codigo}/rentabilidad"): PRODUCTOS,
+    ("GET", "/productos/{codigo}/precio-venta"): PRODUCTOS,
+    ("GET", "/grilla"): PRODUCTOS,
+    ("GET", "/catalogos"): PRODUCTOS,
+    ("GET", "/materiales"): TODOS,
+    # What the corte / cueros / voz pages read.
+    ("GET", "/cueros"): CORTE,
+    ("GET", "/cueros/alcanza"): CORTE,
+    ("GET", "/cueros/{codigo}"): CORTE,
+    ("GET", "/colores"): CORTE,
+    ("GET", "/ordenes"): CORTE,
+    ("GET", "/ordenes/{codigo}"): CORTE,
+    ("GET", "/voz/estado"): CORTE,
+    # Admin only reads.
+    ("GET", "/productos/{codigo}/precios-talleres"): ADMIN,
+    ("GET", "/modelos"): ADMIN, ("GET", "/modelos/{codigo}"): ADMIN,
+    ("GET", "/precios"): ADMIN, ("GET", "/precios/chequeo"): ADMIN,
+    ("GET", "/categorias"): ADMIN, ("GET", "/impuestos"): ADMIN, ("GET", "/dolar"): ADMIN, ("GET", "/parametros"): ADMIN,
+    ("GET", "/talleres"): ADMIN, ("GET", "/talleres/{codigo}"): ADMIN, ("GET", "/personas"): ADMIN,
+    ("GET", "/costos-fijos"): ADMIN, ("GET", "/costos-fijos/periodos"): ADMIN,
+    ("GET", "/panel/costos"): ADMIN, ("GET", "/panel/tendencia"): ADMIN,
+    ("GET", "/fabricacion/casa-vs-taller"): ADMIN, ("GET", "/calidad"): ADMIN,
+    ("GET", "/sync/sheets/estado"): ADMIN, ("GET", "/sync/sheets/vista/{pestana}"): ADMIN,
+    # Writes: admin only, except cutting and the voice interpreter.
+    ("POST", "/cueros/{codigo}/cortes"): CORTE, ("POST", "/cueros/{codigo}/sobrante"): CORTE,
+    ("POST", "/voz/interpretar"): CORTE,
+    # The only write the voice grants a taller: the price a workshop quoted or was paid for a lot line.
+    ("POST", "/ordenes/{codigo}/items/{item}/precios"): CORTE,
+    **{("POST", ruta): ADMIN for ruta in (
+        "/cueros", "/productos", "/productos/{codigo}/precio-venta", "/productos/{codigo}/extras",
+        "/productos/{codigo}/componentes", "/productos/{codigo}/cotizaciones", "/cvu/escenario", "/precios", "/dolar",
+        "/dolar/actualizar-bna", "/costos-fijos", "/costos-fijos/{codigo}/monto", "/costos-fijos/{codigo}/corregir",
+        "/costos-fijos/copiar", "/ordenes", "/ordenes/{codigo}/estado", "/ordenes/{codigo}/items",
+        "/talleres", "/talleres/{codigo}/activo", "/parametros/{codigo}",
+        "/personas", "/personas/{codigo}/activo", "/colores", "/categorias", "/modelos", "/modelos/{codigo}/validado",
+        "/modelos/{codigo}/consumos", "/sync/sheets")},
+}
+# Open on purpose: health and fictional demo data for the deploy, and the two read-only catalogs of routers.py that
+# carry no business data (revision number and table count; stage codes). They never needed a session.
+PUBLICAS = {("GET", "/api/health"), ("GET", "/api/demo/resources"), ("GET", "/db/estado"), ("GET", "/catalogo/etapas")}
+
+
+def _api_routes(rutas=None):
+    """Every APIRoute of the app, also the ones of included routers (FastAPI wraps them in `_IncludedRouter`)."""
+    for ruta in app.routes if rutas is None else rutas:
+        if isinstance(ruta, APIRoute):
+            yield ruta
+        elif hasattr(ruta, "original_router"):
+            yield from _api_routes(ruta.original_router.routes)
+
+
+def _rutas():
+    return sorted((metodo, ruta.path) for ruta in _api_routes() for metodo in ruta.methods)
+
+
+def _roles_de(ruta: APIRoute) -> set[frozenset[str]]:
+    """The role sets of every `require_role` gate on the route (router-level dependencies included)."""
+    pendientes, vistas = list(ruta.dependant.dependencies), set()
+    while pendientes:
+        dependencia = pendientes.pop()
+        permitidos = getattr(dependencia.call, "roles_permitidos", None)
+        if permitidos is not None:
+            vistas.add(permitidos)
+        pendientes.extend(dependencia.dependencies)
+    return vistas
+
+
+def _cliente(role, session=None):
+    session = session or MagicMock()
+    app.dependency_overrides[get_session] = lambda: session
+    app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="u", role=role))
+    return TestClient(app, raise_server_exceptions=False)
+
+
+def _estado(cliente, metodo, ruta):
+    return cliente.request(metodo, ruta.replace("{codigo}", "X-1").replace("{item}", "I-1").replace("{pestana}", "Dolar"),
+                           json={} if metodo == "POST" else None).status_code
+
+
+def test_every_route_has_exactly_the_documented_roles():
+    documentadas = set(ACCESO) | PUBLICAS
+    assert set(_rutas()) == documentadas  # a new route must be added to the matrix (and so be decided)
+    for ruta in _api_routes():
+        for metodo in ruta.methods:
+            clave = (metodo, ruta.path)
+            if clave in PUBLICAS:
+                assert _roles_de(ruta) == set(), clave
+            else:
+                assert _roles_de(ruta) == {ACCESO[clave]}, clave  # exactly one gate, with the documented roles
+
+
+@pytest.mark.parametrize("role", ["gerente", "taller", "otro", None, "consulta,corte"])
+def test_admin_only_routes_refuse_everyone_else_without_calling_the_service(monkeypatch, role):
+    session = MagicMock()
+    cliente = _cliente(role, session)
+    # Whatever the route is, the gate answers before anything reaches the service layer or the database.
+    for nombre in dir(servicios):
+        if callable(getattr(servicios, nombre)) and not nombre.startswith("_") and nombre.islower():
+            monkeypatch.setattr(servicios, nombre, lambda *a, **k: pytest.fail("the service must not be called"))
+    for (metodo, ruta), permitidos in ACCESO.items():
+        if Usuario(id="u", role=role).roles & permitidos:
+            continue
+        respuesta = cliente.request(
+            metodo, ruta.replace("{codigo}", "X-1").replace("{item}", "I-1").replace("{pestana}", "Dolar"),
+            json={} if metodo == "POST" else None)
+        assert respuesta.status_code == 403 and respuesta.json() == SIN_PERMISO, (role, metodo, ruta)
+    session.commit.assert_not_called()
+
+
+@pytest.mark.parametrize("role, rutas", [
+    ("gerente", [("GET", "/productos"), ("GET", "/productos/conteo"), ("GET", "/productos/X-1"),
+                 ("GET", "/productos/X-1/rentabilidad"), ("GET", "/productos/X-1/precio-venta"), ("GET", "/grilla"),
+                 ("GET", "/catalogos"), ("GET", "/materiales")]),
+    ("taller", [("GET", "/productos"), ("GET", "/materiales"), ("GET", "/cueros"), ("GET", "/cueros/PZC-1"),
+                ("GET", "/cueros/alcanza?producto=P&cantidad=1"), ("GET", "/colores"), ("GET", "/ordenes"),
+                ("GET", "/ordenes/LOT-1"), ("GET", "/voz/estado"),
+                ("POST", "/cueros/PZC-1/cortes"), ("POST", "/cueros/PZC-1/sobrante"), ("POST", "/voz/interpretar")]),
+    ("admin", [("GET", "/panel/costos"), ("GET", "/costos-fijos"), ("GET", "/ordenes"), ("GET", "/productos"),
+               ("GET", "/cueros"), ("GET", "/voz/estado"), ("POST", "/cvu/escenario"), ("POST", "/ordenes"),
+               ("POST", "/productos"), ("POST", "/cueros/PZC-1/cortes")]),
+])
+def test_each_role_passes_the_gate_of_its_allowed_set(role, rutas):
+    cliente = _cliente(role)
+    for metodo, ruta in rutas:
+        # Past the gate the handler may fail on the mock session; only a 401/403 means "refused".
+        assert _estado(cliente, metodo, ruta) not in (401, 403), (role, metodo, ruta)
+
+
+@pytest.mark.parametrize("metodo, ruta", [
+    ("GET", "/panel/costos"), ("GET", "/costos-fijos"), ("POST", "/cvu/escenario"), ("GET", "/ordenes"),
+    ("POST", "/productos"),
+])
+@pytest.mark.parametrize("role", ["gerente", "taller"])
+def test_gerente_and_taller_are_refused_on_the_representative_admin_routes(metodo, ruta, role):
+    cliente = _cliente(role)
+    if (metodo, ruta) == ("GET", "/ordenes") and role == "taller":
+        assert cliente.get(ruta).status_code != 403  # taller reads the lots of the cut flow
+        return
+    respuesta = cliente.request(metodo, ruta, json={} if metodo == "POST" else None)
+    assert respuesta.status_code == 403 and respuesta.json() == SIN_PERMISO
+
+
+def test_the_public_routes_stay_open_without_a_session():
+    with TestClient(app) as cliente:  # the lifespan sets `app.state.db_engine`
+        assert cliente.get("/api/health").status_code == 200
+        assert cliente.get("/api/demo/resources").status_code == 200
+        assert cliente.get("/db/estado").status_code == 503  # no database, but not 401
+        assert cliente.get("/catalogo/etapas").status_code == 503
+
+
+@pytest.mark.parametrize("metodo, ruta", [(m, r) for m, r in ACCESO])
+def test_no_session_is_still_401_not_403(metodo, ruta):
+    app.dependency_overrides[get_verifier] = lambda: (lambda request: None)
+    respuesta = TestClient(app).request(
+        metodo, ruta.replace("{codigo}", "X-1").replace("{item}", "I-1").replace("{pestana}", "Dolar"),
+        json={} if metodo == "POST" else None)
+    assert respuesta.status_code == 401 and respuesta.json() == {"detail": "No autenticado."}

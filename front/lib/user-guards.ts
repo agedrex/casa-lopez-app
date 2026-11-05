@@ -1,7 +1,7 @@
 // Pure rules that keep the user list safe. They run inside Better Auth (hooks.before in
 // auth.ts), so they cover the server actions and also a direct call to /api/auth/admin/*.
 // No server-only import: auth.ts is also loaded by scripts run with tsx.
-import { hasRole, parseRoles, ROLES, type Role } from "./permissions";
+import { isStoredAdmin, ROLES, type Role } from "./permissions";
 
 export type AccountRow = {
   id: string;
@@ -16,7 +16,7 @@ export const LAST_ADMIN =
   "Debe quedar al menos un administrador activo: no se puede quitar el rol ni desactivar al último.";
 
 export function activeAdmins(rows: AccountRow[]): AccountRow[] {
-  return rows.filter((row) => !row.banned && hasRole(row.role, "admin"));
+  return rows.filter((row) => !row.banned && isStoredAdmin(row.role));
 }
 
 /** `role` arrives as a string or a list of strings; anything that is not one of ROLES is refused. */
@@ -39,7 +39,7 @@ export function roleChangeProblem(args: {
   const roles = parseRoleInput(args.newRole);
   if (roles === null) return "El rol indicado no existe.";
   const losesAdmin =
-    hasRole(args.target.role, "admin") && !roles.includes("admin");
+    isStoredAdmin(args.target.role) && !roles.includes("admin");
   if (!losesAdmin) return null;
   if (args.actorId !== null && args.actorId === args.target.id) {
     return "No puede quitarse a sí mismo el rol de administrador.";
@@ -62,8 +62,7 @@ export function banProblem(args: {
   const stillActive = activeAdmins(args.rows).filter(
     (row) => row.id !== args.target.id,
   );
-  const isActiveAdmin =
-    !args.target.banned && parseRoles(args.target.role).includes("admin");
+  const isActiveAdmin = !args.target.banned && isStoredAdmin(args.target.role);
   return isActiveAdmin && stillActive.length === 0 ? LAST_ADMIN : null;
 }
 

@@ -2,11 +2,11 @@ import "server-only";
 import { redirect } from "next/navigation";
 import { error, type FormState } from "./action-state";
 import type { ApiFailure } from "./api";
-import { canWrite, hasRole } from "./permissions";
+import { canUseVoice, canWrite, hasRole } from "./permissions";
 import { getSession } from "./session";
 
 /**
- * Every write action starts here: the form is only rendered for admin and cotizador,
+ * Every write action starts here: the form is only rendered for admin (canWrite),
  * but the action must check again because anyone can post to it. The backend checks
  * the role a third time (403).
  */
@@ -14,6 +14,16 @@ export async function denyUnlessWriter(): Promise<FormState | null> {
   const session = await getSession();
   if (!session) redirect("/login");
   if (!canWrite(session.user.role)) {
+    return error("No tiene permiso para esta acción.");
+  }
+  return null;
+}
+
+/** Same check for the voice step that only reads: admin and taller may interpret a request. */
+export async function denyUnlessVoice(): Promise<FormState | null> {
+  const session = await getSession();
+  if (!session) redirect("/login");
+  if (!canUseVoice(session.user.role)) {
     return error("No tiene permiso para esta acción.");
   }
   return null;

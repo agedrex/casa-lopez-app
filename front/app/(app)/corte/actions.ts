@@ -12,8 +12,8 @@ import { guardarCarga } from "./cargas";
 const DECISIONES = ["REUTILIZABLE", "IRRECUPERABLE"];
 const MAX_TEXTO = 120;
 
-// Cuts and leftovers are open to admin, cotizador and corte (the backend decides): here only
-// a missing session is refused, so the "corte" role is not blocked by denyUnlessWriter.
+// Cuts and leftovers are open to admin and taller (the backend decides): here only
+// a missing session is refused, so the "taller" role is not blocked by denyUnlessWriter.
 async function requireLogin(): Promise<void> {
   if (!(await getSession())) redirect("/login");
 }

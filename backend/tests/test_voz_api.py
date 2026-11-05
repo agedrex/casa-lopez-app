@@ -44,7 +44,7 @@ def entorno(monkeypatch):
     app.dependency_overrides.clear()
 
 
-def cliente(rol="cotizador", llm="por-defecto", usuario="u1", fuente=None):
+def cliente(rol="admin", llm="por-defecto", usuario="u1", fuente=None):
     app.dependency_overrides[get_verifier] = (
         (lambda: (lambda request: Usuario(id=usuario, role=rol))) if rol else (lambda: (lambda request: None)))
     app.dependency_overrides[api_module.get_fuente_voz] = lambda: fuente or FuenteEnMemoria()
@@ -65,15 +65,22 @@ def test_anonymous_gets_401_on_both_routes():
     assert http.get("/voz/estado").status_code == 401
 
 
-def test_consulta_cannot_interpret_but_can_read_the_status():
+@pytest.mark.parametrize("rol", ["gerente", "otro", "gerente,otro"])
+def test_gerente_and_unknown_roles_can_neither_interpret_nor_read_the_status(rol):
     llm = LLMFalso()
-    http = cliente(rol="consulta", llm=llm)
+    http = cliente(rol=rol, llm=llm)
     respuesta = interpretar(http)
     assert respuesta.status_code == 403 and llm.llamadas == []
+    assert http.get("/voz/estado").status_code == 403
+
+
+@pytest.mark.parametrize("rol", ["admin", "taller", "cotizador", "corte", "gerente,taller"])
+def test_admin_and_taller_can_interpret_and_read_the_status(rol):
+    http = cliente(rol=rol, llm=LLMFalso())
     assert http.get("/voz/estado").status_code == 200
 
 
-@pytest.mark.parametrize("rol", ["admin", "cotizador", "admin,consulta"])
+@pytest.mark.parametrize("rol", ["admin", "taller", "cotizador", "corte", "gerente,taller"])
 def test_writers_can_interpret(rol):
     assert interpretar(cliente(rol=rol, llm=LLMFalso())).status_code == 200
 

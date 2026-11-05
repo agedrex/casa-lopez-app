@@ -77,7 +77,7 @@ def test_grilla_joins_export_tabs_by_code_and_filters_for_read_only_role(monkeyp
         return Tab(tab.name, tab.headers, tuple(reversed(tab.rows)))
 
     monkeypatch.setattr(api_module, "_costos_variables", reversed_costs)
-    with cliente_http("consulta", fuente=source) as http:
+    with cliente_http("gerente", fuente=source) as http:
         response = http.get("/grilla")
         assert response.status_code == 200, response.text
         data = response.json()
@@ -103,7 +103,7 @@ def test_everything_needs_a_session(metodo, ruta, entorno):
         assert getattr(http, metodo)(ruta).status_code == 401
 
 
-@pytest.mark.parametrize("rol", ["consulta", "cotizador", "consulta,cotizador"])
+@pytest.mark.parametrize("rol", ["gerente", "taller", "gerente,taller"])
 def test_running_and_previewing_are_admin_only(rol, entorno):
     entorno()
     cliente = ClienteFalso()
@@ -114,10 +114,12 @@ def test_running_and_previewing_are_admin_only(rol, entorno):
     assert cliente.llamadas == []
 
 
-@pytest.mark.parametrize("rol", ["consulta", "cotizador", "admin"])
-def test_any_signed_in_user_can_read_the_status(rol, entorno):
-    with cliente_http(rol) as http:
+def test_only_an_admin_can_read_the_status(entorno):
+    with cliente_http("admin") as http:
         assert http.get("/sync/sheets/estado").status_code == 200
+    for rol in ("gerente", "taller", None):
+        with cliente_http(rol) as http:
+            assert http.get("/sync/sheets/estado").status_code == 403
 
 
 # --- Dry run and real run ---------------------------------------------------------------------------------------
@@ -242,7 +244,7 @@ def test_a_bad_credential_is_a_502_with_its_safe_message(entorno):
 # --- Status -------------------------------------------------------------------------------------------------------
 
 def test_status_unconfigured_names_the_missing_variables_and_never_their_values(entorno):
-    with cliente_http("consulta") as http:
+    with cliente_http("admin") as http:
         datos = http.get("/sync/sheets/estado").json()
     assert datos["configurado"] is False
     assert datos["variables"] == list(VARIABLES) and datos["faltantes"] == list(VARIABLES)
@@ -252,7 +254,7 @@ def test_status_unconfigured_names_the_missing_variables_and_never_their_values(
 
 def test_status_configured_reports_yes_and_only_that(entorno):
     entorno()
-    with cliente_http("consulta") as http:
+    with cliente_http("admin") as http:
         respuesta = http.get("/sync/sheets/estado")
     datos = respuesta.json()
     assert datos["configurado"] is True and datos["faltantes"] == []

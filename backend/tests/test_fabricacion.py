@@ -544,7 +544,7 @@ def test_quality_asks_for_the_dollar_once_when_there_is_none(api):
 def test_new_endpoints_honour_roles(api):
     codigo = producto(api)["codigo"]
     lote_nuevo(api, codigo)
-    app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="u", role="consulta"))
+    app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="u", role="gerente"))
     escrituras = [
         ("/talleres", {"nombre": "Nuevo"}), ("/talleres/TAL-0001/activo", {"activo": False}),
         ("/ordenes/LOT-0001/estado", {"estado": "LISTA", "fecha": "2026-10-06"}),
@@ -554,8 +554,16 @@ def test_new_endpoints_honour_roles(api):
     ]
     for ruta, cuerpo in escrituras:
         assert api.post(ruta, json=cuerpo).status_code == 403, ruta
-    for ruta in ("/ordenes", "/ordenes/LOT-0001", "/talleres/TAL-0001", "/fabricacion/casa-vs-taller",
-                 "/costos-fijos/periodos", "/calidad", f"/productos/{codigo}/precios-talleres"):
+    lecturas = ("/ordenes", "/ordenes/LOT-0001", "/talleres/TAL-0001", "/fabricacion/casa-vs-taller",
+                "/costos-fijos/periodos", "/calidad", f"/productos/{codigo}/precios-talleres")
+    for ruta in lecturas:  # a gerente reads product data only: no orders, no workshop prices
+        assert api.get(ruta).status_code == 403, ruta
+    app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="u", role="taller"))
+    assert api.get("/ordenes").status_code == 200 and api.get("/ordenes/LOT-0001").status_code == 200  # the cut flow
+    for ruta in lecturas[2:]:
+        assert api.get(ruta).status_code == 403, ruta
+    app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="u", role="admin"))
+    for ruta in lecturas:
         assert api.get(ruta).status_code == 200, ruta
     assert api.get("/ordenes/LOT-0001").json()["estado"] == "PLANIFICADA"  # the refused writes changed nothing
     assert api.get("/talleres/TAL-0001").json()["activo"] is True

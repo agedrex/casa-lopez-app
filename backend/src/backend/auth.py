@@ -24,6 +24,22 @@ AUTH_VERIFY_TIMEOUT = 3.0  # seconds, applied to connect, read, write and pool w
 FORWARDED_HEADERS = ("cookie", "authorization")
 
 
+ADMIN = "admin"
+GERENTE = "gerente"
+TALLER = "taller"
+ROLES = frozenset({ADMIN, GERENTE, TALLER})
+# SUPUESTO: validar. Names stored in the Better Auth `user.role` column before the three-role model; they are mapped
+# when READ, so no database update is needed. Any other name is not a role.
+ROLES_HEREDADOS = {"cotizador": ADMIN, "corte": TALLER, "consulta": GERENTE}
+
+
+def normalizar_roles(valor: str | None) -> frozenset[str]:
+    """Roles of a comma separated string: legacy names mapped, unknown names dropped (deny by default)."""
+    nombres = (parte.strip() for parte in (valor or "").split(","))
+    return frozenset(
+        rol for rol in (ROLES_HEREDADOS.get(nombre, nombre) for nombre in nombres) if rol in ROLES)
+
+
 @dataclass(frozen=True)
 class Usuario:
     id: str
@@ -32,7 +48,7 @@ class Usuario:
 
     @property
     def roles(self) -> frozenset[str]:
-        return frozenset(part.strip() for part in (self.role or "").split(",") if part.strip())
+        return normalizar_roles(self.role)
 
 
 Verificador = Callable[[Request], Usuario | None]
@@ -117,17 +133,22 @@ def require_user(request: Request, verificador: Verificador | None = Depends(get
 def require_role(*roles: str) -> Callable[..., Usuario]:
     """Dependency factory: the signed-in user must hold at least one of `roles` (else 403).
 
-    Usage: `Depends(require_role("admin", "cotizador"))`. The writes of `api.py` use it (see ESCRITURA there).
+    Usage: `Depends(require_role("admin", "gerente"))`. Legacy names in `roles` are mapped like the ones read from the
+    session. The allowed set is exposed as `roles_permitidos` so tests can check that every endpoint has a gate.
     """
-    allowed = frozenset(roles)
+    allowed = normalizar_roles(",".join(roles))
 
     def dependency(usuario: Usuario = Depends(require_user)) -> Usuario:
         if not allowed & usuario.roles:
             raise HTTPException(status_code=403, detail="No tenés permiso para esta acción.")
         return usuario
 
+    dependency.roles_permitidos = allowed
     return dependency
 
 
-# Reserved for future cutting endpoints; existing writes keep their own role gate.
-CORTE = require_role("admin", "cotizador", "corte")
+# Gates shared by the endpoints (see the matrix in api.py). Admin always passes.
+SOLO_ADMIN = require_role(ADMIN)
+PRODUCTOS = require_role(ADMIN, GERENTE)  # product and quote data, read only
+CORTE = require_role(ADMIN, TALLER)  # voice, cutting and what those pages read
+CUALQUIER_ROL = require_role(ADMIN, GERENTE, TALLER)

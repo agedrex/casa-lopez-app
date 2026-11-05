@@ -178,7 +178,7 @@ def test_the_shape_is_fixed_and_the_note_states_the_limits():
 def client(monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
     app.dependency_overrides[get_session] = lambda: MagicMock()
-    app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="usuario-de-prueba", role="consulta"))
+    app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="usuario-de-prueba", role="admin"))
     yield TestClient(app)
     app.dependency_overrides.clear()
 
@@ -192,7 +192,7 @@ def test_invalid_hasta_or_meses_is_a_422_and_never_reaches_the_service(client, m
     assert client.get("/panel/tendencia", params=params).status_code == 422
 
 
-def test_a_read_role_gets_the_trend_with_defaults_and_money_as_strings(client, monkeypatch):
+def test_an_admin_gets_the_trend_with_defaults_and_money_as_strings(client, monkeypatch):
     llamadas = []
 
     def falso(session, hasta, meses, hoy=None):

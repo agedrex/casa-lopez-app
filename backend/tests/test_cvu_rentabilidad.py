@@ -312,7 +312,7 @@ def con_rol(role):
 @pytest.fixture
 def client(monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    yield con_rol("cotizador")
+    yield con_rol("admin")
     app.dependency_overrides.clear()
 
 
@@ -353,7 +353,7 @@ def test_an_unknown_product_is_a_404_on_every_new_product_route(client, monkeypa
     assert respuestas[0].json() == {"detail": "No existe el producto PRD-9999."}
 
 
-@pytest.mark.parametrize("role", ["consulta", "corte", None])
+@pytest.mark.parametrize("role", ["gerente", "taller", None])
 def test_a_user_without_a_writing_role_cannot_store_a_price(role, monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
     try:
@@ -363,7 +363,7 @@ def test_a_user_without_a_writing_role_cannot_store_a_price(role, monkeypatch):
         app.dependency_overrides.clear()
 
 
-def test_the_history_and_the_profitability_are_open_to_the_read_role(monkeypatch):
+def test_the_history_and_the_profitability_are_open_to_the_gerente_role(monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
     try:
         monkeypatch.setattr(servicios, "listar_precios_de_venta", lambda session, codigo: [
@@ -371,7 +371,7 @@ def test_the_history_and_the_profitability_are_open_to_the_read_role(monkeypatch
         visto = {}
         monkeypatch.setattr(servicios, "rentabilidad_de_producto", lambda session, codigo, precio: visto.update(precio=precio) or armar_rentabilidad(
             codigo=codigo, costo=D("100"), precio_ingresado=precio, precio_guardado=None))
-        client = con_rol("consulta")
+        client = con_rol("gerente")
         assert client.get("/productos/PRD-0001/precio-venta").json()[0]["precio_ars"] == "120"
         cuerpo = client.get("/productos/PRD-0001/rentabilidad", params={"precio": "125.5"}).json()
         assert visto == {"precio": D("125.5")}
@@ -388,7 +388,7 @@ def test_a_bad_typed_price_is_a_422_on_the_profitability_route(client, monkeypat
     assert client.get("/productos/PRD-0001/rentabilidad", params=params).status_code == 422
 
 
-def test_the_scenario_is_open_to_the_read_role_and_leaves_money_as_strings(monkeypatch):
+def test_the_scenario_is_admin_only_and_leaves_money_as_strings(monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
     try:
         visto = {}
@@ -397,7 +397,7 @@ def test_the_scenario_is_open_to_the_read_role_and_leaves_money_as_strings(monke
             visto.update(periodo=periodo, items=items)
             return escenario([item("A", precio="100"), item("B")])
         monkeypatch.setattr(servicios, "escenario_cvu", falso)
-        response = con_rol("consulta").post("/cvu/escenario", json={
+        response = con_rol("admin").post("/cvu/escenario", json={
             "periodo": "2026-11", "items": [{"codigo": "A", "unidades": "10", "precio": "100"}, {"codigo": "B", "unidades": "10"}]})
         assert response.status_code == 200
         assert visto == {"periodo": "2026-11", "items": [
@@ -448,7 +448,7 @@ def api(local_postgres, monkeypatch):
     outer = connection.begin()
     session = Session(bind=connection, join_transaction_mode="create_savepoint")
     app.dependency_overrides[get_session] = lambda: session
-    app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="prueba-cvu", role="cotizador"))
+    app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="prueba-cvu", role="admin"))
     try:
         with TestClient(app) as client:
             yield client

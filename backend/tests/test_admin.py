@@ -93,7 +93,7 @@ SOLO_ADMIN = [
     ("POST", "/parametros/{codigo}"), ("POST", "/personas"), ("POST", "/personas/{codigo}/activo"),
     ("POST", "/colores"), ("POST", "/categorias"), ("POST", "/modelos/{codigo}/consumos"),
 ]
-ADMIN_O_COTIZADOR = [("POST", "/modelos"), ("POST", "/modelos/{codigo}/validado")]
+ESCRITURA_ADMIN = [("POST", "/modelos"), ("POST", "/modelos/{codigo}/validado")]
 LECTURAS_NUEVAS = [("GET", "/impuestos"), ("GET", "/colores"), ("GET", "/categorias"), ("GET", "/modelos/{codigo}")]
 
 
@@ -116,10 +116,10 @@ def ruta(path):
 
 
 def test_the_new_endpoints_are_declared():
-    assert set(SOLO_ADMIN + ADMIN_O_COTIZADOR + LECTURAS_NUEVAS) <= set(RUTAS)
+    assert set(SOLO_ADMIN + ESCRITURA_ADMIN + LECTURAS_NUEVAS) <= set(RUTAS)
 
 
-@pytest.mark.parametrize("metodo, path", SOLO_ADMIN + ADMIN_O_COTIZADOR + LECTURAS_NUEVAS)
+@pytest.mark.parametrize("metodo, path", SOLO_ADMIN + ESCRITURA_ADMIN + LECTURAS_NUEVAS)
 def test_the_new_endpoints_are_closed_without_a_session(metodo, path):
     with TestClient(app) as client:
         response = client.request(metodo, ruta(path), json={})
@@ -127,7 +127,7 @@ def test_the_new_endpoints_are_closed_without_a_session(metodo, path):
 
 
 @pytest.mark.parametrize("metodo, path", SOLO_ADMIN)
-@pytest.mark.parametrize("role", ["cotizador", "consulta", None, "cotizador,consulta"])
+@pytest.mark.parametrize("role", ["gerente", "taller", None, "otro", "gerente,taller"])
 def test_admin_only_endpoints_refuse_every_other_role(monkeypatch, metodo, path, role):
     client, session = con_usuario(role)
     for nombre in ("cambiar_parametro", "crear_persona", "cambiar_activo_persona", "crear_color", "crear_categoria",
@@ -145,8 +145,8 @@ def test_admin_passes_the_gate_of_the_admin_only_endpoints(metodo, path):
     assert client.request(metodo, ruta(path), json={}).status_code == 422  # past the gate: the empty body is refused
 
 
-@pytest.mark.parametrize("metodo, path", ADMIN_O_COTIZADOR)
-@pytest.mark.parametrize("role, status", [("admin", 422), ("cotizador", 422), ("consulta", 403), (None, 403)])
+@pytest.mark.parametrize("metodo, path", ESCRITURA_ADMIN)
+@pytest.mark.parametrize("role, status", [("admin", 422), ("cotizador", 422), ("gerente", 403), ("taller", 403), (None, 403)])
 def test_model_creation_and_validation_need_a_writing_role(metodo, path, role, status):
     client, _ = con_usuario(role)
     assert client.request(metodo, ruta(path), json={}).status_code == status
@@ -324,10 +324,12 @@ def test_a_parameter_change_is_logged_with_who_and_values_but_nothing_else(api, 
 
 
 def test_only_an_admin_changes_parameters(api):
-    como("cotizador")
+    como("taller")
     assert api.post("/parametros/ARREGLOS_PCT", json={"valor": "0.05", "fuente_estado": "Confirmado"}).status_code == 403
-    como("consulta")
+    como("gerente")
     assert api.post("/parametros/ARREGLOS_PCT", json={"valor": "0.05", "fuente_estado": "Confirmado"}).status_code == 403
+    assert api.get("/parametros").status_code == 403
+    como("admin")
     assert parametros(api)["ARREGLOS_PCT"]["valor"] == "0.0000"
 
 
@@ -349,14 +351,17 @@ def test_people_are_created_with_a_server_code_and_deactivated_not_deleted(api):
 
 
 def test_people_need_an_admin(api):
-    como("cotizador")
-    assert api.post("/personas", json={"nombre": "Ana", "rol": "CORTE", "vinculo": "OTRO"}).status_code == 403
-    assert api.post("/personas/PER-0001/activo", json={"activo": False}).status_code == 403
+    for role in ("taller", "gerente"):
+        como(role)
+        assert api.post("/personas", json={"nombre": "Ana", "rol": "CORTE", "vinculo": "OTRO"}).status_code == 403
+        assert api.post("/personas/PER-0001/activo", json={"activo": False}).status_code == 403
+        assert api.get("/personas").status_code == 403
+    como("admin")
     assert len(api.get("/personas").json()) == 7 and api.get("/personas").json()[0]["activo"] is True
 
 
 def test_taxes_are_listed_with_their_flags_and_cannot_be_edited(api):
-    como("consulta")
+    como("admin")
     impuestos = {i["codigo"]: i for i in api.get("/impuestos").json()}
     assert list(impuestos) == ["IVA", "IIBB", "GANANCIAS"]
     assert impuestos["IVA"]["alicuota"] == "0.210" and impuestos["IVA"]["es_costo_del_producto"] is False
@@ -395,9 +400,11 @@ def test_categories_follow_the_seed_code_convention_or_fall_back_to_a_number(api
 
 
 def test_catalog_writes_need_an_admin(api):
-    como("cotizador")
-    assert api.post("/colores", json={"nombre": "Rojo"}).status_code == 403
-    assert api.post("/categorias", json={"nombre": "Sombreros"}).status_code == 403
+    for role in ("gerente", "taller"):
+        como(role)
+        assert api.post("/colores", json={"nombre": "Rojo"}).status_code == 403
+        assert api.post("/categorias", json={"nombre": "Sombreros"}).status_code == 403
+    como("admin")
     assert api.get("/colores").status_code == 200 and api.get("/categorias").status_code == 200
     assert api.get("/colores").json() == [] and len(api.get("/categorias").json()) == 16
 
@@ -456,8 +463,8 @@ def test_a_new_model_gets_a_server_code_starts_unvalidated_and_keeps_exact_decim
 
 
 def test_model_creation_rules(api):
-    como("cotizador")
-    assert api.post("/modelos", json=modelo_cuerpo()).status_code == 201  # the cotizador role may create
+    como("admin")
+    assert api.post("/modelos", json=modelo_cuerpo()).status_code == 201  # the admin role may create
     assert api.post("/modelos", json=modelo_cuerpo(nombre_del_modelo="  billetera DE prueba ")).status_code == 409
     assert api.post("/modelos", json=modelo_cuerpo(nombre_del_modelo="Portafolio Simple Ch. (mod. 6)")).status_code == 409
     for cambio in (
@@ -471,13 +478,14 @@ def test_model_creation_rules(api):
     assert len(api.get("/modelos").json()) == 327  # only the two accepted ones were stored
 
 
-def test_marking_a_model_as_validated_is_a_flag_for_admin_and_cotizador(api):
-    como("cotizador")
+def test_marking_a_model_as_validated_is_a_flag_for_admin(api):
+    como("admin")
     assert api.post("/modelos/MOD-0002/validado", json={"validado": True}).json()["validado"] is True
     como("admin")
     assert api.post("/modelos/MOD-0002/validado", json={"validado": False}).json()["validado"] is False
-    como("consulta")
+    como("gerente")
     assert api.post("/modelos/MOD-0002/validado", json={"validado": True}).status_code == 403
+    como("admin")
     assert api.get("/modelos/MOD-0002").json()["validado"] is False
     como("admin")
     assert api.post("/modelos/MOD-9999/validado", json={"validado": True}).status_code == 404
@@ -493,11 +501,10 @@ def test_editing_consumptions_is_admin_only_resets_validation_and_changes_only_t
     api.post("/modelos/MOD-0001/validado", json={"validado": True})
     cuerpo = consumos_cuerpo()
 
-    como("cotizador")
+    como("taller")
     assert api.post("/modelos/MOD-0001/consumos", json=cuerpo).status_code == 403
-    assert D(api.get("/modelos/MOD-0001").json()["cuero_m2_por_unidad"]) == D("0.25")
-
     como("admin")
+    assert D(api.get("/modelos/MOD-0001").json()["cuero_m2_por_unidad"]) == D("0.25")
     editado = api.post("/modelos/MOD-0001/consumos", json=cuerpo)
     assert editado.status_code == 200, editado.text
     assert D(editado.json()["cuero_m2_por_unidad"]) == D("0.5") and editado.json()["origen_de_los_consumos"] == "MEDIDO"
@@ -532,7 +539,7 @@ def test_editing_consumptions_is_logged_with_the_previous_values(api, caplog):
 # Quality report links
 
 def test_quality_findings_of_models_and_parameters_point_to_their_admin_screens(api):
-    como("consulta")
+    como("admin")
     grupos = {g["clave"]: g for g in api.get("/calidad").json()["grupos"]}
     assert grupos["modelos_sin_validar"]["hallazgos"] and grupos["parametros"]["hallazgos"]
     assert {h["ruta"] for h in grupos["modelos_sin_validar"]["hallazgos"]} == {"/admin/modelos"}

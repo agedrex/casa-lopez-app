@@ -7,6 +7,7 @@ import { apiPost } from "@/lib/api";
 import { LOT_STATES, lotStateLabel, parseDecimalInput } from "@/lib/format";
 import type { OrdenDetalle } from "@/lib/types";
 import {
+  denyUnlessVoice,
   denyUnlessWriter,
   fromFailure,
   optional,
@@ -153,7 +154,7 @@ export async function savePrecios(
   _previous: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  const denied = await denyUnlessWriter();
+  const denied = await denyUnlessVoice();
   if (denied) return denied;
 
   const body: { cotizado?: string; pagado?: string } = {};

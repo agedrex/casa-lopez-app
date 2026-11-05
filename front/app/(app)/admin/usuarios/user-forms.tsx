@@ -7,7 +7,7 @@ import {
   PrimaryButton,
   SecondaryButton,
 } from "@/components/form";
-import { ROLE_LABELS, ROLES, type Role } from "@/lib/permissions";
+import { DEFAULT_ROLE, ROLE_LABELS, ROLES, type Role } from "@/lib/permissions";
 import { useActionForm } from "@/lib/use-action-form";
 import {
   archiveUser,
@@ -58,13 +58,13 @@ export function CreateUserForm() {
         <Field
           id="usuario-rol"
           label="Rol"
-          hint="Gerente solo mira; Corte accede a corte, cueros y voz; Cotizador carga datos; Administrador además gestiona esta sección."
+          hint="Gerente solo mira los productos y su cotización; Taller accede a corte, cueros y voz; Administrador carga datos y además gestiona esta sección."
         >
           <select
             id="usuario-rol"
             name="role"
             required
-            defaultValue="consulta"
+            defaultValue={DEFAULT_ROLE}
             aria-describedby="usuario-rol-hint"
             className={inputClass}
           >
@@ -126,7 +126,7 @@ export function RoleForm({
         <select
           id={`rol-${userId}`}
           name="role"
-          defaultValue={role ?? "consulta"}
+          defaultValue={role ?? DEFAULT_ROLE}
           disabled={disabledReason !== null}
           aria-describedby={disabledReason ? `rol-${userId}-hint` : undefined}
           className={inputClass}

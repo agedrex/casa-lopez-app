@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { ReadOnlyNote } from "@/components/form";
 import { ErrorNotice, Notice, PageHeader, SectionTitle } from "@/components/ui";
 import { apiGet } from "@/lib/api";
-import { canWrite } from "@/lib/permissions";
+import { canUseVoice } from "@/lib/permissions";
 import { requireSession } from "@/lib/session";
 import type { VozEstado } from "@/lib/types";
 import { VOZ_MAX_CHARS } from "@/lib/voz";
@@ -13,7 +13,7 @@ export const metadata: Metadata = { title: "Voz" };
 
 export default async function VozPage() {
   const { user } = await requireSession();
-  const writer = canWrite(user.role);
+  const writer = canUseVoice(user.role);
   const estado = writer ? await apiGet<VozEstado>("/voz/estado") : null;
 
   return (

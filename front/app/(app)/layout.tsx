@@ -7,9 +7,9 @@ import { UserMenu } from "@/components/user-menu";
 import { Wordmark } from "@/components/wordmark";
 import { desktopNavForRole, mobileTabs, navForRole } from "@/lib/nav";
 import {
+  canAccessPath,
   canWrite,
-  isCorteOnly,
-  isCortePath,
+  homePath,
   parseRoles,
   ROLE_LABELS,
 } from "@/lib/permissions";
@@ -27,14 +27,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
 async function AuthenticatedShell({ children }: { children: React.ReactNode }) {
   const { user } = await requireSession();
-  const corteOnly = isCorteOnly(user.role);
+  // Second check after the proxy: deny by default, and send the role to its own home.
   if (
-    corteOnly &&
-    !isCortePath((await headers()).get("x-app-pathname") ?? "")
+    !canAccessPath(user.role, (await headers()).get("x-app-pathname") ?? "")
   ) {
-    redirect("/corte");
+    redirect(homePath(user.role));
   }
   const roles = parseRoles(user.role);
+  const isAdmin = roles.includes("admin");
   const [role] = roles;
   const groups = navForRole(roles);
   const tabs = mobileTabs(groups, roles);
@@ -60,8 +60,8 @@ async function AuthenticatedShell({ children }: { children: React.ReactNode }) {
       <MobileNav
         groups={groups}
         tabs={tabs}
-        canCreate={canWrite(user.role) || corteOnly}
-        isCorte={corteOnly}
+        canCreate={canWrite(user.role) || roles.includes("taller")}
+        restricted={!isAdmin}
       />
     </div>
   );

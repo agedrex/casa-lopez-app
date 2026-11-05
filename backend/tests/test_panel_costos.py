@@ -281,7 +281,7 @@ def test_a_future_dollar_does_not_break_the_stale_check():
 def client(monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
     app.dependency_overrides[get_session] = lambda: MagicMock()
-    app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="usuario-de-prueba", role="consulta"))
+    app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="usuario-de-prueba", role="admin"))
     yield TestClient(app)
     app.dependency_overrides.clear()
 
@@ -294,7 +294,7 @@ def test_invalid_period_or_price_is_a_422_and_never_reaches_the_service(client, 
     assert client.get("/panel/costos", params=params).status_code == 422
 
 
-def test_a_read_role_can_call_the_panel_and_money_leaves_as_strings(client, monkeypatch):
+def test_an_admin_can_call_the_panel_and_money_leaves_as_strings(client, monkeypatch):
     llamadas = []
 
     def falso(session, periodo, precio, hoy=None):
