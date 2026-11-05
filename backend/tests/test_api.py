@@ -41,6 +41,7 @@ def test_the_router_exposes_every_documented_endpoint():
         ("GET", "/costos-fijos"), ("POST", "/productos"), ("POST", "/productos/{codigo}/extras"),
         ("POST", "/productos/{codigo}/componentes"), ("POST", "/productos/{codigo}/cotizaciones"),
         ("POST", "/precios"), ("POST", "/dolar"), ("POST", "/costos-fijos"), ("POST", "/ordenes"),
+        ("POST", "/costos-fijos/{codigo}/corregir"), ("POST", "/costos-fijos/copiar"),
     }
 
 
@@ -140,10 +141,10 @@ SIN_PERMISO = {"detail": "No tenés permiso para esta acción."}
 
 
 def test_every_write_route_is_covered_by_the_role_tests():
-    assert len(ESCRITURAS) == 19 and {r for _, r in ESCRITURAS} >= {"/modelos", "/modelos/{codigo}/validado", "/voz/interpretar",
+    assert len(ESCRITURAS) == 21 and {r for _, r in ESCRITURAS} >= {"/modelos", "/modelos/{codigo}/validado", "/voz/interpretar",
         "/productos", "/precios", "/cueros", "/dolar", "/dolar/actualizar-bna", "/ordenes", "/talleres", "/talleres/{codigo}/activo",
         "/ordenes/{codigo}/estado", "/ordenes/{codigo}/items", "/ordenes/{codigo}/items/{item}/precios",
-        "/costos-fijos/{codigo}/monto"}
+        "/costos-fijos/{codigo}/monto", "/costos-fijos/{codigo}/corregir", "/costos-fijos/copiar"}
 
 
 @pytest.mark.parametrize("metodo, ruta", ESCRITURAS)
@@ -234,10 +235,19 @@ def test_the_new_reads_are_declared():
     ("/ordenes/LOT-0001/items/LIT-0001/precios", {"pagado": "1", "total_linea": "1"}),
     ("/costos-fijos/GF-0001/monto", {"monto_ars_del_mes": "-1"}),
     ("/costos-fijos/GF-0001/monto", {"monto_ars_del_mes": "1", "total_fabrica": "1"}),
+    ("/costos-fijos/GF-0001/corregir", {"monto_ars_del_mes": "-1"}),
+    ("/costos-fijos/GF-0001/corregir", {}),
+    ("/costos-fijos/GF-0001/corregir", {"monto_ars_del_mes": "1", "total_fabrica": "1"}),
+    ("/costos-fijos/GF-0001/corregir", {"monto_ars_del_mes": "1", "reemplaza_a": "GF-0002"}),
+    ("/costos-fijos/copiar", {"desde": "2026-10"}),
+    ("/costos-fijos/copiar", {"desde": "2026-13", "hasta": "2026-11"}),
+    ("/costos-fijos/copiar", {"desde": "2026-10", "hasta": "noviembre"}),
+    ("/costos-fijos/copiar", {"desde": "2026-10", "hasta": "2026-11", "total": "1"}),
 ])
 def test_new_bodies_reject_calculated_or_invalid_fields_before_the_service(monkeypatch, ruta, cuerpo):
     client, _ = con_usuario()
-    for nombre in ("crear_taller", "registrar_estado", "registrar_precios_item", "cargar_monto_de_gasto"):
+    for nombre in ("crear_taller", "registrar_estado", "registrar_precios_item", "cargar_monto_de_gasto",
+                   "corregir_gasto", "copiar_mes_de_gastos"):
         monkeypatch.setattr(servicios, nombre, lambda *a, **k: pytest.fail("the service must not be called"))
     assert client.post(ruta, json=cuerpo).status_code == 422
 

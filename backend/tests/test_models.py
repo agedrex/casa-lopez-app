@@ -115,6 +115,8 @@ def test_other_checks_and_unique_rules():
     assert "vigente_desde" in indexes["precio_material_uq"] and "material_id" in indexes["precio_material_uq"]
     assert "unique" in indexes["tipo_cambio_uq"]
     assert all(col in indexes["tipo_cambio_uq"] for col in ("fecha", "tipo", "fuente"))
+    # A row can be replaced by at most one row (the correction chain never forks); NULL means "not a correction".
+    assert "unique" in indexes["gasto_periodo_reemplaza_a_uq"] and "reemplaza_a_id is not null" in indexes["gasto_periodo_reemplaza_a_uq"]
     quote_unique = [tuple(c.columns.keys()) for c in table("cotizacion").constraints if isinstance(c, UniqueConstraint)]
     assert ("producto_id", "fecha", "tipo") in quote_unique
 
@@ -152,3 +154,9 @@ def test_postgresql_ddl_compiles_for_every_table():
     for t in Base.metadata.sorted_tables:
         ddl = str(CreateTable(t).compile(dialect=dialect))
         assert f"CREATE TABLE costos.{t.name}" in ddl
+
+
+def test_gasto_periodo_reemplaza_a_id_is_a_nullable_self_reference():
+    column = table("gasto_periodo").c.reemplaza_a_id
+    assert column.nullable and str(column.type.compile(dialect=postgresql.dialect())) == "BIGINT"
+    assert {fk.target_fullname for fk in column.foreign_keys} == {"costos.gasto_periodo.id"}

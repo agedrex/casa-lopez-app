@@ -387,6 +387,13 @@ class GastoPeriodo(BusinessKey, Base):
     monto_ars_del_mes: Mapped[Decimal | None] = mapped_column(money())
     ficticio: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     nota_fuente: Mapped[str | None] = mapped_column(Text)
+    # A correction is a NEW row that points to the row it replaces; the old row is kept and stops counting.
+    reemplaza_a_id: Mapped[int | None] = mapped_column(ForeignKey("costos.gasto_periodo.id"))
+
+
+# A row can be replaced by at most one row, so the correction chain never forks (NULL = not a correction).
+Index("gasto_periodo_reemplaza_a_uq", GastoPeriodo.reemplaza_a_id, unique=True,
+      postgresql_where=GastoPeriodo.reemplaza_a_id.is_not(None))
 
 
 # --- Leather inventory ------------------------------------------------------------
