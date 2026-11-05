@@ -3,7 +3,8 @@ import Link from "next/link";
 import { Card, PageHeader } from "@/components/ui";
 import { apiGet } from "@/lib/api";
 import { formatDate, formatRate } from "@/lib/format";
-import type { PanelCostos } from "@/lib/types";
+import type { PanelCostos, ProductoResumen } from "@/lib/types";
+import { EscenarioDeVentas } from "./cvu/escenario";
 import { BloqueConError, PanelCvu, PorRevisar } from "./panel-cvu";
 
 export const metadata: Metadata = { title: "Panel del negocio" };
@@ -11,7 +12,11 @@ export const metadata: Metadata = { title: "Panel del negocio" };
 const linkClass = "underline decoration-gold underline-offset-4";
 
 export default async function PanelPage() {
-  const panel = await apiGet<PanelCostos>("/panel/costos");
+  // SUPUESTO: 500 is the API's page maximum; it only feeds the product suggestions of the scenario.
+  const [panel, productos] = await Promise.all([
+    apiGet<PanelCostos>("/panel/costos"),
+    apiGet<ProductoResumen[]>("/productos?limit=500"),
+  ]);
 
   return (
     <>
@@ -24,6 +29,10 @@ export default async function PanelPage() {
           <>
             <PanelCvu panel={panel.data} />
             <PorRevisar panel={panel.data} />
+            <EscenarioDeVentas
+              productos={productos.ok ? productos.data : []}
+              periodo={panel.data.periodo}
+            />
             {panel.data.dolar && (
               <Card className="text-sm">
                 Dólar:{" "}

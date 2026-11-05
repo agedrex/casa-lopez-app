@@ -9,7 +9,7 @@ import {
   parseDecimalInput,
   quoteTypeLabel,
 } from "@/lib/format";
-import type { Cotizacion, Ficha } from "@/lib/types";
+import type { Cotizacion, Ficha, PrecioVenta } from "@/lib/types";
 import {
   denyUnlessWriter,
   fromFailure,
@@ -101,4 +101,28 @@ export async function saveCotizacion(
       result.data.total_ars,
     )} (${formatUsd(result.data.total_usd)}).`,
   );
+}
+
+export async function savePrecioVenta(
+  codigo: string,
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const denied = await denyUnlessWriter();
+  if (denied) return denied;
+
+  const precio = parseDecimalInput(text(formData, "precio"));
+  if (!positive(precio)) {
+    return error(
+      "Ingrese un precio de venta mayor que cero, por ejemplo 45000.",
+    );
+  }
+
+  const result = await apiPost<PrecioVenta>(
+    `/productos/${encodeURIComponent(codigo)}/precio-venta`,
+    { precio_ars: precio, nota: optional(formData, "nota") },
+  );
+  if (!result.ok) return fromFailure(result);
+  refresh();
+  return ok(`Precio guardado: ${formatArs(result.data.precio_ars)}.`);
 }
