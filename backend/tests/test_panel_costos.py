@@ -226,6 +226,55 @@ def test_without_a_dollar_the_panel_says_so():
     assert "DOLAR_VIEJO" in codigos(resultado)
 
 
+# --- Incomplete data never breaks the panel ----------------------------------------------------------------
+
+def test_an_empty_database_still_answers_with_the_warnings():
+    resultado = panel(lotes=[], items=[], costos={}, fijos_por_mes={}, dolar=None, precios=[])
+    assert resultado["actual"]["unidades"] == D("0")
+    assert resultado["actual"]["costo_variable_por_unidad"] is None and resultado["actual"]["total_por_unidad"] is None
+    assert resultado["actual"]["fijo_por_unidad"] is None
+    assert resultado["actual"]["equilibrio"]["motivo"] == "SIN_PRECIO"
+    assert resultado["variacion_pct"] == {"costo_variable_por_unidad": None, "fijos_fabrica": None, "total_por_unidad": None}
+    assert codigos(resultado) == ["FIJOS_NO_CARGADOS", "SIN_UNIDADES", "DOLAR_VIEJO", "VOLUMEN_PRODUCIDO"]
+
+
+@pytest.mark.parametrize("precio_simulado", [None, D("500")])
+def test_no_lots_with_fixed_costs_loaded_never_raises(precio_simulado):
+    resultado = panel(lotes=[], items=[], precio_simulado=precio_simulado)
+    assert resultado["actual"]["fijos_fabrica"] == D("4000") and resultado["actual"]["fijo_por_unidad"] is None
+    assert "SIN_UNIDADES" in codigos(resultado) and "FIJOS_NO_CARGADOS" not in codigos(resultado)
+
+
+@pytest.mark.parametrize("precio_simulado", [None, D("500")])
+def test_lots_without_fixed_rows_never_raise_and_say_so(precio_simulado):
+    resultado = panel(fijos_por_mes={}, precio_simulado=precio_simulado)
+    assert resultado["actual"]["fijos_cargados"] is False and "FIJOS_NO_CARGADOS" in codigos(resultado)
+    if precio_simulado is not None:
+        assert resultado["actual"]["equilibrio"] == {"margen_por_unidad": None, "unidades": None, "motivo": "SIN_FIJOS"}
+
+
+@pytest.mark.parametrize("precio_simulado", [None, D("500")])
+def test_products_without_cost_never_raise(precio_simulado):
+    resultado = panel(costos={}, precio_simulado=precio_simulado)
+    actual = resultado["actual"]
+    assert actual["unidades_sin_costo"] == D("40") and actual["costo_variable_por_unidad"] is None
+    assert actual["total_por_unidad"] is None and actual["fijo_por_unidad"] == D("100")
+    assert "PRODUCTOS_SIN_COSTO" in codigos(resultado)
+    if precio_simulado is not None:
+        assert actual["equilibrio"]["motivo"] == "SIN_COSTO_VARIABLE"
+
+
+def test_items_of_lots_that_are_not_loaded_or_have_no_date_are_ignored():
+    sin_fecha = lote("LOT-X", None, id=2)
+    resultado = panel(lotes=[sin_fecha], items=[item("LOT-X", "A", "5", 1), item("LOT-HUERFANO", "A", "5", 2)])
+    assert resultado["actual"]["unidades"] == D("0")
+
+
+def test_a_future_dollar_does_not_break_the_stale_check():
+    resultado = panel(dolar={**DOLAR, "fecha": date(2026, 12, 1)})
+    assert resultado["dolar_viejo"] is False
+
+
 # --- HTTP gate ---------------------------------------------------------------------------------------------
 
 @pytest.fixture

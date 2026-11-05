@@ -15,7 +15,7 @@ Branch: feat/panel-solido (from main after PR #12/#13). Delivery: chained PRs pe
 ## Tasks
 
 - [x] T1 (S1, S2, S6) Migration 0005 + correct/copy endpoints + totals ignore replaced rows + tests. Route: delegated. RISK: item 1 (migration, persisted format) -> own commit + independent verifier. DONE: commit 894eca1; independent verifier: S1,S2,S6 pass, no blockers (1189 passed with PostgreSQL, 1060 passed/129 skipped without).
-- [ ] T2 (S3) Trend endpoint and panel robustness (backend). Route: delegated.
+- [x] T2 (S3) Trend endpoint and panel robustness (backend). Route: delegated. DONE: 1097 passed/141 skipped without DB; 1238 passed with local PostgreSQL.
 - [ ] T3 (S4) Synthetic data script (idempotent) + local test. Route: delegated.
 - [ ] T4 (S1-S3, S5) Front: correct/copy UI in costos-fijos, trend block in the panel. Route: delegated.
 - [ ] T5 (S4) Load examples into staging — only after the user authorizes it. Route: inline.

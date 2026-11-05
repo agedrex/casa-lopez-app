@@ -205,6 +205,8 @@ def test_reads_are_open_to_the_consulta_role(monkeypatch, metodo, ruta):
     monkeypatch.setattr(servicios, "panel_de_costos", lambda *a, **k: servicios.armar_panel_de_costos(
         periodo="2026-11", precio=None, hoy=date(2026, 11, 4), lotes=[], items=[], costos={}, fijos={}, precios=[],
         dolar=None))
+    monkeypatch.setattr(servicios, "tendencia_de_costos", lambda *a, **k: servicios.armar_tendencia_de_costos(
+        hasta="2026-11", meses=6, lotes=[], items=[], costos={}, fijos={}))
     monkeypatch.setattr(servicios, "periodos_de_costos_fijos", lambda *a, **k: {"vigente": None, "periodos": []})
     monkeypatch.setattr(servicios, "calidad_de_datos", lambda *a, **k: {
         "resumen": {"alta": 0, "media": 0, "baja": 0, "total": 0}, "grupos": []})
@@ -222,6 +224,7 @@ def test_the_new_reads_are_declared():
         ("GET", "/ordenes"), ("GET", "/ordenes/{codigo}"), ("GET", "/fabricacion/casa-vs-taller"),
         ("GET", "/talleres/{codigo}"), ("GET", "/personas"), ("GET", "/costos-fijos/periodos"), ("GET", "/calidad"),
         ("GET", "/productos/{codigo}/precios-talleres"), ("GET", "/panel/costos"),
+        ("GET", "/panel/tendencia"),
     } <= set(RUTAS)
 
 

@@ -199,3 +199,57 @@ def test_copying_refuses_a_target_with_rows_an_empty_source_and_bad_periods(api)
     assert api.get("/costos-fijos", params={"periodo": "2030-02"}).json()["gastos"] == []
     assert api.post("/costos-fijos/copiar", json={"desde": "2027-03", "hasta": "2027-03"}).status_code == 422
     assert api.post("/costos-fijos/copiar", json={"desde": "2027-13", "hasta": "2027-05"}).status_code == 422
+
+
+# --- regressions proposed by the independent verifier ---------------------------------------------------------
+
+def instantanea(api, *periodos):
+    """Every row of the given months, including replaced ones, as (id, codigo, monto, reemplaza_a_id, nota_fuente)."""
+    filas = api.session.execute(
+        select(GastoPeriodo.id, GastoPeriodo.codigo, GastoPeriodo.monto_ars_del_mes, GastoPeriodo.reemplaza_a_id,
+               GastoPeriodo.nota_fuente).where(GastoPeriodo.periodo.in_(periodos)).order_by(GastoPeriodo.id)).all()
+    return [tuple(fila) for fila in filas]
+
+
+def test_a_rejected_copy_leaves_both_months_byte_identical(api):
+    nuevo_gasto(api, "2027-02", "Alquiler", "1000", categoria="ALQUILER")
+    nuevo_gasto(api, "2027-03", "Luz", "70", categoria="SERVICIOS")
+    mes = nuevo_gasto(api, "2027-03", "Gas", "30", categoria="SERVICIOS")
+    gas = next(g for g in mes["gastos"] if g["concepto"] == "Gas")
+    assert api.post(f"/costos-fijos/{gas['codigo']}/corregir", json={"monto_ars_del_mes": "35"}).status_code == 201
+    antes = instantanea(api, "2027-02", "2027-03")
+    vistas = [api.get("/costos-fijos", params={"periodo": p}).json() for p in ("2027-02", "2027-03")]
+    rechazada = api.post("/costos-fijos/copiar", json={"desde": "2027-02", "hasta": "2027-03"})
+    assert rechazada.status_code == 409
+    assert rechazada.json() == {"detail": "El mes 2027-03 ya tiene gastos: no se copia encima."}
+    assert instantanea(api, "2027-02", "2027-03") == antes
+    assert [api.get("/costos-fijos", params={"periodo": p}).json() for p in ("2027-02", "2027-03")] == vistas
+
+
+def test_a_copy_made_after_a_correction_carries_only_the_corrected_amount(api):
+    nuevo_gasto(api, "2027-03", "Alquiler", "1000", categoria="ALQUILER")
+    mes = nuevo_gasto(api, "2027-03", "Luz", "70", categoria="SERVICIOS")
+    luz = next(g for g in mes["gastos"] if g["concepto"] == "Luz")
+    assert api.post(f"/costos-fijos/{luz['codigo']}/corregir", json={"monto_ars_del_mes": "90"}).status_code == 201
+    origen = api.get("/costos-fijos", params={"periodo": "2027-03"}).json()
+    copia = api.post("/costos-fijos/copiar", json={"desde": "2027-03", "hasta": "2027-04"}).json()
+    assert total(copia) == total(origen) == D("1090")
+    assert len(copia["gastos"]) == len(origen["gastos"]) == 2
+    assert {g["concepto"]: D(g["monto_ars_del_mes"]) for g in copia["gastos"]} == {"Alquiler": D("1000"), "Luz": D("90")}
+    assert all(g["reemplaza_a"] is None for g in copia["gastos"])
+    assert cantidad_de_filas(api, "2027-04") == 2  # the replaced 70 was not copied as a hidden row either
+    assert api.session.scalar(
+        select(func.count()).select_from(GastoPeriodo).where(GastoPeriodo.periodo == "2027-04", GastoPeriodo.reemplaza_a_id.is_not(None))) == 0
+
+
+def test_the_sheets_export_lists_no_replaced_row(api):
+    mes = nuevo_gasto(api, "2027-05", "Alquiler", "1000", categoria="ALQUILER")
+    alquiler = next(g for g in mes["gastos"] if g["concepto"] == "Alquiler")
+    corregido = api.post(f"/costos-fijos/{alquiler['codigo']}/corregir", json={"monto_ars_del_mes": "1200"}).json()
+    nuevo = next(g for g in corregido["gastos"] if g["reemplaza_a"] == alquiler["codigo"])
+    exportado = servicios.costos_fijos_de_todos_los_periodos(api.session)
+    codigos = [g["codigo"] for m in exportado for g in m["gastos"]]
+    assert alquiler["codigo"] not in codigos and nuevo["codigo"] in codigos
+    assert len(codigos) == len(set(codigos))
+    mayo = next(m for m in exportado if m["periodo"] == "2027-05")
+    assert len(mayo["gastos"]) == 1 and D(mayo["total"]) == D("1200")
