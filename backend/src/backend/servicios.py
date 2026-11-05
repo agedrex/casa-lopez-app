@@ -19,13 +19,13 @@ from sqlalchemy.orm import Session, aliased
 
 from backend import dolar_bna
 from backend.costeo import (
-    Desglose, ItemLote, PrecioVigente, Precios, ZERO, confeccion_externa, costo_kit, costo_por_unidad,
-    necesita_recotizar, punto_de_equilibrio, resultado_cvu,
+    Desglose, ItemLote, PrecioVigente, Precios, ProductoEnMezcla, ZERO, confeccion_externa, costo_kit, costo_por_unidad,
+    equilibrio_con_mezcla, margen_de_contribucion, necesita_recotizar, punto_de_equilibrio, resultado_cvu,
 )
 from backend.models import (
     Categoria, Color, Cotizacion, Etapa, GastoPeriodo, Impuesto, KitComponente, Material, Modelo,
-    OrdenEstado, OrdenFabricacion, OrdenItem, Parametro, Persona, PrecioMaterial, Producto, RecetaLinea, Taller,
-    TipoCambio,
+    OrdenEstado, OrdenFabricacion, OrdenItem, Parametro, Persona, PrecioMaterial, PrecioVenta, Producto, RecetaLinea,
+    Taller, TipoCambio,
 )
 from backend.receta import (
     Cotizado, Extra, ModeloReceta, ProductoReceta, Receta, cotizar_producto, generar_receta,
@@ -2387,3 +2387,175 @@ def lotes_para_voz(session: Session) -> list[dict]:
         "codigo": lote.codigo, "taller": lote.taller, "taller_nombre": lote.taller_nombre, "estado": lote.estado,
         "fecha": lote.fecha, "items": por_lote.get(lote.codigo, []),
     } for lote in lotes]
+
+
+# --- CVU: sale price, profitability of a product and sales-mix scenario ---------------------------------------------
+# The sale price is the only thing stored here (append-only, like the other dated tables); every figure is computed on
+# read from today's cost and the pure engine in costeo.py. Nothing in this section writes a cost.
+
+AVISO_VOLUMEN_ESCENARIO = "El volumen es el que cargaste, no ventas reales."
+AVISOS_DE_FIJOS = {
+    "SIN_FIJOS": "Todavía no se cargaron los costos fijos de la fábrica de este período: el punto de equilibrio no es confiable.",
+    "FIJOS_PENDIENTES": "Hay costos fijos de la fábrica sin monto cargado: el punto de equilibrio no es confiable.",
+    "FIJOS_FICTICIOS": "Algunos costos fijos son de ejemplo: el punto de equilibrio no es confiable.",
+}
+
+
+def _precio_de_venta_a_dict(fila: PrecioVenta, codigo: str) -> dict:
+    return {
+        "producto": codigo, "precio_ars": fila.precio_ars, "vigente_desde": fila.vigente_desde, "nota": fila.nota,
+        "creado_por": fila.creado_por, "creado_en": fila.created_at,
+    }
+
+
+def _producto_o_404(session: Session, codigo: str) -> Producto:
+    producto = session.scalar(select(Producto).where(Producto.codigo == codigo))
+    if producto is None:
+        raise NoEncontrado(f"No existe el producto {codigo}.")
+    return producto
+
+
+def guardar_precio_de_venta(
+    session: Session, codigo_producto: str, *, precio_ars: Decimal, vigente_desde: date | None = None,
+    nota: str | None = None, quien: str | None = None, hoy: date | None = None,
+) -> dict:
+    """Append one dated sale price. Never updates or deletes: a new price is a new row."""
+    if precio_ars is None or precio_ars <= 0:
+        raise DatosInvalidos("El precio de venta tiene que ser mayor que cero.")
+    producto = _producto_o_404(session, codigo_producto)
+    fila = PrecioVenta(
+        producto_id=producto.id, precio_ars=precio_ars, vigente_desde=vigente_desde or hoy or date.today(),
+        creado_por=quien, nota=nota or None,
+    )
+    _insertar(session, fila, "Ya hay un precio de venta cargado para ese producto en esa fecha.")
+    session.commit()
+    session.refresh(fila)
+    return _precio_de_venta_a_dict(fila, codigo_producto)
+
+
+def listar_precios_de_venta(session: Session, codigo_producto: str) -> list[dict]:
+    """The price history of a product, newest first (latest `vigente_desde`, then latest id)."""
+    producto = _producto_o_404(session, codigo_producto)
+    filas = session.scalars(
+        select(PrecioVenta).where(PrecioVenta.producto_id == producto.id)
+        .order_by(PrecioVenta.vigente_desde.desc(), PrecioVenta.id.desc())
+    ).all()
+    return [_precio_de_venta_a_dict(fila, codigo_producto) for fila in filas]
+
+
+def _ultimos_precios_de_venta(session: Session, producto_ids: set[int]) -> dict[int, Decimal]:
+    """The latest saved price per product id already in force today: highest `vigente_desde`, then highest id."""
+    if not producto_ids:
+        return {}
+    filas = session.scalars(
+        select(PrecioVenta).where(PrecioVenta.producto_id.in_(producto_ids), PrecioVenta.vigente_desde <= date.today())
+        .order_by(PrecioVenta.vigente_desde.desc(), PrecioVenta.id.desc())
+    ).all()
+    ultimos: dict[int, Decimal] = {}
+    for fila in filas:
+        ultimos.setdefault(fila.producto_id, fila.precio_ars)
+    return ultimos
+
+
+def _precio_y_fuente(ingresado: Decimal | None, guardado: Decimal | None) -> tuple[Decimal | None, str | None]:
+    if ingresado is not None:
+        return ingresado, "INGRESADO"
+    if guardado is not None:
+        return guardado, "GUARDADO"
+    return None, None
+
+
+def armar_rentabilidad(
+    *, codigo: str, costo: Decimal | None, precio_ingresado: Decimal | None, precio_guardado: Decimal | None,
+) -> dict:
+    """Pure: contribution margin of one product. `costo` is today's total cost per unit (None: it cannot be computed).
+
+    Fixed costs are deliberately not part of this verdict (the whole business pays them, see `armar_escenario`).
+    SUPUESTO: validar con Gerardo/Alejandro. The variable cost of a product is its whole cost today, CONFECCION included.
+    """
+    precio, fuente = _precio_y_fuente(precio_ingresado, precio_guardado)
+    resultado = {
+        "producto": codigo, "fuente_precio": fuente, "precio": precio, "costo_variable": costo, "margen_unidad": None,
+        "margen_pct": None, "markup_pct": None, "veredicto": None, "motivo": None,
+    }
+    if precio is None:
+        return {**resultado, "motivo": "SIN_PRECIO"}
+    if costo is None:
+        return {**resultado, "motivo": "SIN_COSTO_VARIABLE"}
+    margen = margen_de_contribucion(precio, costo)
+    return {**resultado, "margen_unidad": margen.margen_unidad, "margen_pct": margen.margen_pct,
+            "markup_pct": margen.markup_pct, "veredicto": margen.veredicto}
+
+
+def rentabilidad_de_producto(session: Session, codigo: str, precio: Decimal | None = None) -> dict:
+    """Is the product profitable at `precio` (typed) or at its latest saved price? Reads only, saves nothing."""
+    producto = _producto_o_404(session, codigo)
+    guardado = None if precio is not None else _ultimos_precios_de_venta(session, {producto.id}).get(producto.id)
+    return armar_rentabilidad(
+        codigo=codigo, costo=_costos_totales_de_hoy(session, {codigo})[codigo], precio_ingresado=precio,
+        precio_guardado=guardado,
+    )
+
+
+def armar_escenario(
+    *, periodo: str, items: list[dict], existentes: set[str], costos: dict[str, Decimal | None],
+    guardados: dict[str, Decimal], fijos: FijosDelMes,
+) -> dict:
+    """Pure: break-even of the whole factory for a mix of products typed by the owner.
+
+    `items` are {codigo, unidades, precio|None}; `guardados` the latest saved price per product code. A product without
+    price or cost cannot be computed, so it goes to `omitidos` with its reason and stays out of the mix.
+    SUPUESTO: validar con Gerardo. The volume is a scenario, not sales; the fixed costs are the FABRICA ones of the period.
+    """
+    lineas, omitidos, mezcla = [], [], []
+    for item in items:
+        codigo = item["codigo"]
+        precio, fuente = _precio_y_fuente(item.get("precio"), guardados.get(codigo))
+        if codigo not in existentes:
+            omitidos.append({"codigo": codigo, "motivo": "PRODUCTO_NO_ENCONTRADO"})
+        elif precio is None:
+            omitidos.append({"codigo": codigo, "motivo": "SIN_PRECIO"})
+        elif costos.get(codigo) is None:
+            omitidos.append({"codigo": codigo, "motivo": "SIN_COSTO_VARIABLE"})
+        else:
+            costo, unidades = costos[codigo], item["unidades"]
+            margen = margen_de_contribucion(precio, costo)
+            mezcla.append(ProductoEnMezcla(precio, costo, unidades))
+            lineas.append({
+                "codigo": codigo, "unidades": unidades, "precio": precio, "fuente_precio": fuente, "costo_variable": costo,
+                "margen_unidad": margen.margen_unidad, "margen_pct": margen.margen_pct, "veredicto": margen.veredicto,
+                "contribucion_total": margen.margen_unidad * unidades, "participacion_pct": None,
+            })
+    global_ = equilibrio_con_mezcla(fijos.total_fabrica, mezcla)
+    if global_.motivo is None:
+        for linea in lineas:
+            linea["participacion_pct"] = linea["contribucion_total"] / global_.margen_contribucion * 100
+    avisos = []
+    if not fijos.cargados:
+        avisos.append("SIN_FIJOS")
+    if fijos.pendientes:
+        avisos.append("FIJOS_PENDIENTES")
+    if fijos.ficticios:
+        avisos.append("FIJOS_FICTICIOS")
+    return {
+        "periodo": periodo,
+        "fijos": {"total_fabrica": fijos.total_fabrica, "cargados": fijos.cargados, "pendientes": fijos.pendientes,
+                  "ficticios": fijos.ficticios},
+        "resultado": asdict(global_), "lineas": lineas, "omitidos": omitidos,
+        "avisos": [{"codigo": c, "texto": AVISOS_DE_FIJOS[c]} for c in avisos]
+                  + [{"codigo": "VOLUMEN_ESCENARIO", "texto": AVISO_VOLUMEN_ESCENARIO}],
+        "confiable": not avisos,
+    }
+
+
+def escenario_cvu(session: Session, periodo: str | None, items: list[dict], hoy: date | None = None) -> dict:
+    """Scenario for the factory in `periodo` (default: this calendar month). Reads only, saves nothing."""
+    periodo = periodo or mes_de(hoy or date.today())
+    codigos = {item["codigo"] for item in items}
+    ids = dict(session.execute(select(Producto.codigo, Producto.id).where(Producto.codigo.in_(codigos))).all()) if codigos else {}
+    por_id = _ultimos_precios_de_venta(session, set(ids.values()))
+    return armar_escenario(
+        periodo=periodo, items=items, existentes=set(ids), costos=_costos_totales_de_hoy(session, set(ids)),
+        guardados={codigo: por_id[id_] for codigo, id_ in ids.items() if id_ in por_id},
+        fijos=_fijos_de_fabrica(session, [periodo]).get(periodo, SIN_FIJOS),
+    )

@@ -21,8 +21,8 @@ Branch: feat/panel-cvu. Delivery: single PR for U1+U2 (ask-on-risk). Test runner
 
 - [x] T1 (S2) `PrecioVenta` model + migration 0006 + tests (models, migration chain, verification lists). Route: inline. Commit 8e08a61. Check: 1135 passed, 150 skipped; migration not applied to a real PostgreSQL (no local DB).
 - [x] T2 (S3, S4, S5) `margen_de_contribucion` in costeo.py + tests. Route: inline. Commit 17e7478. RED observed (ImportError), then GREEN.
-- [ ] T3 (S7) `equilibrio_con_mezcla` pure engine + tests (RED first). Route: delegated (context backstop).
-- [ ] T4 (S8, S9, S10, S11) service functions + endpoints + tests (store, history, rentabilidad, escenario). Route: delegated (context backstop).
+- [x] T3 (S7) `equilibrio_con_mezcla` pure engine + tests (RED first). Route: delegated (context backstop). Commit 3e722f2. RED: 9 failed (ImportError) then 42 passed.
+- [x] T4 (S8, S9, S10, S11) service functions + endpoints + tests (store, history, rentabilidad, escenario). Route: delegated (context backstop). Commit f9bc20d. Check: 1220 passed, 151 skipped; worker also ran the Postgres integration test on a throwaway DB. Parent fixed test_integration head (0006) and made the latest-price query ignore future-dated prices (not covered by a test).
 
 ## Log
 

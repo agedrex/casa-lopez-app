@@ -39,6 +39,7 @@ CORTES = [Depends(CORTE)]
 # The admin area: only `admin` (the front also hides it, and re-checks the role in every server action).
 ADMINISTRACION = [Depends(require_role("admin"))]
 SoloAdmin = Annotated[Usuario, Depends(require_role("admin"))]
+Escritor = Annotated[Usuario, Depends(require_role("admin", "cotizador"))]
 Sesion = Annotated[Session, Depends(get_session)]
 
 PERIODO = r"^[0-9]{4}-(0[1-9]|1[0-2])$"
@@ -197,6 +198,23 @@ class PrecioIn(Entrada):
     iva_incluido: bool = False
     vigente_desde: date
     nota_fuente: str | None = None
+
+
+class PrecioVentaIn(Entrada):
+    precio_ars: Annotated[Decimal, Field(gt=0, max_digits=14, decimal_places=4)]
+    vigente_desde: date | None = None
+    nota: str | None = None
+
+
+class EscenarioItemIn(Entrada):
+    codigo: str
+    unidades: Annotated[Decimal, Field(gt=0, max_digits=12, decimal_places=6)]
+    precio: Annotated[Decimal, Field(gt=0, max_digits=14, decimal_places=4)] | None = None
+
+
+class EscenarioIn(Entrada):
+    periodo: Annotated[str, Field(pattern=PERIODO)] | None = None
+    items: list[EscenarioItemIn]
 
 
 class DolarIn(Entrada):
@@ -657,6 +675,74 @@ class PanelCostosOut(Salida):
     avisos: list[PanelAvisoOut]
 
 
+class PrecioVentaOut(Salida):
+    producto: str
+    precio_ars: Decimal
+    vigente_desde: date
+    nota: str | None
+    creado_por: str | None
+    creado_en: datetime | None
+
+
+class RentabilidadOut(Salida):
+    producto: str
+    fuente_precio: Literal["INGRESADO", "GUARDADO"] | None
+    precio: Decimal | None
+    costo_variable: Decimal | None
+    margen_unidad: Decimal | None
+    margen_pct: Decimal | None
+    markup_pct: Decimal | None
+    veredicto: Literal["NO_CUBRE_VARIABLE", "MC_BAJO", "SALUDABLE"] | None
+    motivo: Literal["SIN_PRECIO", "SIN_COSTO_VARIABLE"] | None
+
+
+class EscenarioFijosOut(Salida):
+    total_fabrica: Decimal
+    cargados: bool
+    pendientes: int
+    ficticios: bool
+
+
+class EscenarioResultadoOut(Salida):
+    ingresos: Decimal | None
+    margen_contribucion: Decimal | None
+    margen_contribucion_pct: Decimal | None
+    costos_fijos: Decimal | None
+    utilidad: Decimal | None
+    equilibrio_ingresos: Decimal | None
+    equilibrio_unidades: Decimal | None
+    margen_seguridad_pct: Decimal | None
+    motivo: Literal["SIN_VENTAS", "MC_NO_POSITIVO"] | None
+
+
+class EscenarioLineaOut(Salida):
+    codigo: str
+    unidades: Decimal
+    precio: Decimal
+    fuente_precio: Literal["INGRESADO", "GUARDADO"]
+    costo_variable: Decimal
+    margen_unidad: Decimal
+    margen_pct: Decimal | None
+    veredicto: Literal["NO_CUBRE_VARIABLE", "MC_BAJO", "SALUDABLE"]
+    contribucion_total: Decimal
+    participacion_pct: Decimal | None
+
+
+class EscenarioOmitidoOut(Salida):
+    codigo: str
+    motivo: Literal["PRODUCTO_NO_ENCONTRADO", "SIN_PRECIO", "SIN_COSTO_VARIABLE"]
+
+
+class EscenarioOut(Salida):
+    periodo: str
+    fijos: EscenarioFijosOut
+    resultado: EscenarioResultadoOut
+    lineas: list[EscenarioLineaOut]
+    omitidos: list[EscenarioOmitidoOut]
+    avisos: list[PanelAvisoOut]
+    confiable: bool
+
+
 class TendenciaMesOut(Salida):
     periodo: str
     unidades: Decimal
@@ -1011,6 +1097,21 @@ def panel_de_costos(
     return servicios.panel_de_costos(session, periodo, precio)
 
 
+@router.get("/productos/{codigo}/precio-venta", response_model=list[PrecioVentaOut])
+def historial_de_precio_de_venta(codigo: str, session: Sesion):
+    """Saved sale prices of the product, newest first."""
+    return servicios.listar_precios_de_venta(session, codigo)
+
+
+@router.get("/productos/{codigo}/rentabilidad", response_model=RentabilidadOut)
+def rentabilidad_de_producto(
+    codigo: str, session: Sesion,
+    precio: Annotated[Decimal | None, Query(gt=0, max_digits=14, decimal_places=4)] = None,
+):
+    """Contribution margin at `precio` (typed) or at the latest saved price; saves nothing."""
+    return servicios.rentabilidad_de_producto(session, codigo, precio)
+
+
 @router.get("/panel/tendencia", response_model=TendenciaOut)
 def tendencia_de_costos(
     session: Sesion, hasta: Annotated[str | None, Query(pattern=PERIODO)] = None,
@@ -1059,6 +1160,21 @@ def calidad(session: Sesion):
 @router.post("/productos", dependencies=ESCRITURA, response_model=FichaOut, status_code=201)
 def crear_producto(cuerpo: ProductoIn, session: Sesion):
     return servicios.crear_producto(session, **cuerpo.model_dump())
+
+
+@router.post("/productos/{codigo}/precio-venta", dependencies=ESCRITURA, response_model=PrecioVentaOut, status_code=201)
+def guardar_precio_de_venta(codigo: str, cuerpo: PrecioVentaIn, session: Sesion, usuario: Escritor):
+    """Appends a dated sale price; history is never edited or deleted."""
+    return servicios.guardar_precio_de_venta(
+        session, codigo, precio_ars=cuerpo.precio_ars, vigente_desde=cuerpo.vigente_desde, nota=cuerpo.nota,
+        quien=usuario.id,
+    )
+
+
+@router.post("/cvu/escenario", response_model=EscenarioOut)
+def escenario_cvu(cuerpo: EscenarioIn, session: Sesion):
+    """Break-even of the factory for a mix typed by the owner. A POST only because of the body: it reads and saves nothing."""
+    return servicios.escenario_cvu(session, cuerpo.periodo, [item.model_dump() for item in cuerpo.items])
 
 
 @router.post("/productos/{codigo}/extras", dependencies=ESCRITURA, response_model=FichaOut, status_code=201)
