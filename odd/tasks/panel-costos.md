@@ -17,8 +17,8 @@ Branch: feat/panel-costos. Delivery: single PR (ask-on-risk). Test runner: backe
 
 - [x] T1 (S3, S4, S5) Pure functions in costeo.py + tests. Route: inline.
 - [x] T2 (S2, S4, S6) Service `panel_de_costos` + `GET /panel/costos?periodo=&precio=` + tests. Route: delegated (context backstop). Check: 998 passed, 118 skipped; DB loaders not run against PostgreSQL (no local DB).
-- [ ] T3 (S6, S7) New panel UI in front/app/(app)/page.tsx using the endpoint. Route: inline.
-- [ ] T4 (S6) Automatic month period fallback + stale alerts. Route: inline.
+- [x] T3 (S6, S7) New panel UI in front/app/(app)/page.tsx using the endpoint. Route: delegated (context backstop). Check: biome + tsc clean on touched files; no visual check, no next build.
+- [x] T4 (S6) Automatic month period fallback + stale alerts. Covered by T2 (calendar month default, stale dollar/prices, missing fixed costs) and T3 (shown in the panel).
 
 ## Log
 

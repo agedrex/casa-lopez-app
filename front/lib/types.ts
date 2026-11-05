@@ -551,3 +551,66 @@ export type AlcanzaCuero = {
   alternativas: AlternativaCuero[];
   mensaje: string | null;
 };
+
+// Cost panel (GET /panel/costos). Every amount is computed by the API; the front only displays it.
+
+export type MotivoEquilibrio =
+  | "SIN_PRECIO"
+  | "PRECIO_NO_CUBRE_COSTO_VARIABLE"
+  | "SIN_COSTO_VARIABLE"
+  | "SIN_FIJOS";
+
+export type EquilibrioPanel = {
+  margen_por_unidad: string | null;
+  unidades: string | null;
+  motivo: MotivoEquilibrio | null;
+};
+
+export type BloqueCostoMes = {
+  periodo: string;
+  unidades: string;
+  unidades_sin_costo: string;
+  costo_variable_por_unidad: string | null;
+  fijos_fabrica: string;
+  fijos_cargados: boolean;
+  fijos_pendientes: number;
+  fijos_ficticios: boolean;
+  fijo_por_unidad: string | null;
+  total_por_unidad: string | null;
+  equilibrio: EquilibrioPanel;
+};
+
+export type PrecioQueSubio = {
+  material: string;
+  color: string | null;
+  precio: string;
+  moneda: string;
+  vigente_desde: string;
+  variacion_pct: string;
+  salto_grande: boolean;
+};
+
+export type PrecioViejo = {
+  material: string;
+  color: string | null;
+  vigente_desde: string;
+};
+
+export type AvisoPanel = { codigo: string; texto: string };
+
+export type PanelCostos = {
+  periodo: string;
+  periodo_anterior: string;
+  actual: BloqueCostoMes;
+  anterior: BloqueCostoMes;
+  variacion_pct: {
+    costo_variable_por_unidad: string | null;
+    fijos_fabrica: string | null;
+    total_por_unidad: string | null;
+  };
+  precios_que_subieron: PrecioQueSubio[];
+  precios_viejos: { cantidad: number; mas_viejos: PrecioViejo[] };
+  dolar: { fecha: string; ars_por_usd: string; fuente: string } | null;
+  dolar_viejo: boolean;
+  avisos: AvisoPanel[];
+};
