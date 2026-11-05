@@ -222,3 +222,10 @@ export function sameDecimalText(
   };
   return normalize(a) === normalize(b);
 }
+
+/** A decimal string from the API as a person would type it: `25000.5000` -> `25000,5`. Text only, no arithmetic. */
+export function decimalInputText(value: string | null | undefined): string {
+  const text = (value ?? "").trim();
+  const trimmed = text.includes(".") ? text.replace(/\.?0+$/, "") : text;
+  return trimmed.replace(".", ",");
+}

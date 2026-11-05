@@ -663,3 +663,75 @@ export type TendenciaCostos = {
   meses: MesTendencia[];
   nota: string;
 };
+
+// Sale price and profitability (CVU). Mirrors PrecioVentaOut, RentabilidadOut and EscenarioOut in api.py.
+
+export type PrecioVenta = {
+  producto: string;
+  precio_ars: string;
+  vigente_desde: string;
+  nota: string | null;
+  creado_por: string | null;
+  creado_en: string | null;
+};
+
+export type VeredictoCvu = "NO_CUBRE_VARIABLE" | "MC_BAJO" | "SALUDABLE";
+
+export type FuentePrecio = "INGRESADO" | "GUARDADO";
+
+export type Rentabilidad = {
+  producto: string;
+  fuente_precio: FuentePrecio | null;
+  precio: string | null;
+  costo_variable: string | null;
+  margen_unidad: string | null;
+  margen_pct: string | null;
+  markup_pct: string | null;
+  veredicto: VeredictoCvu | null;
+  motivo: "SIN_PRECIO" | "SIN_COSTO_VARIABLE" | null;
+};
+
+export type EscenarioResultado = {
+  ingresos: string | null;
+  margen_contribucion: string | null;
+  margen_contribucion_pct: string | null;
+  costos_fijos: string | null;
+  utilidad: string | null;
+  equilibrio_ingresos: string | null;
+  equilibrio_unidades: string | null;
+  margen_seguridad_pct: string | null;
+  motivo: "SIN_VENTAS" | "MC_NO_POSITIVO" | null;
+};
+
+export type EscenarioLinea = {
+  codigo: string;
+  unidades: string;
+  precio: string;
+  fuente_precio: FuentePrecio;
+  costo_variable: string;
+  margen_unidad: string;
+  margen_pct: string | null;
+  veredicto: VeredictoCvu;
+  contribucion_total: string;
+  participacion_pct: string | null;
+};
+
+export type EscenarioOmitido = {
+  codigo: string;
+  motivo: "PRODUCTO_NO_ENCONTRADO" | "SIN_PRECIO" | "SIN_COSTO_VARIABLE";
+};
+
+export type Escenario = {
+  periodo: string;
+  fijos: {
+    total_fabrica: string;
+    cargados: boolean;
+    pendientes: number;
+    ficticios: boolean;
+  };
+  resultado: EscenarioResultado;
+  lineas: EscenarioLinea[];
+  omitidos: EscenarioOmitido[];
+  avisos: AvisoPanel[];
+  confiable: boolean;
+};

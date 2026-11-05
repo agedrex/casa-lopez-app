@@ -41,6 +41,7 @@ import type {
 } from "@/lib/types";
 import { Comparison } from "./comparison";
 import { ComponenteForm, CotizacionForm, ExtraForm } from "./forms";
+import { RentabilidadBlock } from "./rentabilidad";
 
 export const metadata: Metadata = { title: "Ficha de producto" };
 
@@ -52,10 +53,16 @@ function decodeCode(raw: string): string | null {
   }
 }
 
+function typedPriceOf(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value)?.trim() ?? "";
+}
+
 export default async function FichaPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ codigo: string }>;
+  searchParams: Promise<{ precio?: string | string[] }>;
 }) {
   const { user } = await requireSession();
   const code = decodeCode((await params).codigo);
@@ -99,6 +106,11 @@ export default async function FichaPage({
       <div className="space-y-10">
         <Details ficha={ficha} />
         <CostToday ficha={ficha} />
+        <RentabilidadBlock
+          codigo={ficha.codigo}
+          writer={canWrite(user.role)}
+          typedPrice={typedPriceOf((await searchParams).precio)}
+        />
         <NegotiationReference codigo={ficha.codigo} />
         <Recipe ficha={ficha} />
         {ficha.componentes.length > 0 ? <Components ficha={ficha} /> : null}

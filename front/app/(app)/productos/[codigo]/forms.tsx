@@ -7,7 +7,12 @@ import {
   PrimaryButton,
 } from "@/components/form";
 import { useActionForm } from "@/lib/use-action-form";
-import { addComponente, addExtra, saveCotizacion } from "./actions";
+import {
+  addComponente,
+  addExtra,
+  saveCotizacion,
+  savePrecioVenta,
+} from "./actions";
 
 export type ExtraOption = { codigo: string; label: string; group: string };
 
@@ -182,6 +187,41 @@ export function ComponenteForm({ codigo }: { codigo: string }) {
       <FormFeedback state={state} />
       <PrimaryButton pending={pending}>
         {pending ? "Agregando…" : "Agregar componente"}
+      </PrimaryButton>
+    </form>
+  );
+}
+
+/** Saves the price that was just checked; the amount travels as the text the person typed. */
+export function PrecioVentaForm({
+  codigo,
+  precio,
+}: {
+  codigo: string;
+  precio: string;
+}) {
+  const { state, pending, formKey, onSubmit } = useActionForm(
+    savePrecioVenta.bind(null, codigo),
+  );
+  return (
+    <form key={formKey} onSubmit={onSubmit} className="space-y-4">
+      <input type="hidden" name="precio" value={precio} />
+      <Field
+        id="precio-venta-nota"
+        label="Nota (opcional)"
+        hint="Se guarda con la fecha de hoy y no se edita: si cambia, se guarda otro precio."
+      >
+        <input
+          id="precio-venta-nota"
+          name="nota"
+          autoComplete="off"
+          aria-describedby="precio-venta-nota-hint"
+          className={inputClass}
+        />
+      </Field>
+      <FormFeedback state={state} />
+      <PrimaryButton pending={pending}>
+        {pending ? "Guardando…" : "Guardar este precio"}
       </PrimaryButton>
     </form>
   );
