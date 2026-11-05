@@ -22,8 +22,8 @@ Branch: feat/proveedores-facturas-ocr (from main). Delivery: 2 stacked PRs (back
 
 ## Tasks
 
-- [ ] T1 (S2, S3, S4, S5) backend: models, migration 0007, ocr_llm.py, endpoints, role matrix, tests (RED first). Route: delegated (parallel unit, backend/).
-- [ ] T2 (S6) front: nav, pages, actions, types, next.config. Route: delegated (parallel unit, front/). Uses the API contract of S5.
+- [x] T1 (S2, S3, S4, S5) backend. Route: delegated. Commit 125d559. Check: 1607 passed/186 skipped without DB; worker ran 1793 passed/0 skipped with throwaway PostgreSQL incl. alembic up/down/check; parent re-ran 1607/186.
+- [x] T2 (S6) front. Route: delegated. Commit f90b54d. tsc 0, biome clean; NO visual check, upload flow not run. Parent compared the front types with the real OpenAPI: names, filters and routes match.
 
 ## Log
 
