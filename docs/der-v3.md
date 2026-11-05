@@ -2,7 +2,7 @@
 
 Source of truth: sheet `Diccionario` of `Plantilla Costos Casa Lopez v4.1 (trabajo).xlsx`.
 It supersedes [`der.md`](der.md) (DER v1) and the old Excel rules (GG 11 % is gone; CORTE is fixed; CONFECCION and HILO_CEMENTO are separate stages).
-The models are in `backend/src/backend/models.py`; Alembic revision `0003_der_v3` drops the v1 tables and creates these ones, and `0004_semillas_v3` loads the reference data.
+The models are in `backend/src/backend/models.py`; Alembic revision `0003_der_v3` drops the v1 tables and creates these ones, and `0004_semillas_v3` loads the reference data and `0005_gasto_reemplaza_a` adds `gasto_periodo.reemplaza_a_id`.
 
 Only columns marked `carga` / `clave` in the dictionary are persisted. Columns marked `calculada (la app recalcula)` are computed by the backend, except in `cotizacion`, which stores a calculated snapshot. Sheets marked `vista` are not tables.
 
@@ -32,7 +32,7 @@ Conventions: schema `costos`; `id` (identity) and `created_at` everywhere; `codi
 | `orden_item` | Lote_Productos | A product in a lot with quantity, asked and paid workshop price per unit. |
 | `orden_estado` | Lote_Estados | State history of a lot. |
 | `registro_tarea` | Registro_Tareas | Cutting or sewing work by person (units, hours). |
-| `gasto_periodo` | Costos_Fijos | Monthly fixed cost (factory or store), flagged `ficticio` while the amount is invented. |
+| `gasto_periodo` | Costos_Fijos | Monthly fixed cost (factory or store), flagged `ficticio` while the amount is invented. `reemplaza_a_id` (nullable, self-reference) marks a correction: see the note below. |
 | `pieza_cuero` | Pieles | Each hide bought: material, color, m², price, state. |
 | `movimiento_cuero` | Movimientos_Cuero | Cuts, waste, adjustments and entries of a hide; a CORTE must point to the lot item. |
 | `conteo_inventario` | Conteo_Inventario | Monthly leather count (start / close) by material and color. |
@@ -49,5 +49,9 @@ Conventions: schema `costos`; `id` (identity) and `created_at` everywhere; `codi
 - Codes assigned by the API when it creates rows: `PRD-nnnn` (producto), `REX-nnnn` (receta_linea), `LOT-nnnn` (orden_fabricacion), `LIT-nnnn` (orden_item); `PRE-nnnn` and `GF-nnnn` follow the seeds; the `REX`, `LOT` and `LIT` prefixes are ours (SUPUESTO: validar).
 - Kits may nest up to 5 levels; a kit component counts at its stage subtotal (plantilla `Cotizaciones!O`), so IVA and repairs apply once, on the kit.
 - Parameters missing from `parametro` count as 0 %; `material.desperdicio_manual` is read as a fraction (0.2 = 20 %).
+
+## Correcting a fixed cost (`gasto_periodo.reemplaza_a_id`, revision 0005)
+
+A loaded amount is never edited. A correction is a **new** `gasto_periodo` row (new `GF-nnnn` code, same period, concept, category, side and person) whose `reemplaza_a_id` points to the row it replaces. The old row is kept, untouched, and stops counting: every total and list that reads `gasto_periodo` (costos fijos, panel, sheets export, quality report) only takes the *current* rows, those whose `id` is not the `reemplaza_a_id` of any other row. A partial unique index (`gasto_periodo_reemplaza_a_uq`, `WHERE reemplaza_a_id IS NOT NULL`) lets a row be replaced by at most one row, so the chain never forks; to correct again, correct the current row. Copying a month (`POST /costos-fijos/copiar`) creates plain rows with `reemplaza_a_id` NULL.
 
 The endpoints that read and load these tables are listed in [`backend/README.md`](../backend/README.md#costing-api-t3b).

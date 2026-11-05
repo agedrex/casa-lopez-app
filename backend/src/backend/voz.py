@@ -583,7 +583,7 @@ def _cargar_monto_gasto(i: Interpretacion, b: _Borrador) -> PropuestaOut:
                 b.falta("gasto", f"No encontré el gasto «{i.concepto}» en {periodo}.")
             elif not pendientes:
                 b.falta("gasto", "El gasto " + ", ".join(g["codigo"] for g in encontrados[:MAX_CANDIDATOS])
-                        + " ya tiene monto: para corregirlo cargá un gasto nuevo desde Costos fijos.")
+                        + " ya tiene monto: para cambiarlo usá la corrección desde Costos fijos.")
             elif len(encontrados) > 1:
                 b.ofrecer("gasto", [(g["codigo"], g["concepto"]) for g in pendientes],
                           f"«{i.concepto}» puede ser más de un gasto sin monto: elegí cuál.")

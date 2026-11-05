@@ -13,7 +13,7 @@ from dataclasses import dataclass, field, replace
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
-from sqlalchemy import Integer, and_, cast, func, or_, select, update
+from sqlalchemy import Integer, and_, cast, exists, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, aliased
 
@@ -630,29 +630,44 @@ def listar_personas(session: Session) -> list[dict]:
     return [_persona_a_dict(p) for p in session.scalars(select(Persona).order_by(Persona.id))]
 
 
+def _gastos_vigentes():
+    """Condition for the current fixed-cost rows: those that no later row replaces (S6).
+
+    Every read of GastoPeriodo that lists or sums rows must filter with this, so a corrected row never counts twice.
+    """
+    reemplazo = aliased(GastoPeriodo)
+    return ~exists().where(reemplazo.reemplaza_a_id == GastoPeriodo.id)
+
+
 def costos_fijos(session: Session, periodo: str | None = None) -> dict:
-    """Fixed costs of a month with factory/store totals; pending amounts (NULL) are counted, not summed."""
+    """Fixed costs of a month with factory/store totals; pending amounts (NULL) are counted, not summed.
+
+    Rows replaced by a correction are left out of the list and the totals (they stay in the database).
+    """
     if periodo is None:
         periodo = session.scalar(select(Parametro.valor_texto).where(Parametro.codigo == "PERIODO_VIGENTE"))
     if periodo is None:
         raise DatosInvalidos("Falta el período: indicá ?periodo=AAAA-MM.")
+    anterior = aliased(GastoPeriodo)
     filas = session.execute(
-        select(GastoPeriodo, Persona.codigo).outerjoin(Persona, Persona.id == GastoPeriodo.persona_id)
-        .where(GastoPeriodo.periodo == periodo).order_by(GastoPeriodo.id)
+        select(GastoPeriodo, Persona.codigo, anterior.codigo)
+        .outerjoin(Persona, Persona.id == GastoPeriodo.persona_id)
+        .outerjoin(anterior, anterior.id == GastoPeriodo.reemplaza_a_id)
+        .where(GastoPeriodo.periodo == periodo, _gastos_vigentes()).order_by(GastoPeriodo.id)
     ).all()
     totales = {"FABRICA": ZERO, "TIENDA": ZERO}
-    for g, _ in filas:
+    for g, _, _ in filas:
         totales[g.fabrica_o_tienda] += g.monto_ars_del_mes or ZERO
     return {
         "periodo": periodo, "total_fabrica": totales["FABRICA"], "total_tienda": totales["TIENDA"],
         "total": totales["FABRICA"] + totales["TIENDA"],  # Costos_Fijos!L3: the screen must not add money itself
-        "pendientes": sum(1 for g, _ in filas if g.monto_ars_del_mes is None),
-        "incluye_ficticios": any(g.ficticio for g, _ in filas),
+        "pendientes": sum(1 for g, _, _ in filas if g.monto_ars_del_mes is None),
+        "incluye_ficticios": any(g.ficticio for g, _, _ in filas),
         "gastos": [{
             "codigo": g.codigo, "concepto": g.concepto, "fabrica_o_tienda": g.fabrica_o_tienda,
             "categoria": g.categoria, "persona": persona, "monto_ars_del_mes": g.monto_ars_del_mes,
-            "ficticio": g.ficticio, "nota_fuente": g.nota_fuente,
-        } for g, persona in filas],
+            "ficticio": g.ficticio, "nota_fuente": g.nota_fuente, "reemplaza_a": reemplaza_a,
+        } for g, persona, reemplaza_a in filas],
     }
 
 
@@ -1469,7 +1484,8 @@ def armar_panel_de_costos(
 def _fijos_de_fabrica(session: Session, periodos: list[str]) -> dict[str, FijosDelMes]:
     """Factory rows only, per month exactly as asked (no PERIODO_VIGENTE fallback, unlike `costos_fijos`)."""
     filas = session.scalars(
-        select(GastoPeriodo).where(GastoPeriodo.periodo.in_(periodos), GastoPeriodo.fabrica_o_tienda == "FABRICA")
+        select(GastoPeriodo).where(
+            GastoPeriodo.periodo.in_(periodos), GastoPeriodo.fabrica_o_tienda == "FABRICA", _gastos_vigentes())
     ).all()
     resultado = {}
     for periodo in periodos:
@@ -1637,17 +1653,80 @@ def periodos_de_costos_fijos(session: Session) -> dict:
 
 
 def cargar_monto_de_gasto(session: Session, codigo: str, monto: Decimal) -> dict:
-    """Set the amount of a pending row (monto NULL). Anything already filled in is corrected with a new row."""
+    """Set the amount of a pending row (monto NULL). Anything already filled in is corrected with `corregir_gasto`."""
     cargado = session.execute(
-        update(GastoPeriodo).where(GastoPeriodo.codigo == codigo, GastoPeriodo.monto_ars_del_mes.is_(None))
+        update(GastoPeriodo)
+        .where(GastoPeriodo.codigo == codigo, GastoPeriodo.monto_ars_del_mes.is_(None), _gastos_vigentes())
         .values(monto_ars_del_mes=monto).returning(GastoPeriodo.periodo).execution_options(synchronize_session=False)
     ).first()
     if cargado is None:
         if session.scalar(select(GastoPeriodo.id).where(GastoPeriodo.codigo == codigo)) is None:
             raise NoEncontrado(f"No existe el gasto {codigo}.")
-        raise Conflicto(f"El gasto {codigo} ya tiene monto: para corregirlo cargá un gasto nuevo.")
+        if session.scalar(select(GastoPeriodo.id).where(GastoPeriodo.codigo == codigo, ~_gastos_vigentes())) is not None:
+            raise Conflicto(f"El gasto {codigo} ya fue reemplazado por una corrección: cargá el monto en el gasto vigente.")
+        raise Conflicto(f"El gasto {codigo} ya tiene monto: para cambiarlo usá la corrección (queda el historial).")
     session.commit()
     return costos_fijos(session, cargado[0])
+
+
+def _gasto_actual_de(session: Session, gasto: GastoPeriodo) -> GastoPeriodo:
+    """Follow the correction chain from `gasto` to the row that currently counts (the chain never forks)."""
+    while (siguiente := session.scalar(select(GastoPeriodo).where(GastoPeriodo.reemplaza_a_id == gasto.id))) is not None:
+        gasto = siguiente
+    return gasto
+
+
+def corregir_gasto(
+    session: Session, codigo: str, monto: Decimal, *, nota: str | None = None, ficticio: bool | None = None,
+) -> dict:
+    """Correct a fixed cost: a NEW row replaces the old one, which stays untouched and stops counting (S1, S6).
+
+    The new row copies period, concept, category, side and person. `ficticio` is copied unless the caller states it.
+    """
+    if monto < 0:
+        raise DatosInvalidos("El monto no puede ser negativo.")
+    viejo = session.scalar(select(GastoPeriodo).where(GastoPeriodo.codigo == codigo))
+    if viejo is None:
+        raise NoEncontrado(f"No existe el gasto {codigo}.")
+    if (actual := _gasto_actual_de(session, viejo)) is not viejo:
+        raise Conflicto(f"El gasto {codigo} ya fue corregido: corregí el vigente {actual.codigo}.")
+    fila = GastoPeriodo(
+        codigo=f"GF-{_siguiente_numero(session, GastoPeriodo.codigo, 'GF'):04d}", periodo=viejo.periodo,
+        concepto=viejo.concepto, fabrica_o_tienda=viejo.fabrica_o_tienda, categoria=viejo.categoria,
+        persona_id=viejo.persona_id, monto_ars_del_mes=monto, ficticio=viejo.ficticio if ficticio is None else ficticio,
+        nota_fuente=nota if nota else f"Corrige {viejo.codigo}", reemplaza_a_id=viejo.id,
+    )
+    _insertar(session, fila, f"No se pudo guardar la corrección de {codigo}: ya fue corregido o el código se repitió; intentá de nuevo.")
+    session.commit()
+    return costos_fijos(session, viejo.periodo)
+
+
+def copiar_mes_de_gastos(session: Session, desde: str, hasta: str, *, con_montos: bool = True) -> dict:
+    """Create the rows of month `hasta` from the current rows of month `desde` (S2).
+
+    Refuses an empty source or a target that already has rows. `ficticio` is copied; without amounts every copy is pending.
+    """
+    for periodo in (desde, hasta):
+        if not PERIODO_AAAA_MM.fullmatch(periodo):
+            raise DatosInvalidos(f"El período {periodo} no es válido: usá AAAA-MM.")
+    if desde == hasta:
+        raise DatosInvalidos("El mes de origen y el de destino no pueden ser el mismo.")
+    origen = session.scalars(
+        select(GastoPeriodo).where(GastoPeriodo.periodo == desde, _gastos_vigentes()).order_by(GastoPeriodo.id)
+    ).all()
+    if not origen:
+        raise DatosInvalidos(f"No hay gastos cargados en {desde} para copiar.")
+    if session.scalar(select(func.count()).select_from(GastoPeriodo).where(GastoPeriodo.periodo == hasta)):
+        raise Conflicto(f"El mes {hasta} ya tiene gastos: no se copia encima.")
+    for g in origen:
+        _insertar(session, GastoPeriodo(
+            codigo=f"GF-{_siguiente_numero(session, GastoPeriodo.codigo, 'GF'):04d}", periodo=hasta,
+            concepto=g.concepto, fabrica_o_tienda=g.fabrica_o_tienda, categoria=g.categoria, persona_id=g.persona_id,
+            monto_ars_del_mes=g.monto_ars_del_mes if con_montos else None, ficticio=g.ficticio,
+            nota_fuente=f"Copiado de {desde} ({g.codigo})",
+        ), "No se pudo asignar el código del gasto; intentá de nuevo.")
+    session.commit()
+    return costos_fijos(session, hasta)
 
 
 # --- Admin area (T5c) ---------------------------------------------------------------------------------------------
@@ -2070,7 +2149,9 @@ def _hallazgos_de_talleres_de_ejemplo(session: Session) -> list[dict]:
 
 def _hallazgos_de_gastos(session: Session) -> list[dict]:
     hallazgos = []
-    for gasto in session.scalars(select(GastoPeriodo).order_by(GastoPeriodo.periodo.desc(), GastoPeriodo.id)):
+    for gasto in session.scalars(
+        select(GastoPeriodo).where(_gastos_vigentes()).order_by(GastoPeriodo.periodo.desc(), GastoPeriodo.id)
+    ):
         ruta = f"/costos-fijos?periodo={gasto.periodo}"
         if gasto.monto_ars_del_mes is None:
             hallazgos.append(_hallazgo("media", gasto.codigo, f"Gasto sin monto: {gasto.concepto} ({gasto.periodo})", ruta))

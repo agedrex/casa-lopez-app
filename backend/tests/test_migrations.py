@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
-from sqlalchemy import CheckConstraint, Index, MetaData, Table, UniqueConstraint
+from sqlalchemy import CheckConstraint, ForeignKeyConstraint, Index, MetaData, Table, UniqueConstraint
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.schema import CreateIndex
 
@@ -24,6 +24,9 @@ class RecordedOperations:
         self.metadata = MetaData()
         self.dropped = []
         self.executed = []
+        self.dropped_columns = []
+        self.dropped_indexes = []
+        self.dropped_constraints = []
 
     def f(self, name):
         return name
@@ -42,7 +45,21 @@ class RecordedOperations:
             table.append_constraint(index)
 
     def drop_index(self, name, **kwargs):
-        pass
+        self.dropped_indexes.append(name)
+
+    def add_column(self, table_name, column, schema):
+        self.metadata.tables[f"{schema}.{table_name}"].append_column(column)
+
+    def create_foreign_key(self, name, source_table, referent_table, local_cols, remote_cols, source_schema,
+                           referent_schema):
+        self.metadata.tables[f"{source_schema}.{source_table}"].append_constraint(ForeignKeyConstraint(
+            local_cols, [f"{referent_schema}.{referent_table}.{column}" for column in remote_cols], name=name))
+
+    def drop_constraint(self, name, table_name, schema, type_):
+        self.dropped_constraints.append(name)
+
+    def drop_column(self, table_name, column_name, schema):
+        self.dropped_columns.append((schema, table_name, column_name))
 
     def drop_table(self, name, schema):
         assert schema == "costos"
@@ -57,18 +74,22 @@ def load_revision(monkeypatch, filename):
 
 def test_revision_chain_replaces_v1_with_v3_then_seeds(monkeypatch):
     chain = {}
-    for filename in ("0001_esquema_costos.py", "0002_semillas.py", "0003_der_v3.py", "0004_semillas_v3.py"):
+    for filename in ("0001_esquema_costos.py", "0002_semillas.py", "0003_der_v3.py", "0004_semillas_v3.py",
+                     "0005_gasto_reemplaza_a.py"):
         _, revision = load_revision(monkeypatch, filename)
         chain[revision["revision"]] = revision["down_revision"]
     assert chain == {
         "0001_esquema_costos": None, "0002_semillas": "0001_esquema_costos",
         "0003_der_v3": "0002_semillas", "0004_semillas_v3": "0003_der_v3",
+        "0005_gasto_reemplaza_a": "0004_semillas_v3",
     }
 
 
 def test_der_v3_revision_matches_orm_and_reverses_dependencies(monkeypatch):
     operations, revision = load_revision(monkeypatch, "0003_der_v3.py")
     revision["upgrade"]()
+    # The ORM also carries what 0005 adds on top of DER v3 (gasto_periodo.reemplaza_a_id).
+    runpy.run_path(str(VERSIONS / "0005_gasto_reemplaza_a.py"))["upgrade"]()
     assert set(operations.metadata.tables) == set(Base.metadata.tables)
     dialect = postgresql.dialect()
     for key, declared in operations.metadata.tables.items():
@@ -200,3 +221,22 @@ def test_seed_downgrade_captures_suppliers_before_deleting_and_refuses_ambiguity
     assert "id = ANY(captured_supplier_ids)" in sql
     assert "p.cuit IS NULL" in sql and "p.contacto IS NULL" in sql
     assert "DELETE FROM costos.proveedor WHERE nombre IN" not in sql
+
+
+def test_gasto_reemplaza_a_revision_adds_the_column_fk_and_partial_unique_index_and_reverses_them(monkeypatch):
+    operations, base = load_revision(monkeypatch, "0003_der_v3.py")
+    base["upgrade"]()
+    revision = runpy.run_path(str(VERSIONS / "0005_gasto_reemplaza_a.py"))  # same recorder: alembic.op is still patched
+    assert revision["revision"] == "0005_gasto_reemplaza_a" and revision["down_revision"] == "0004_semillas_v3"
+    revision["upgrade"]()
+    gasto = operations.metadata.tables["costos.gasto_periodo"]
+    column = gasto.c.reemplaza_a_id
+    assert column.nullable and str(column.type) == "BIGINT"
+    assert {fk.target_fullname for fk in column.foreign_keys} == {"costos.gasto_periodo.id"}
+    index = next(i for i in gasto.indexes if i.name == "gasto_periodo_reemplaza_a_uq")
+    ddl = str(CreateIndex(index).compile(dialect=postgresql.dialect())).lower()
+    assert "unique" in ddl and "reemplaza_a_id is not null" in ddl
+    revision["downgrade"]()
+    assert operations.dropped_indexes == ["gasto_periodo_reemplaza_a_uq"]
+    assert operations.dropped_constraints == ["fk_gasto_periodo_reemplaza_a_id_gasto_periodo"]
+    assert operations.dropped_columns == [("costos", "gasto_periodo", "reemplaza_a_id")]

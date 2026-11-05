@@ -274,6 +274,18 @@ class MontoIn(Entrada):
     monto_ars_del_mes: Annotated[Decimal, Field(ge=0, max_digits=14, decimal_places=4)]
 
 
+class CorreccionIn(Entrada):
+    monto_ars_del_mes: Annotated[Decimal, Field(ge=0, max_digits=14, decimal_places=4)]
+    nota: str | None = None
+    ficticio: bool | None = None  # None: keep the flag of the corrected row
+
+
+class CopiaIn(Entrada):
+    desde: Annotated[str, Field(pattern=PERIODO)]
+    hasta: Annotated[str, Field(pattern=PERIODO)]
+    con_montos: bool = True
+
+
 class ParametroIn(Entrada):
     """Exactly one of `valor` / `valor_texto`, according to the parameter's unit (checked by the service)."""
 
@@ -522,6 +534,7 @@ class GastoOut(Salida):
     monto_ars_del_mes: Decimal | None
     ficticio: bool
     nota_fuente: str | None
+    reemplaza_a: str | None = None  # code of the row this one corrects
 
 
 class ImpuestoOut(Salida):
@@ -1076,8 +1089,21 @@ def cambiar_activo_de_taller(codigo: str, cuerpo: ActivoIn, session: Sesion):
 
 @router.post("/costos-fijos/{codigo}/monto", dependencies=ESCRITURA, response_model=CostosFijosOut)
 def cargar_monto_de_gasto(codigo: str, cuerpo: MontoIn, session: Sesion):
-    """Only while the amount is still empty (409 otherwise): a correction is a new row."""
+    """Only while the amount is still empty (409 otherwise): a correction goes through `/corregir`."""
     return servicios.cargar_monto_de_gasto(session, codigo, cuerpo.monto_ars_del_mes)
+
+
+@router.post("/costos-fijos/{codigo}/corregir", dependencies=ESCRITURA, response_model=CostosFijosOut, status_code=201)
+def corregir_gasto(codigo: str, cuerpo: CorreccionIn, session: Sesion):
+    """Creates a NEW row that replaces `codigo` (kept, no longer counted); 409 if it was already replaced."""
+    return servicios.corregir_gasto(
+        session, codigo, cuerpo.monto_ars_del_mes, nota=cuerpo.nota, ficticio=cuerpo.ficticio)
+
+
+@router.post("/costos-fijos/copiar", dependencies=ESCRITURA, response_model=CostosFijosOut, status_code=201)
+def copiar_mes_de_gastos(cuerpo: CopiaIn, session: Sesion):
+    """Copies the current rows of `desde` into `hasta`; 422 if `desde` is empty, 409 if `hasta` already has rows."""
+    return servicios.copiar_mes_de_gastos(session, cuerpo.desde, cuerpo.hasta, con_montos=cuerpo.con_montos)
 
 
 @router.post("/parametros/{codigo}", response_model=ParametroOut)
