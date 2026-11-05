@@ -66,3 +66,17 @@ export function banProblem(args: {
     !args.target.banned && parseRoles(args.target.role).includes("admin");
   return isActiveAdmin && stillActive.length === 0 ? LAST_ADMIN : null;
 }
+
+/** Reason stored when a user is "deleted": the account is banned and hidden, never removed. */
+export const ARCHIVED_REASON = "ARCHIVADO";
+
+/** A message when an update touches anything besides name and email, else null. Role and ban have their own guarded routes. */
+export function profileUpdateProblem(data: unknown): string | null {
+  if (typeof data !== "object" || data === null) return "Datos inválidos.";
+  const extra = Object.keys(data).filter(
+    (key) => key !== "name" && key !== "email",
+  );
+  return extra.length > 0
+    ? "Solo se pueden cambiar el nombre y el correo."
+    : null;
+}

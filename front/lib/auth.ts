@@ -14,6 +14,7 @@ import {
   banProblem,
   GUARD_CODE,
   parseRoleInput,
+  profileUpdateProblem,
   roleChangeProblem,
 } from "./user-guards";
 
@@ -63,8 +64,15 @@ const guardUserAdministration = createAuthMiddleware(async (ctx) => {
   switch (ctx.path) {
     case "/admin/remove-user":
       // Nothing is deleted: a user who leaves is deactivated and their history stays.
-      refuse("Los usuarios no se borran: desactívelo.");
+      refuse(
+        "Los usuarios no se borran: elimínelo desde su ficha (se archiva).",
+      );
       break;
+    case "/admin/update-user": {
+      const problem = profileUpdateProblem(body.data);
+      if (problem) refuse(problem, "BAD_REQUEST");
+      return;
+    }
     case "/admin/set-role": {
       const rows = await accountRows();
       const target = rows.find((row) => row.id === body.userId);

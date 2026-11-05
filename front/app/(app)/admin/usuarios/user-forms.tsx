@@ -9,7 +9,14 @@ import {
 } from "@/components/form";
 import { ROLE_LABELS, ROLES, type Role } from "@/lib/permissions";
 import { useActionForm } from "@/lib/use-action-form";
-import { changeRole, createUser, setBanned, setPassword } from "./actions";
+import {
+  archiveUser,
+  changeRole,
+  createUser,
+  setBanned,
+  setPassword,
+  updateProfile,
+} from "./actions";
 
 function RoleOptions() {
   return ROLES.map((role) => (
@@ -145,10 +152,12 @@ export function RoleForm({
 export function BanForm({
   userId,
   banned,
+  archived = false,
   disabledReason,
 }: {
   userId: string;
   banned: boolean;
+  archived?: boolean;
   disabledReason: string | null;
 }) {
   const { state, pending, onSubmit } = useActionForm(
@@ -157,9 +166,11 @@ export function BanForm({
   return (
     <form onSubmit={onSubmit} className="space-y-2">
       <p className="text-sm text-muted">
-        {banned
-          ? "Este usuario está desactivado y no puede iniciar sesión. Activarlo le devuelve el acceso."
-          : "Desactivar cierra sus sesiones y le impide iniciar sesión. No se borra nada: se puede volver a activar."}
+        {archived
+          ? "Este usuario fue eliminado: no puede iniciar sesión y no aparece en la lista. Restaurarlo le devuelve el acceso."
+          : banned
+            ? "Este usuario está desactivado y no puede iniciar sesión. Activarlo le devuelve el acceso."
+            : "Desactivar cierra sus sesiones y le impide iniciar sesión. No se borra nada: se puede volver a activar."}
       </p>
       {disabledReason ? (
         <p className="text-xs text-muted">{disabledReason}</p>
@@ -169,9 +180,11 @@ export function BanForm({
         <SecondaryButton pending={pending}>
           {pending
             ? "Guardando…"
-            : banned
-              ? "Activar usuario"
-              : "Desactivar usuario"}
+            : archived
+              ? "Restaurar usuario"
+              : banned
+                ? "Activar usuario"
+                : "Desactivar usuario"}
         </SecondaryButton>
       )}
     </form>
@@ -215,6 +228,85 @@ export function PasswordForm({ userId }: { userId: string }) {
       <SecondaryButton pending={pending}>
         {pending ? "Guardando…" : "Cambiar contraseña"}
       </SecondaryButton>
+    </form>
+  );
+}
+
+export function ProfileForm({
+  userId,
+  name,
+  email,
+}: {
+  userId: string;
+  name: string;
+  email: string;
+}) {
+  const { state, pending, onSubmit } = useActionForm(
+    updateProfile.bind(null, userId),
+  );
+  return (
+    <form onSubmit={onSubmit} className="space-y-5">
+      <div className="grid gap-5 sm:grid-cols-2">
+        <Field id="perfil-nombre" label="Nombre">
+          <input
+            id="perfil-nombre"
+            name="name"
+            required
+            maxLength={120}
+            defaultValue={name}
+            className={inputClass}
+          />
+        </Field>
+        <Field id="perfil-email" label="Correo">
+          <input
+            id="perfil-email"
+            name="email"
+            type="email"
+            required
+            defaultValue={email}
+            className={inputClass}
+          />
+        </Field>
+      </div>
+      <FormFeedback state={state} />
+      <PrimaryButton pending={pending}>
+        {pending ? "Guardando…" : "Guardar datos"}
+      </PrimaryButton>
+    </form>
+  );
+}
+
+export function ArchiveForm({
+  userId,
+  disabledReason,
+}: {
+  userId: string;
+  disabledReason: string | null;
+}) {
+  const { state, pending, onSubmit } = useActionForm(
+    archiveUser.bind(null, userId),
+  );
+  return (
+    <form onSubmit={onSubmit} className="space-y-3">
+      <p className="text-sm text-muted">
+        Eliminar quita al usuario de la lista y le impide entrar. Sus
+        cotizaciones y su historia se conservan, y se puede restaurar cuando
+        haga falta.
+      </p>
+      {disabledReason ? (
+        <p className="text-xs text-muted">{disabledReason}</p>
+      ) : (
+        <>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="confirm" required />
+            Entiendo que el usuario dejará de poder entrar
+          </label>
+          <FormFeedback state={state} />
+          <SecondaryButton pending={pending}>
+            {pending ? "Eliminando…" : "Eliminar usuario"}
+          </SecondaryButton>
+        </>
+      )}
     </form>
   );
 }

@@ -4,7 +4,7 @@ import { headers } from "next/headers";
 import { error, type FormState } from "./action-state";
 import { auth } from "./auth";
 import { parseRoles, type Role } from "./permissions";
-import { GUARD_CODE } from "./user-guards";
+import { ARCHIVED_REASON, GUARD_CODE } from "./user-guards";
 
 export type AdminUser = {
   id: string;
@@ -13,6 +13,8 @@ export type AdminUser = {
   /** First valid role, or null when the stored value is not one of ours. */
   role: Role | null;
   banned: boolean;
+  /** Banned with the archive reason: hidden from the default list. */
+  archived: boolean;
   createdAt: string;
 };
 
@@ -37,12 +39,20 @@ export async function listAdminUsers(): Promise<UsersResult> {
         name: user.name,
         role: parseRoles(user.role)[0] ?? null,
         banned: user.banned === true,
+        archived: user.banned === true && user.banReason === ARCHIVED_REASON,
         createdAt: new Date(user.createdAt).toISOString(),
       })),
     };
   } catch (failure) {
     return { ok: false, message: describeFailure(failure).message ?? "" };
   }
+}
+
+export async function getAdminUser(id: string): Promise<AdminUser | null> {
+  const result = await listAdminUsers();
+  return result.ok
+    ? (result.users.find((user) => user.id === id) ?? null)
+    : null;
 }
 
 const KNOWN: Record<string, string> = {

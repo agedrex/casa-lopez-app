@@ -8,6 +8,7 @@ import { describeFailure, serialized } from "@/lib/admin-users";
 import { auth } from "@/lib/auth";
 import { passwordProblem } from "@/lib/password";
 import { ROLES } from "@/lib/permissions";
+import { ARCHIVED_REASON } from "@/lib/user-guards";
 import { denyUnlessAdmin, text } from "@/lib/write-guard";
 
 // Passwords travel only inside these actions: they are read from the form, handed to
@@ -61,6 +62,54 @@ export async function createUser(
   return ok(
     `Usuario ${email} creado. Pásele la contraseña por un canal seguro.`,
   );
+}
+
+export async function updateProfile(
+  userId: string,
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const check = await denyUnlessAdmin();
+  if (check.denied) return check.denied;
+
+  const email = text(formData, "email").toLowerCase();
+  const name = text(formData, "name");
+  if (!EMAIL.test(email)) return error("Indique un correo válido.");
+  if (!name || name.length > 120)
+    return error("Indique el nombre (hasta 120 letras).");
+
+  try {
+    await auth.api.adminUpdateUser({
+      body: { userId, data: { name, email } },
+      headers: await headers(),
+    });
+  } catch (failure) {
+    return describeFailure(failure);
+  }
+  refresh();
+  return ok("Datos actualizados.");
+}
+
+/** "Delete" = ban with the archive reason: hidden and blocked, history kept, restorable. */
+export async function archiveUser(
+  userId: string,
+  _previous: FormState,
+  _formData: FormData,
+): Promise<FormState> {
+  const check = await denyUnlessAdmin();
+  if (check.denied) return check.denied;
+
+  try {
+    await serialized(async () =>
+      auth.api.banUser({
+        body: { userId, banReason: ARCHIVED_REASON },
+        headers: await headers(),
+      }),
+    );
+  } catch (failure) {
+    return describeFailure(failure);
+  }
+  redirect("/admin/usuarios");
 }
 
 export async function changeRole(
