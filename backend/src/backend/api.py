@@ -1243,7 +1243,8 @@ def agregar_item_a_orden(codigo: str, cuerpo: ItemIn, session: Sesion):
     )
 
 
-@router.post("/ordenes/{codigo}/items/{item}/precios", dependencies=ESCRITURA, response_model=OrdenDetalleOut)
+# SUPUESTO: validar. A taller loads its own price by voice (S3 of the roles feature); nothing else of /ordenes.
+@router.post("/ordenes/{codigo}/items/{item}/precios", dependencies=CORTES, response_model=OrdenDetalleOut)
 def registrar_precios_de_item(codigo: str, item: str, cuerpo: PreciosItemIn, session: Sesion):
     return servicios.registrar_precios_item(session, codigo, item, **cuerpo.model_dump())
 

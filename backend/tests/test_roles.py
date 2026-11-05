@@ -110,12 +110,14 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
     # Writes: admin only, except cutting and the voice interpreter.
     ("POST", "/cueros/{codigo}/cortes"): CORTE, ("POST", "/cueros/{codigo}/sobrante"): CORTE,
     ("POST", "/voz/interpretar"): CORTE,
+    # The only write the voice grants a taller: the price a workshop quoted or was paid for a lot line.
+    ("POST", "/ordenes/{codigo}/items/{item}/precios"): CORTE,
     **{("POST", ruta): ADMIN for ruta in (
         "/cueros", "/productos", "/productos/{codigo}/precio-venta", "/productos/{codigo}/extras",
         "/productos/{codigo}/componentes", "/productos/{codigo}/cotizaciones", "/cvu/escenario", "/precios", "/dolar",
         "/dolar/actualizar-bna", "/costos-fijos", "/costos-fijos/{codigo}/monto", "/costos-fijos/{codigo}/corregir",
         "/costos-fijos/copiar", "/ordenes", "/ordenes/{codigo}/estado", "/ordenes/{codigo}/items",
-        "/ordenes/{codigo}/items/{item}/precios", "/talleres", "/talleres/{codigo}/activo", "/parametros/{codigo}",
+        "/talleres", "/talleres/{codigo}/activo", "/parametros/{codigo}",
         "/personas", "/personas/{codigo}/activo", "/colores", "/categorias", "/modelos", "/modelos/{codigo}/validado",
         "/modelos/{codigo}/consumos", "/sync/sheets")},
 }

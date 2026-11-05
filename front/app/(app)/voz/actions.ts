@@ -70,10 +70,15 @@ export async function confirmarVoz(
   _previous: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  const denied = await denyUnlessWriter();
+  // A taller confirms only the price of its own workshop line; everything else the voice can load stays admin only.
+  const accion = text(formData, "accion");
+  const denied =
+    accion === "registrar_precio_taller"
+      ? await denyUnlessVoice()
+      : await denyUnlessWriter();
   if (denied) return denied;
 
-  switch (text(formData, "accion")) {
+  switch (accion) {
     case "cargar_precio": {
       const body = pick(formData, [
         "material",

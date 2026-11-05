@@ -135,17 +135,18 @@ def test_invalid_period_is_rejected():
 # /cvu/escenario is a POST only because of its body: it computes and saves nothing, but it is admin only anyway.
 SOLO_ADMIN = {"/parametros/{codigo}", "/personas", "/personas/{codigo}/activo", "/colores", "/categorias",
               "/modelos/{codigo}/consumos", "/sync/sheets", "/cvu/escenario"}
-# Admin and taller: cutting and the voice interpreter.
-SOLO_CORTE = {"/cueros/{codigo}/cortes", "/cueros/{codigo}/sobrante", "/voz/interpretar"}
+# Admin and taller: cutting, the voice interpreter and the workshop price a taller loads by voice.
+SOLO_CORTE = {"/cueros/{codigo}/cortes", "/cueros/{codigo}/sobrante", "/voz/interpretar",
+              "/ordenes/{codigo}/items/{item}/precios"}
 ESCRITURAS = [(m, r) for m, r in RUTAS if m == "POST" and r not in SOLO_ADMIN | SOLO_CORTE]
 LECTURAS = [(m, r) for m, r in RUTAS if m == "GET"]
 SIN_PERMISO = {"detail": "No tenés permiso para esta acción."}
 
 
 def test_every_write_route_is_covered_by_the_role_tests():
-    assert len(ESCRITURAS) == 21 and {r for _, r in ESCRITURAS} >= {"/modelos", "/modelos/{codigo}/validado",
+    assert len(ESCRITURAS) == 20 and {r for _, r in ESCRITURAS} >= {"/modelos", "/modelos/{codigo}/validado",
         "/productos", "/productos/{codigo}/precio-venta", "/precios", "/cueros", "/dolar", "/dolar/actualizar-bna", "/ordenes", "/talleres", "/talleres/{codigo}/activo",
-        "/ordenes/{codigo}/estado", "/ordenes/{codigo}/items", "/ordenes/{codigo}/items/{item}/precios",
+        "/ordenes/{codigo}/estado", "/ordenes/{codigo}/items",
         "/costos-fijos/{codigo}/monto", "/costos-fijos/{codigo}/corregir", "/costos-fijos/copiar"}
 
 
