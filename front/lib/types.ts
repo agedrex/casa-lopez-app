@@ -359,6 +359,8 @@ export type Gasto = {
   monto_ars_del_mes: string | null;
   ficticio: boolean;
   nota_fuente: string | null;
+  /** Code of the row this one corrects, or null when it is not a correction. */
+  reemplaza_a: string | null;
 };
 
 export type CostosFijos = {
@@ -613,4 +615,34 @@ export type PanelCostos = {
   dolar: { fecha: string; ars_por_usd: string; fuente: string } | null;
   dolar_viejo: boolean;
   avisos: AvisoPanel[];
+};
+
+// Trend of the last months (GET /panel/tendencia). Oldest month first; amounts come computed by the API.
+
+export type MotivoIncompleto =
+  | "SIN_FIJOS"
+  | "FIJOS_PENDIENTES"
+  | "FIJOS_FICTICIOS"
+  | "SIN_UNIDADES"
+  | "PRODUCTOS_SIN_COSTO";
+
+export type MesTendencia = {
+  periodo: string;
+  unidades: string;
+  unidades_sin_costo: string;
+  fijos_fabrica: string;
+  fijos_cargados: boolean;
+  fijos_pendientes: number;
+  fijos_ficticios: boolean;
+  costo_variable_por_unidad: string | null;
+  fijo_por_unidad: string | null;
+  total_por_unidad: string | null;
+  incompleto: MotivoIncompleto[];
+  variacion_pct_total_por_unidad: string | null;
+};
+
+export type TendenciaCostos = {
+  hasta: string;
+  meses: MesTendencia[];
+  nota: string;
 };

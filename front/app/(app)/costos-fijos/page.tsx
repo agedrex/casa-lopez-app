@@ -34,11 +34,19 @@ import type {
   PeriodosCostosFijos,
   Persona,
 } from "@/lib/types";
-import { GastoForm, MontoForm } from "./forms";
+import { CopiarMesForm, CorregirForm, GastoForm, MontoForm } from "./forms";
 
 export const metadata: Metadata = { title: "Costos fijos" };
 
 const PERIODO = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+/** `2026-10` -> `2026-09`, `2026-01` -> `2025-12`. Only the calendar, no money. */
+function previousPeriod(periodo: string): string | null {
+  if (!PERIODO.test(periodo)) return null;
+  const year = Number(periodo.slice(0, 4));
+  const month = Number(periodo.slice(5, 7));
+  return new Date(Date.UTC(year, month - 2, 1)).toISOString().slice(0, 7);
+}
 
 type Search = Promise<{
   periodo?: string | string[];
@@ -273,8 +281,32 @@ function Month({
     }))
     .filter((group) => group.gastos.length > 0);
 
+  const previous = previousPeriod(data.periodo);
+
   return (
     <>
+      {data.gastos.length === 0 ? (
+        <section aria-label="Mes sin gastos">
+          <Card>
+            <SectionTitle>
+              {formatPeriod(data.periodo)} todavía no tiene gastos
+            </SectionTitle>
+            {writer && previous ? (
+              <div className="space-y-4">
+                <p className="text-sm text-muted">
+                  Para no cargarlos de cero, puede copiar los gastos del mes
+                  anterior.
+                </p>
+                <CopiarMesForm desde={previous} hasta={data.periodo} />
+              </div>
+            ) : (
+              <p className="text-sm text-muted">
+                Cuando se carguen los gastos de este mes, van a aparecer acá.
+              </p>
+            )}
+          </Card>
+        </section>
+      ) : null}
       <section aria-label={`Totales de ${formatPeriod(data.periodo)}`}>
         <dl className="grid gap-5 sm:grid-cols-3">
           <Metric label="Fábrica" value={formatArs(data.total_fabrica)} />
@@ -296,7 +328,7 @@ function Month({
           ) : null}
         </div>
       </section>
-      {gastos.length === 0 ? (
+      {data.gastos.length === 0 ? null : gastos.length === 0 ? (
         <Notice
           tone="info"
           title="No hay gastos para este filtro en el período."
@@ -443,7 +475,15 @@ function Expenses({
                     "—"
                   )
                 ) : (
-                  formatArs(gasto.monto_ars_del_mes)
+                  <>
+                    {formatArs(gasto.monto_ars_del_mes)}
+                    {writer ? (
+                      <CorregirForm
+                        codigo={gasto.codigo}
+                        concepto={gasto.concepto}
+                      />
+                    ) : null}
+                  </>
                 )}
               </td>
               <td className={tdClass}>
@@ -452,7 +492,14 @@ function Expenses({
                     <Badge tone="warn">Pendiente de monto</Badge>
                   ) : null}
                   {gasto.ficticio ? <Badge tone="warn">Ficticio</Badge> : null}
-                  {gasto.monto_ars_del_mes !== null && !gasto.ficticio ? (
+                  {gasto.reemplaza_a ? (
+                    <Badge title="Este monto reemplaza al anterior, que quedó en el historial.">
+                      Corrige a {gasto.reemplaza_a}
+                    </Badge>
+                  ) : null}
+                  {gasto.monto_ars_del_mes !== null &&
+                  !gasto.ficticio &&
+                  !gasto.reemplaza_a ? (
                     <span className="text-muted">—</span>
                   ) : null}
                 </span>

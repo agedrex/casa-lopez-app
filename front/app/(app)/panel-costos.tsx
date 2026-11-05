@@ -1,5 +1,11 @@
 import Link from "next/link";
-import { Badge, Card, Notice, SectionTitle } from "@/components/ui";
+import {
+  Badge,
+  Card,
+  ErrorNotice,
+  Notice,
+  SectionTitle,
+} from "@/components/ui";
 import {
   formatArs,
   formatDate,
@@ -23,13 +29,34 @@ const AVISOS_CON_LUGAR_PROPIO = new Set([
   "PRECIOS_VIEJOS",
 ]);
 
+/** A block that could not load shows this and nothing else: the rest of the panel keeps working. */
+export function BloqueConError({
+  titulo,
+  message,
+}: {
+  titulo: string;
+  message: string;
+}) {
+  return (
+    <Card>
+      <SectionTitle>{titulo}</SectionTitle>
+      <ErrorNotice
+        title="No pudimos cargar este bloque."
+        message={`${message} El resto del panel sigue funcionando.`}
+      />
+    </Card>
+  );
+}
+
 export function Avisos({ avisos }: { avisos: AvisoPanel[] }) {
   const visibles = avisos.filter(
     (aviso) => !AVISOS_CON_LUGAR_PROPIO.has(aviso.codigo),
   );
-  if (!visibles.length) return null;
+  if (!visibles.length) {
+    return <p className="text-sm text-muted">No hay avisos por ahora. 👍</p>;
+  }
   return (
-    <div className="mb-6 space-y-3">
+    <div className="space-y-3">
       {visibles.map((aviso) => (
         <Notice key={aviso.codigo} title={aviso.texto} />
       ))}
@@ -38,20 +65,26 @@ export function Avisos({ avisos }: { avisos: AvisoPanel[] }) {
 }
 
 // The API sends the percentage already calculated; only the sign is read as text here.
-function Variacion({ value }: { value: string | null }) {
+export function Variacion({
+  value,
+  contra = "el mes pasado",
+}: {
+  value: string | null;
+  contra?: string;
+}) {
   if (value === null) {
     return (
       <span className="text-sm text-muted">Sin mes anterior para comparar</span>
     );
   }
   if (ZERO_PERCENT.test(value)) {
-    return <span className="text-sm text-muted">Igual que el mes pasado</span>;
+    return <span className="text-sm text-muted">Igual que {contra}</span>;
   }
   const bajo = value.startsWith("-");
   return (
     <span className={`text-sm ${bajo ? "text-ink-soft" : "text-bordeaux"}`}>
       {bajo ? "▼ Bajó " : "▲ Subió "}
-      {formatPercent(bajo ? value.slice(1) : value)} vs. el mes pasado
+      {formatPercent(bajo ? value.slice(1) : value)} vs. {contra}
     </span>
   );
 }
