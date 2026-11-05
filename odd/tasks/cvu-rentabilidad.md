@@ -28,8 +28,8 @@ Branch: feat/panel-cvu. Delivery: stacked chain of 3 PRs (decided by the agent, 
 
 ## Tasks (U5)
 
-- [ ] T5 (S12) product page block + server actions + types. Route: delegated (context backstop).
-- [ ] T6 (S13) panel scenario block. Route: delegated together with T5 (shared lib/types.ts and API helpers).
+- [x] T5 (S12) product page block + server actions + types. Route: delegated (context backstop). Commit 1cfcd5f. Check: tsc --noEmit 0, biome clean; NO visual check, save flow not run against the API.
+- [x] T6 (S13) panel scenario block. Route: delegated together with T5. Commit 1cfcd5f. Same checks.
 
 ## Log
 
