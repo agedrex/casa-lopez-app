@@ -209,3 +209,77 @@ def resultado_cvu(
         costos_fijos=fijos, utilidad=contribucion - fijos, equilibrio_unidades=equilibrio,
         equilibrio_ingresos=equilibrio * precio, margen_seguridad_pct=(unidades - equilibrio) / unidades * 100,
     )
+
+
+@dataclass(frozen=True)
+class MargenContribucion:
+    margen_unidad: Decimal
+    margen_pct: Decimal | None
+    markup_pct: Decimal | None
+    veredicto: str
+
+
+def margen_de_contribucion(
+    precio: Decimal, variable_por_unidad: Decimal, umbral_pct: Decimal | None = None,
+) -> MargenContribucion:
+    """What one unit sold leaves to pay the fixed costs; fixed costs are deliberately not part of this verdict.
+
+    SUPUESTO: validar con Gerardo/Alejandro. The low-margin threshold is optional and has no default value.
+    """
+    margen = precio - variable_por_unidad
+    margen_pct = margen / precio * 100 if precio > 0 else None
+    markup_pct = margen / variable_por_unidad * 100 if variable_por_unidad > 0 else None
+    if margen <= 0:
+        veredicto = "NO_CUBRE_VARIABLE"
+    elif umbral_pct is not None and margen_pct is not None and margen_pct < umbral_pct:
+        veredicto = "MC_BAJO"
+    else:
+        veredicto = "SALUDABLE"
+    return MargenContribucion(margen, margen_pct, markup_pct, veredicto)
+
+
+@dataclass(frozen=True)
+class ProductoEnMezcla:
+    precio: Decimal
+    variable_por_unidad: Decimal
+    unidades: Decimal
+
+
+@dataclass(frozen=True)
+class EquilibrioGlobal:
+    ingresos: Decimal | None
+    margen_contribucion: Decimal | None
+    margen_contribucion_pct: Decimal | None
+    costos_fijos: Decimal | None
+    utilidad: Decimal | None
+    equilibrio_ingresos: Decimal | None
+    equilibrio_unidades: Decimal | None
+    margen_seguridad_pct: Decimal | None
+    motivo: str | None
+
+
+def equilibrio_con_mezcla(fijos: Decimal, mezcla: list[ProductoEnMezcla]) -> EquilibrioGlobal:
+    """Break-even of the whole business for a sales mix; the fixed costs are global and never spread over products.
+
+    No number unless there are sales and the mix leaves a positive contribution margin (then `motivo` says why).
+    SUPUESTO: validar con Gerardo. The volume is a scenario typed by the owner, not units sold.
+    """
+    def sin_numeros(motivo: str) -> EquilibrioGlobal:
+        return EquilibrioGlobal(None, None, None, None, None, None, None, None, motivo)
+
+    ingresos = sum((p.precio * p.unidades for p in mezcla), ZERO)
+    if ingresos <= 0:
+        return sin_numeros("SIN_VENTAS")
+    contribucion = sum(((p.precio - p.variable_por_unidad) * p.unidades for p in mezcla), ZERO)
+    if contribucion <= 0:
+        return sin_numeros("MC_NO_POSITIVO")
+    unidades = sum((p.unidades for p in mezcla), ZERO)
+    # fijos / (MC % / 100) and unidades x equilibrio_ingresos / ingresos, written with a single division each so exact
+    # cases (like 50.000 units) do not pick up a spurious extra unit from the 28-digit Decimal context.
+    equilibrio_ingresos = fijos * ingresos / contribucion
+    return EquilibrioGlobal(
+        ingresos=ingresos, margen_contribucion=contribucion, margen_contribucion_pct=contribucion / ingresos * 100,
+        costos_fijos=fijos, utilidad=contribucion - fijos, equilibrio_ingresos=equilibrio_ingresos,
+        equilibrio_unidades=(unidades * fijos / contribucion).to_integral_value(rounding=ROUND_CEILING),
+        margen_seguridad_pct=(ingresos - equilibrio_ingresos) / ingresos * 100, motivo=None,
+    )

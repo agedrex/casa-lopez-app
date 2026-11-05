@@ -209,3 +209,134 @@ def test_break_even_needs_a_price_above_variable_cost():
 def test_break_even_without_price_gives_no_number():
     r = punto_de_equilibrio(D("100000"), D("2000"), None)
     assert r.unidades is None and r.motivo == "SIN_PRECIO"
+
+
+# --- Contribution margin per product (CVU) -----------------------------------
+
+def test_contribution_margin_is_price_minus_variable_cost_over_price_and_over_cost():
+    from backend.costeo import margen_de_contribucion
+    r = margen_de_contribucion(D("125"), D("100"))
+    assert r.margen_unidad == D("25")
+    assert r.margen_pct == D("20")
+    assert r.markup_pct == D("25")
+    assert r.veredicto == "SALUDABLE"
+
+
+def test_price_at_or_below_variable_cost_does_not_cover_it():
+    from backend.costeo import margen_de_contribucion
+    for precio in ("100", "90"):
+        r = margen_de_contribucion(D(precio), D("100"))
+        assert r.veredicto == "NO_CUBRE_VARIABLE"
+        assert r.margen_unidad == D(precio) - D("100")
+
+
+def test_low_margin_is_flagged_only_when_a_threshold_is_given():
+    from backend.costeo import margen_de_contribucion
+    assert margen_de_contribucion(D("125"), D("100")).veredicto == "SALUDABLE"
+    assert margen_de_contribucion(D("125"), D("100"), umbral_pct=D("30")).veredicto == "MC_BAJO"
+    assert margen_de_contribucion(D("125"), D("100"), umbral_pct=D("20")).veredicto == "SALUDABLE"
+
+
+def test_percentages_are_none_when_there_is_nothing_to_divide_by():
+    from backend.costeo import margen_de_contribucion
+    free_input = margen_de_contribucion(D("50"), D("0"))
+    assert free_input.markup_pct is None and free_input.margen_pct == D("100")
+    no_price = margen_de_contribucion(D("0"), D("0"))
+    assert no_price.margen_pct is None and no_price.veredicto == "NO_CUBRE_VARIABLE"
+
+
+def test_contribution_margin_keeps_full_precision_and_ignores_fixed_costs():
+    from backend.costeo import margen_de_contribucion
+    # Row 22 variable cost (subtotal 38760.6) at an example price: no rounding, no fixed costs in the verdict.
+    r = margen_de_contribucion(D("60000"), D("38760.6"))
+    assert r.margen_unidad == D("21239.4")
+    assert r.margen_pct == D("35.399")
+
+
+# --- Break-even with sales mix (CVU) -----------------------------------------------------------------------------
+
+def _mezcla_de_dos():
+    from backend.costeo import ProductoEnMezcla
+    # A: price 100, variable 60 -> MC 40 x 10 units = 400 on revenue 1000. B: price 200, variable 150 -> MC 50 x 10 = 500 on 2000.
+    return [ProductoEnMezcla(D("100"), D("60"), D("10")), ProductoEnMezcla(D("200"), D("150"), D("10"))]
+
+
+def test_mix_break_even_uses_the_revenue_weighted_contribution_margin():
+    from backend.costeo import equilibrio_con_mezcla
+    r = equilibrio_con_mezcla(D("600"), _mezcla_de_dos())
+    assert r.motivo is None
+    assert r.ingresos == D("3000")
+    assert r.margen_contribucion == D("900")
+    assert r.margen_contribucion_pct == D("30")  # 900 / 3000
+    assert r.costos_fijos == D("600")
+    assert r.equilibrio_ingresos == D("2000")  # 600 / 0.30
+    assert r.equilibrio_unidades == D("14")  # 20 units x 2000 / 3000 = 13.33 -> 14
+    assert r.utilidad == D("300")  # 900 - 600
+    assert r.margen_seguridad_pct == D("1000") / D("3000") * 100  # (3000 - 2000) / 3000
+
+
+def test_mix_break_even_keeps_full_precision_and_only_rounds_units_up():
+    from backend.costeo import ProductoEnMezcla, equilibrio_con_mezcla
+    r = equilibrio_con_mezcla(D("1000"), [ProductoEnMezcla(D("30"), D("10"), D("3"))])
+    assert r.margen_contribucion_pct == D("60") / D("90") * 100  # not rounded
+    assert r.equilibrio_ingresos == D("1500")  # 1000 / (60 / 90)
+    assert r.equilibrio_unidades == D("50")  # 1000 / MC 20 per unit, exact: no spurious extra unit
+
+
+def test_fixed_costs_are_global_and_only_the_mix_moves_the_break_even():
+    from backend.costeo import ProductoEnMezcla, equilibrio_con_mezcla
+    base = equilibrio_con_mezcla(D("600"), _mezcla_de_dos())
+    # Doubling A's units alone: the fixed costs stay 600 (not shared per product) and only the weighted MC % changes.
+    mas_de_a = equilibrio_con_mezcla(D("600"), [ProductoEnMezcla(D("100"), D("60"), D("20")), ProductoEnMezcla(D("200"), D("150"), D("10"))])
+    assert mas_de_a.costos_fijos == D("600")
+    assert mas_de_a.margen_contribucion == D("1300")
+    assert mas_de_a.margen_contribucion_pct == D("32.5")  # 1300 / 4000
+    assert mas_de_a.equilibrio_ingresos == D("600") * D("4000") / D("1300")
+    assert mas_de_a.equilibrio_ingresos != base.equilibrio_ingresos
+    # Same mix, scaled up: the weighted MC % and the break-even revenue do not move.
+    doble = equilibrio_con_mezcla(D("600"), [ProductoEnMezcla(D("100"), D("60"), D("20")), ProductoEnMezcla(D("200"), D("150"), D("20"))])
+    assert doble.margen_contribucion_pct == base.margen_contribucion_pct
+    assert doble.equilibrio_ingresos == base.equilibrio_ingresos
+    assert doble.equilibrio_unidades == D("14")  # 40 units x 2000 / 6000 = 13.33 -> 14
+
+
+def test_no_sales_in_the_mix_gives_a_reason_not_a_number():
+    from backend.costeo import ProductoEnMezcla, equilibrio_con_mezcla
+    for mezcla in ([], [ProductoEnMezcla(D("100"), D("60"), D("0"))]):
+        r = equilibrio_con_mezcla(D("600"), mezcla)
+        assert r.motivo == "SIN_VENTAS"
+        assert r.ingresos is None and r.margen_contribucion is None and r.costos_fijos is None
+        assert r.equilibrio_ingresos is None and r.equilibrio_unidades is None
+        assert r.margen_contribucion_pct is None and r.utilidad is None and r.margen_seguridad_pct is None
+
+
+@pytest.mark.parametrize("mezcla", [
+    [("100", "100", "10")],  # MC exactly 0
+    [("100", "120", "10")],  # negative
+    [("100", "100", "10"), ("200", "250", "10")],  # negative overall
+])
+def test_a_mix_whose_total_contribution_is_not_positive_gives_a_reason_not_a_number(mezcla):
+    from backend.costeo import ProductoEnMezcla, equilibrio_con_mezcla
+    r = equilibrio_con_mezcla(D("600"), [ProductoEnMezcla(D(p), D(v), D(u)) for p, v, u in mezcla])
+    assert r.motivo == "MC_NO_POSITIVO"
+    assert r.ingresos is None and r.margen_contribucion is None and r.margen_contribucion_pct is None
+    assert r.equilibrio_ingresos is None and r.equilibrio_unidades is None
+    assert r.utilidad is None and r.margen_seguridad_pct is None
+
+
+def test_a_losing_product_is_netted_against_a_winning_one_in_the_mix():
+    from backend.costeo import ProductoEnMezcla, equilibrio_con_mezcla
+    r = equilibrio_con_mezcla(D("100"), [ProductoEnMezcla(D("100"), D("120"), D("10")), ProductoEnMezcla(D("200"), D("100"), D("10"))])
+    assert r.motivo is None
+    assert r.margen_contribucion == D("800")  # -200 + 1000
+
+
+def test_below_break_even_the_profit_and_the_safety_margin_are_negative():
+    from backend.costeo import equilibrio_con_mezcla
+    r = equilibrio_con_mezcla(D("1500"), _mezcla_de_dos())
+    assert r.motivo is None
+    assert r.utilidad == D("-600")  # 900 - 1500
+    assert r.equilibrio_ingresos == D("5000")  # 1500 / 0.30
+    assert r.margen_seguridad_pct == D("-2000") / D("3000") * 100
+    assert r.margen_seguridad_pct < 0
+    assert r.equilibrio_unidades == D("34")  # 20 units x 5000 / 3000 = 33.33 -> 34
