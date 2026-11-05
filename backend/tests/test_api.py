@@ -135,14 +135,16 @@ def test_invalid_period_is_rejected():
 SOLO_ADMIN = {"/parametros/{codigo}", "/personas", "/personas/{codigo}/activo", "/colores", "/categorias",
               "/modelos/{codigo}/consumos", "/sync/sheets"}
 SOLO_CORTE = {"/cueros/{codigo}/cortes", "/cueros/{codigo}/sobrante"}
-ESCRITURAS = [(m, r) for m, r in RUTAS if m == "POST" and r not in SOLO_ADMIN | SOLO_CORTE]
+# A POST only because of its body: it computes and saves nothing, so any logged user may call it.
+LECTURA_CON_CUERPO = {"/cvu/escenario"}
+ESCRITURAS = [(m, r) for m, r in RUTAS if m == "POST" and r not in SOLO_ADMIN | SOLO_CORTE | LECTURA_CON_CUERPO]
 LECTURAS = [(m, r) for m, r in RUTAS if m == "GET"]
 SIN_PERMISO = {"detail": "No tenés permiso para esta acción."}
 
 
 def test_every_write_route_is_covered_by_the_role_tests():
-    assert len(ESCRITURAS) == 21 and {r for _, r in ESCRITURAS} >= {"/modelos", "/modelos/{codigo}/validado", "/voz/interpretar",
-        "/productos", "/precios", "/cueros", "/dolar", "/dolar/actualizar-bna", "/ordenes", "/talleres", "/talleres/{codigo}/activo",
+    assert len(ESCRITURAS) == 22 and {r for _, r in ESCRITURAS} >= {"/modelos", "/modelos/{codigo}/validado", "/voz/interpretar",
+        "/productos", "/productos/{codigo}/precio-venta", "/precios", "/cueros", "/dolar", "/dolar/actualizar-bna", "/ordenes", "/talleres", "/talleres/{codigo}/activo",
         "/ordenes/{codigo}/estado", "/ordenes/{codigo}/items", "/ordenes/{codigo}/items/{item}/precios",
         "/costos-fijos/{codigo}/monto", "/costos-fijos/{codigo}/corregir", "/costos-fijos/copiar"}
 
