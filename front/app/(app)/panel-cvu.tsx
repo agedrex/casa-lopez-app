@@ -1,6 +1,4 @@
 import Link from "next/link";
-import { buttonClass, labelClass } from "@/components/cueros/estilos";
-import { inputClass } from "@/components/form";
 import { Card, ErrorNotice, Notice } from "@/components/ui";
 import {
   formatArs,
@@ -8,11 +6,10 @@ import {
   formatPeriod,
   formatQuantity,
 } from "@/lib/format";
-import type { CvuMes, PanelCostos } from "@/lib/types";
-import { guardarPrecio } from "./panel-actions";
+import type { PanelCostos } from "@/lib/types";
 
 const linkClass = "underline decoration-gold underline-offset-4";
-const CERO = /^-?0+(\.0+)?$/;
+const ZERO_PERCENT = /^-?0+(\.0+)?$/;
 // Notices that this panel already explains in its own blocks.
 const AVISOS_PROPIOS = new Set(["VOLUMEN_PRODUCIDO"]);
 
@@ -24,39 +21,20 @@ export function BloqueConError({ message }: { message: string }) {
   );
 }
 
-export function FormularioPrecio({
-  precio,
-  invalido,
-}: {
-  precio: string | null;
-  invalido: string | null;
-}) {
+// The API sends the percentage already calculated; only the sign is read as text here.
+function Variacion({ value }: { value: string | null }) {
+  if (value === null) {
+    return <span className="text-muted">Sin mes anterior para comparar</span>;
+  }
+  if (ZERO_PERCENT.test(value)) {
+    return <span className="text-muted">Igual que el mes pasado</span>;
+  }
+  const bajo = value.startsWith("-");
   return (
-    <Card>
-      <form action={guardarPrecio} className="flex flex-wrap items-end gap-3">
-        <div className="min-w-48 flex-1">
-          <label htmlFor="panel-precio" className={labelClass}>
-            Precio de venta promedio por unidad
-          </label>
-          <input
-            id="panel-precio"
-            name="precio"
-            inputMode="decimal"
-            autoComplete="off"
-            defaultValue={precio ?? invalido ?? ""}
-            className={inputClass}
-          />
-        </div>
-        <button type="submit" className={buttonClass}>
-          Ver resultado
-        </button>
-      </form>
-      {invalido !== null && (
-        <p role="alert" className="mt-3 text-sm text-bordeaux">
-          “{invalido}” no sirve como precio. Escribí un número mayor que cero.
-        </p>
-      )}
-    </Card>
+    <span className={bajo ? "text-ink-soft" : "text-bordeaux"}>
+      {bajo ? "▼ Bajó " : "▲ Subió "}
+      {formatPercent(bajo ? value.slice(1) : value)} vs. el mes pasado
+    </span>
   );
 }
 
@@ -64,238 +42,144 @@ function Cifra({
   titulo,
   valor,
   detalle,
-  signo,
 }: {
   titulo: string;
   valor: string;
   detalle?: string;
-  signo?: "menos" | "igual";
 }) {
   return (
     <div className="rounded-card border border-line p-4">
-      <h3 className="text-sm text-muted">
-        {signo === "menos" ? "− " : signo === "igual" ? "= " : ""}
-        {titulo}
-      </h3>
-      <p className="mt-2 font-display text-2xl tabular-nums">{valor}</p>
+      <h3 className="text-sm text-muted">{titulo}</h3>
+      <p className="mt-2 text-2xl font-bold tabular-nums">{valor}</p>
       {detalle && <p className="mt-1 text-xs text-muted">{detalle}</p>}
     </div>
   );
 }
 
-function Resultado({
-  cvu,
-  panel,
-  precio,
-}: {
-  cvu: CvuMes;
-  panel: PanelCostos;
-  precio: string;
-}) {
-  const perdida = cvu.utilidad.startsWith("-");
-  const justo = CERO.test(cvu.utilidad);
-  const anterior = panel.anterior.cvu;
+function Resumen({ panel }: { panel: PanelCostos }) {
+  const { actual, variacion_pct: variacion } = panel;
   return (
     <Card>
       <p className="text-sm text-muted">
-        Resultado de {formatPeriod(panel.periodo)}
+        Costo total de {formatPeriod(panel.periodo)}
       </p>
-      <p
-        className={`mt-2 font-display text-4xl tabular-nums sm:text-5xl ${perdida ? "text-bordeaux" : ""}`}
-      >
-        {formatArs(cvu.utilidad)}
+      <p className="mt-2 text-4xl font-bold tabular-nums sm:text-5xl">
+        {formatArs(actual.costo_total)}
       </p>
       <p className="mt-2 text-base">
-        {justo
-          ? "Estás justo en el punto de equilibrio: no ganás ni perdés."
-          : perdida
-            ? "Con este precio, el mes termina en pérdida."
-            : "Es lo que queda después de pagar todos los costos."}
+        {actual.total_por_unidad === null
+          ? "Todavía no se puede calcular cuánto cuesta cada unidad."
+          : `Cada unidad cuesta ${formatArs(actual.total_por_unidad)} entre fabricarla y su parte de los costos fijos.`}
       </p>
-      {anterior && (
-        <p className="mt-1 text-sm text-muted">
-          {formatPeriod(panel.periodo_anterior)}: {formatArs(anterior.utilidad)}
-        </p>
-      )}
-      <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <p className="mt-1 text-sm">
+        <Variacion value={variacion.total_por_unidad} />
+      </p>
+      <div className="mt-6 grid gap-4 sm:grid-cols-3">
         <Cifra
-          titulo="Ventas"
-          valor={formatArs(cvu.ingresos)}
-          detalle={`${formatQuantity(panel.actual.unidades)} unidades a ${formatArs(precio)}`}
+          titulo="Unidades producidas"
+          valor={formatQuantity(actual.unidades)}
+          detalle="Lo producido en el mes, no lo vendido"
         />
         <Cifra
-          signo="menos"
-          titulo="Costo de fabricar"
-          valor={formatArs(cvu.costo_variable_total)}
-          detalle="Materiales y mano de obra"
+          titulo="Costos variables"
+          valor={formatArs(actual.costo_variable_total)}
+          detalle={`${formatArs(actual.costo_variable_por_unidad)} por unidad: materiales y mano de obra`}
         />
         <Cifra
-          signo="menos"
           titulo="Costos fijos"
-          valor={formatArs(cvu.costos_fijos)}
-          detalle="Alquiler, sueldos y servicios"
-        />
-        <Cifra
-          signo="igual"
-          titulo="Ganancia"
-          valor={formatArs(cvu.utilidad)}
-        />
-      </div>
-    </Card>
-  );
-}
-
-/** The bar is only a picture: the printed numbers are the API's. */
-function BarraEquilibrio({
-  unidades,
-  equilibrio,
-}: {
-  unidades: string;
-  equilibrio: string;
-}) {
-  const total = Number(unidades);
-  const meta = Number(equilibrio);
-  const maximo = Math.max(total, meta);
-  if (!Number.isFinite(maximo) || maximo <= 0) return null;
-  const marca = (meta / maximo) * 100;
-  const llenado = (total / maximo) * 100;
-  const alcanza = total >= meta;
-  return (
-    <div
-      role="img"
-      aria-label={`Producís ${formatQuantity(unidades)} unidades y necesitás ${formatQuantity(equilibrio)}`}
-      className="relative mt-4 h-4 rounded-full bg-parchment"
-    >
-      <div
-        className={`h-4 rounded-full ${alcanza ? "bg-gold" : "bg-blush-deep"}`}
-        style={{ width: `${llenado}%` }}
-      />
-      <div
-        className="absolute top-[-4px] h-6 w-0.5 bg-ink"
-        style={{ left: `${marca}%` }}
-      />
-    </div>
-  );
-}
-
-function Equilibrio({ cvu, panel }: { cvu: CvuMes; panel: PanelCostos }) {
-  const unidades = panel.actual.unidades;
-  const alcanza = !cvu.margen_seguridad_pct.startsWith("-");
-  return (
-    <Card>
-      <h2 className="text-xl">Cuánto tenés que vender para no perder</h2>
-      <p className="mt-3 text-base">
-        <strong className="font-display text-3xl tabular-nums">
-          {formatQuantity(cvu.equilibrio_unidades)}
-        </strong>{" "}
-        unidades por mes, que son{" "}
-        <strong>{formatArs(cvu.equilibrio_ingresos)}</strong> en ventas.
-      </p>
-      <BarraEquilibrio
-        unidades={unidades}
-        equilibrio={cvu.equilibrio_unidades}
-      />
-      <p className="mt-3 text-sm text-muted">
-        Este mes: {formatQuantity(unidades)} unidades.{" "}
-        {alcanza
-          ? `Estás ${formatPercent(cvu.margen_seguridad_pct)} por encima del mínimo.`
-          : `Te falta ${formatPercent(cvu.margen_seguridad_pct.slice(1))} para llegar.`}
-      </p>
-    </Card>
-  );
-}
-
-function Contribucion({ cvu }: { cvu: CvuMes }) {
-  return (
-    <Card>
-      <h2 className="text-xl">Lo que deja cada venta</h2>
-      <p className="mt-3 text-base">
-        Cada unidad deja{" "}
-        <strong className="font-display text-3xl tabular-nums">
-          {formatArs(cvu.margen_contribucion_unidad)}
-        </strong>{" "}
-        después de pagar su costo de fabricar.
-      </p>
-      <p className="mt-3 text-sm text-muted">
-        De cada 100 pesos que vendés, {formatArs(cvu.margen_contribucion_pct)}{" "}
-        sirven para pagar los costos fijos y ganar.
-      </p>
-    </Card>
-  );
-}
-
-function CostoPorUnidad({ panel }: { panel: PanelCostos }) {
-  const { actual } = panel;
-  return (
-    <Card>
-      <h2 className="text-xl">Cuánto cuesta cada unidad</h2>
-      <div className="mt-4 grid gap-4 sm:grid-cols-3">
-        <Cifra
-          titulo="Fabricarla"
-          valor={formatArs(actual.costo_variable_por_unidad)}
-          detalle="Materiales y mano de obra"
-        />
-        <Cifra
-          titulo="Parte de los costos fijos"
-          valor={formatArs(actual.fijo_por_unidad)}
-          detalle={`Repartidos en ${formatQuantity(actual.unidades)} unidades`}
-        />
-        <Cifra
-          titulo="Costo total"
-          valor={formatArs(actual.total_por_unidad)}
+          valor={actual.fijos_cargados ? formatArs(actual.fijos_fabrica) : "—"}
+          detalle={
+            actual.fijo_por_unidad === null
+              ? "Alquiler, sueldos y servicios"
+              : `${formatArs(actual.fijo_por_unidad)} por unidad`
+          }
         />
       </div>
     </Card>
   );
 }
 
-function SinResultado({
-  panel,
-  precio,
-}: {
-  panel: PanelCostos;
-  precio: string | null;
-}) {
-  const { equilibrio } = panel.actual;
-  if (precio === null) {
-    return (
-      <Notice
-        tone="info"
-        title="Escribí un precio de venta para ver el resultado."
-      >
-        Con el precio y lo que producís este mes calculamos ventas, ganancia y
-        punto de equilibrio.
-      </Notice>
-    );
-  }
-  if (equilibrio.motivo === "PRECIO_NO_CUBRE_COSTO_VARIABLE") {
-    return (
-      <Notice title="Con este precio no se cubre ni el costo de fabricar.">
-        Fabricar una unidad cuesta{" "}
-        {formatArs(panel.actual.costo_variable_por_unidad)} y la vendés a{" "}
-        {formatArs(precio)}. Probá con un precio más alto.
-      </Notice>
-    );
-  }
-  if (equilibrio.motivo === "SIN_FIJOS") {
-    return (
-      <Notice
-        title={`Faltan los costos fijos de ${formatPeriod(panel.periodo)}.`}
-      >
-        Sin ellos no se puede calcular la ganancia.{" "}
-        <Link className={linkClass} href="/costos-fijos">
-          Cargar costos fijos
-        </Link>
-      </Notice>
-    );
-  }
+/** The bar is only a picture: the printed percentage is the API's. */
+function Estructura({ panel }: { panel: PanelCostos }) {
+  const pct = panel.actual.fijos_pct_del_total;
+  if (pct === null) return null;
+  const ancho = Math.min(100, Math.max(0, Number(pct)));
   return (
-    <Notice title="Todavía no hay producción este mes.">
-      Hace falta que haya lotes del mes con productos que tengan costo.{" "}
-      <Link className={linkClass} href="/fabricacion">
-        Ir a fabricación
-      </Link>
-    </Notice>
+    <Card>
+      <h2 className="text-xl">De qué está hecho el costo</h2>
+      <div
+        role="img"
+        aria-label={`Los costos fijos son el ${formatPercent(pct)} del costo total`}
+        className="mt-4 flex h-4 overflow-hidden rounded-full bg-gold"
+      >
+        <div className="h-4 bg-bordeaux" style={{ width: `${ancho}%` }} />
+      </div>
+      <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-sm">
+        <span>
+          <span className="mr-2 inline-block size-3 rounded-full bg-bordeaux align-middle" />
+          Costos fijos: <strong>{formatPercent(pct)}</strong>
+        </span>
+        <span>
+          <span className="mr-2 inline-block size-3 rounded-full bg-gold align-middle" />
+          Costos variables
+        </span>
+      </div>
+      <p className="mt-3 text-sm text-muted">
+        Cuantas más unidades producís, menos pesan los costos fijos en cada una.
+      </p>
+    </Card>
+  );
+}
+
+function ComparacionConElMesPasado({ panel }: { panel: PanelCostos }) {
+  const { actual, anterior, variacion_pct: variacion } = panel;
+  const filas = [
+    {
+      titulo: "Costo de fabricar por unidad",
+      ahora: actual.costo_variable_por_unidad,
+      antes: anterior.costo_variable_por_unidad,
+      variacion: variacion.costo_variable_por_unidad,
+    },
+    {
+      titulo: "Costo total por unidad",
+      ahora: actual.total_por_unidad,
+      antes: anterior.total_por_unidad,
+      variacion: variacion.total_por_unidad,
+    },
+    {
+      titulo: "Costos fijos del mes",
+      ahora: actual.fijos_cargados ? actual.fijos_fabrica : null,
+      antes: anterior.fijos_cargados ? anterior.fijos_fabrica : null,
+      variacion: variacion.fijos_fabrica,
+    },
+  ];
+  return (
+    <Card>
+      <h2 className="text-xl">
+        Comparado con {formatPeriod(panel.periodo_anterior)}
+      </h2>
+      <ul className="mt-4 divide-y divide-line">
+        {filas.map((fila) => (
+          <li
+            key={fila.titulo}
+            className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-3"
+          >
+            <span>
+              {fila.titulo}
+              <span className="block text-xs text-muted">
+                Antes: {formatArs(fila.antes)}
+              </span>
+            </span>
+            <span className="text-right">
+              <strong className="tabular-nums">{formatArs(fila.ahora)}</strong>
+              <span className="block text-sm">
+                <Variacion value={fila.variacion} />
+              </span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }
 
@@ -336,31 +220,27 @@ export function PorRevisar({ panel }: { panel: PanelCostos }) {
   );
 }
 
-export function PanelCvu({
-  panel,
-  precio,
-}: {
-  panel: PanelCostos;
-  precio: string | null;
-}) {
-  const cvu = panel.actual.cvu;
+export function PanelCvu({ panel }: { panel: PanelCostos }) {
+  if (panel.actual.costo_total === null) {
+    return (
+      <Notice
+        title={`Todavía no se puede calcular el costo de ${formatPeriod(panel.periodo)}.`}
+      >
+        Hace falta que haya lotes del mes con productos que tengan costo y los
+        costos fijos cargados.{" "}
+        <Link className={linkClass} href="/fabricacion">
+          Ir a fabricación
+        </Link>
+      </Notice>
+    );
+  }
   return (
     <>
-      {cvu && precio !== null ? (
-        <>
-          <Resultado cvu={cvu} panel={panel} precio={precio} />
-          <div className="grid gap-5 lg:grid-cols-2">
-            <Equilibrio cvu={cvu} panel={panel} />
-            <Contribucion cvu={cvu} />
-          </div>
-        </>
-      ) : (
-        <SinResultado panel={panel} precio={precio} />
-      )}
-      <CostoPorUnidad panel={panel} />
-      <p className="text-xs text-muted">
-        El volumen es lo producido en el mes, no lo vendido.
-      </p>
+      <Resumen panel={panel} />
+      <div className="grid gap-5 lg:grid-cols-2">
+        <Estructura panel={panel} />
+        <ComparacionConElMesPasado panel={panel} />
+      </div>
     </>
   );
 }

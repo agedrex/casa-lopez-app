@@ -594,6 +594,9 @@ export type BloqueCostoMes = {
   total_por_unidad: string | null;
   equilibrio: EquilibrioPanel;
   cvu: CvuMes | null;
+  costo_variable_total: string | null;
+  costo_total: string | null;
+  fijos_pct_del_total: string | null;
 };
 
 export type PrecioQueSubio = {

@@ -1416,6 +1416,18 @@ def _bloque_del_panel(
         "total_por_unidad": por_unidad.total_por_unidad if variable is not None else None,
         "equilibrio": equilibrio,
         "cvu": _cvu_del_mes(precio, variable, fijos, unidades),
+        **_totales_del_mes(variable, total_variable, fijos),
+    }
+
+
+def _totales_del_mes(variable: Decimal | None, total_variable: Decimal, fijos: FijosDelMes) -> dict:
+    """Month totals and the share of fixed costs; None while the variable cost or the fixed costs are unknown."""
+    if variable is None or not fijos.cargados:
+        return {"costo_variable_total": None if variable is None else total_variable, "costo_total": None, "fijos_pct_del_total": None}
+    total = total_variable + fijos.total_fabrica
+    return {
+        "costo_variable_total": total_variable, "costo_total": total,
+        "fijos_pct_del_total": fijos.total_fabrica / total * 100 if total > 0 else None,
     }
 
 

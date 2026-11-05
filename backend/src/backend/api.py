@@ -601,6 +601,9 @@ class PanelPeriodoOut(Salida):
     total_por_unidad: Decimal | None
     equilibrio: EquilibrioOut
     cvu: CvuOut | None = None
+    costo_variable_total: Decimal | None = None
+    costo_total: Decimal | None = None
+    fijos_pct_del_total: Decimal | None = None
 
 
 class PanelVariacionOut(Salida):

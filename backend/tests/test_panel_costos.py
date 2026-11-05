@@ -363,3 +363,20 @@ def test_cvu_is_none_when_the_price_does_not_cover_the_variable_cost_or_data_is_
     assert panel(precio_simulado=D("275"), fijos_por_mes={})["actual"]["cvu"] is None
     assert panel(precio_simulado=D("275"), costos={})["actual"]["cvu"] is None
     assert panel(precio_simulado=D("275"), lotes=[], items=[])["actual"]["cvu"] is None
+
+
+# --- Cost structure of the month ----------------------------------------------------------------------------------
+
+
+def test_month_totals_split_the_cost_into_variable_and_fixed():
+    actual = panel()["actual"]  # 10 x 100 + 30 x 200 = 7000 variable, 4000 fixed
+    assert actual["costo_variable_total"] == D("7000")
+    assert actual["costo_total"] == D("11000")
+    assert actual["fijos_pct_del_total"].quantize(D("0.01")) == D("36.36")
+
+
+def test_month_totals_are_none_when_a_part_is_missing():
+    for resultado in (panel(fijos_por_mes={}), panel(costos={}), panel(lotes=[], items=[])):
+        actual = resultado["actual"]
+        assert actual["costo_total"] is None
+        assert actual["fijos_pct_del_total"] is None
