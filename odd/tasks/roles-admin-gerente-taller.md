@@ -18,11 +18,12 @@ Branch: feat/roles-admin-gerente-taller (from main). Delivery: 2 PRs (backend, f
 
 ## Tasks
 
-- [ ] T1 (S2, S3, S5) backend roles + gates + tests. Route: delegated (parallel unit, disjoint surface from T2).
-- [ ] T2 (S2, S4) front roles, nav, guards, admin forms. Route: delegated (parallel unit).
+- [x] T1 (S2, S3, S5) backend roles + gates + tests. Route: delegated (parallel unit). Commit d954144. RED: 35 failed. Check: 1343 passed/151 skipped without DB; 1494 passed with a throwaway PostgreSQL (parent run).
+- [x] T2 (S2, S4) front roles, nav, guards, admin forms. Route: delegated (parallel unit). Commit a6113d9. tsc 0, biome clean; NO visual check.
 
 ## Log
 
 - L1 (2026-11-05) User: "debemos tener tres roles principales Admin, Gerente y Taller, Admin con acceso a todo, gerente con acceso mas restingido, solo a cuento se cotizo el producto y Taller solo acceso a voz y no mucho mas"
 - L2 (2026-11-05) Context: the user wants a salesperson to see price/profitability in a list view (later). Question "cotizador y corte desaparecen (A) o conviven (B)": user answered "A".
 - L3 (2026-11-05) T1 writer found that front corte/page.tsx reads GET /ordenes and /productos. Decision: taller keeps what the old corte role could do (S3 amended); the response bodies of those GETs are reviewed for money fields afterwards.
+- L4 (2026-11-05) Open: what taller may confirm by voice (A none / B only registrar_precio_taller / C all). Today taller can interpret but not confirm. Also open: taller reads /ordenes, /productos and /cueros bodies that carry money.
