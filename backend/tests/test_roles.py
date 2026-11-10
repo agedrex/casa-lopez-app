@@ -98,6 +98,7 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
     ("GET", "/ordenes/{codigo}"): CORTE,
     ("GET", "/voz/estado"): CORTE,
     # Admin only reads.
+    ("GET", "/db/estado"): ADMIN,
     ("GET", "/productos/{codigo}/precios-talleres"): ADMIN,
     ("GET", "/modelos"): ADMIN, ("GET", "/modelos/{codigo}"): ADMIN,
     ("GET", "/precios"): ADMIN, ("GET", "/precios/chequeo"): ADMIN,
@@ -127,9 +128,9 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
         "/proveedores", "/proveedores/{codigo}", "/proveedores/{codigo}/activo", "/proveedores/{codigo}/documentos",
         "/documentos-proveedor/{id}/ocr", "/documentos-proveedor/{id}/datos")},
 }
-# Open on purpose: health and fictional demo data for the deploy, and the two read-only catalogs of routers.py that
-# carry no business data (revision number and table count; stage codes). They never needed a session.
-PUBLICAS = {("GET", "/api/health"), ("GET", "/api/demo/resources"), ("GET", "/db/estado"), ("GET", "/catalogo/etapas")}
+# Open on purpose: the health check of the deploy and the stage catalog of routers.py, which carries no business data
+# (stage codes). `/db/estado` shows the Alembic revision and the table count, so it is admin only.
+PUBLICAS = {("GET", "/api/health"), ("GET", "/catalogo/etapas")}
 
 
 def _api_routes(rutas=None):
@@ -253,10 +254,37 @@ def test_the_product_count_is_still_closed_without_a_role():
 
 def test_the_public_routes_stay_open_without_a_session():
     with TestClient(app) as cliente:  # the lifespan sets `app.state.db_engine`
-        assert cliente.get("/api/health").status_code == 200
-        assert cliente.get("/api/demo/resources").status_code == 200
-        assert cliente.get("/db/estado").status_code == 503  # no database, but not 401
-        assert cliente.get("/catalogo/etapas").status_code == 503
+        assert cliente.get("/api/health").status_code == 503  # no database, but not 401
+        assert cliente.get("/catalogo/etapas").status_code == 503  # no database, but not 401
+
+
+def test_the_demo_resources_route_is_gone_for_everyone():
+    for role in ("admin", "gerente", "taller", None):
+        assert _cliente(role).get("/api/demo/resources").status_code == 404
+    assert TestClient(app).get("/api/demo/resources").status_code == 404
+
+
+def test_db_estado_is_closed_without_a_session():
+    app.dependency_overrides[get_verifier] = lambda: (lambda request: None)
+    respuesta = TestClient(app).get("/db/estado")
+    assert respuesta.status_code == 401 and respuesta.json() == {"detail": "No autenticado."}
+    assert TestClient(app).get("/db/estado").status_code == 401  # no verifier configured: fail-closed
+
+
+@pytest.mark.parametrize("role", ["gerente", "taller", "otro", None])
+def test_db_estado_refuses_every_role_but_admin(role):
+    session = MagicMock()
+    respuesta = _cliente(role, session).get("/db/estado")
+    assert respuesta.status_code == 403 and respuesta.json() == SIN_PERMISO
+    session.execute.assert_not_called()
+
+
+def test_db_estado_answers_the_admin():
+    session = MagicMock()
+    session.execute.return_value.one.return_value = ("0004_semillas_v3", 25)
+    respuesta = _cliente("admin", session).get("/db/estado")
+    assert respuesta.status_code == 200
+    assert respuesta.json() == {"ok": True, "alembic_revision": "0004_semillas_v3", "tablas_costos": 25}
 
 
 @pytest.mark.parametrize("metodo, ruta", [(m, r) for m, r in ACCESO])

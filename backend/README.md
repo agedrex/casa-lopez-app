@@ -6,7 +6,7 @@ Run the local API from the repository root:
 uv run --directory backend fastapi dev src/backend/main.py --host 127.0.0.1 --port 8000
 ```
 
-The public routes (`/api/health`, `/api/demo/*`, `/db/estado`, `/catalogo/etapas`) expose health, fictional demonstration resources and catalog metadata. The costing endpoints below are real data and require a signed-in user.
+The only public routes are `/api/health` (database-backed health check) and `/catalogo/etapas` (stage catalog metadata). `GET /db/estado` requires the `admin` role. The costing endpoints below are real data and require a signed-in user.
 
 For deployed frontends, set `CORS_ALLOWED_ORIGINS` to a comma-separated list of exact origins, for example `https://frontend-staging.example.com`. `http://localhost:3000` is always allowed for local development; wildcard entries are ignored.
 
@@ -26,7 +26,7 @@ After `DATABASE_URL` is securely provided for an authorized local test database 
 uv run --directory backend python -m backend.db_check
 ```
 
-The command executes only `SELECT 1`, closes the connection, and disposes the engine. It prints a fixed result and exits with code `0` on success or `1` on failure. It does not create tables, run migrations, or change data. It adds no HTTP route; `/api/health` remains a demo application check and does not verify the database.
+The command executes only `SELECT 1`, closes the connection, and disposes the engine. It prints a fixed result and exits with code `0` on success or `1` on failure. It does not create tables, run migrations, or change data. It adds no HTTP route. `/api/health` runs the same `SELECT 1` through the application's engine: `200 {"status":"ok"}` when it succeeds within 2 seconds, `503 {"status":"unavailable"}` when `DATABASE_URL` is missing or the database fails or does not answer in time. It never reports the revision, counts, hosts or error text, and it stays public because Railway uses it as `healthcheckPath`.
 
 Before running this command through Railway, request explicit authorization for the staging backend service and its configured environment. Do not run it in production or print/export the connection URL. No Railway check or deployment is part of this repository change.
 
@@ -70,14 +70,14 @@ keys (including the blocked exotic leathers). Optional write probes use savepoin
 inside one transaction that always rolls back. It refuses Railway environments other
 than `staging`. No credentials or connection diagnostics are printed.
 
-`GET /db/estado` returns the current revision and application table count;
+`GET /db/estado` (admin only) returns the current revision and application table count;
 `GET /catalogo/etapas` returns the ordered stage catalog (code, order, type, always-applies, treatment).
 These endpoints only read and expose no prices. Database failures return a generic 503.
 
 Run tests from the repository root with `uv run --directory backend pytest -q`.
-The thirteen PostgreSQL integration cases (ten constraint probes, seed validation, head
-tables/counts and the seed downgrade) skip unless `TEST_DATABASE_URL` is explicitly
-supplied for a disposable local PostgreSQL. They apply Alembic head, then roll back each
+The PostgreSQL integration cases skip unless `TEST_DATABASE_URL` is explicitly
+supplied for a disposable local PostgreSQL. CI supplies it from a `postgres:16` service container
+(`.github/workflows/ci.yml`), so they run on every push. They apply Alembic head, then roll back each
 test's transaction; do not supply a valuable local database. Non-local database
 destinations and Railway environments are refused.
 

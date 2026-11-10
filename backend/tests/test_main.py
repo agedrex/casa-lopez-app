@@ -15,22 +15,16 @@ def isolated_database_environment(monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
 
 
-def test_health_check_is_healthy():
+def test_health_check_without_a_database_is_unavailable():
     response = client.get("/api/health")
 
-    assert response.status_code == 200
-    assert response.json() == {"status": "ok", "mode": "demo"}
+    assert response.status_code == 503
+    assert response.json() == {"status": "unavailable"}
 
 
-def test_demo_resources_are_explicitly_non_production():
-    response = client.get("/api/demo/resources")
-
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["mode"] == "demo"
-    assert payload["disclaimer"]
-    assert len(payload["resources"]) >= 1
-    assert all("name" in resource and "description" in resource for resource in payload["resources"])
+def test_demo_resources_route_no_longer_exists():
+    assert client.get("/api/demo/resources").status_code == 404
+    assert "/api/demo/resources" not in app.openapi()["paths"]
 
 
 def test_cors_is_limited_to_local_frontend_origin():

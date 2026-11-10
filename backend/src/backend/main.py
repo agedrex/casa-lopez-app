@@ -5,7 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend import api, database
+from backend import api, database, db_check
 from backend.routers import router
 
 
@@ -16,6 +16,7 @@ async def lifespan(application: FastAPI):
     try:
         yield
     finally:
+        application.state.db_engine = None  # a disposed engine must not keep answering health checks
         if engine is not None:
             engine.dispose()
 
@@ -52,27 +53,8 @@ app.add_middleware(
 
 
 @app.get("/api/health")
-def health_check() -> dict[str, str]:
-    return {"status": "ok", "mode": "demo"}
-
-
-@app.get("/api/demo/resources")
-def demo_resources() -> dict[str, object]:
-    return {
-        "mode": "demo",
-        "disclaimer": "Fictional demonstration data only. Not for real quotations or costing decisions.",
-        "resources": [
-            {
-                "name": "Producto de demostración",
-                "description": "Elemento ficticio para explorar el flujo de productos.",
-            },
-            {
-                "name": "Material de demostración",
-                "description": "Referencia ficticia; no representa un precio ni una oferta real.",
-            },
-            {
-                "name": "Proveedor de demostración",
-                "description": "Registro ilustrativo para validar el lenguaje y las relaciones.",
-            },
-        ],
-    }
+def health_check(request: Request) -> JSONResponse:
+    # Public on purpose (Railway healthcheck): the body says nothing about the revision, tables, hosts or errors.
+    if db_check.database_responds(getattr(request.app.state, "db_engine", None)):
+        return JSONResponse(status_code=200, content={"status": "ok"})
+    return JSONResponse(status_code=503, content={"status": "unavailable"})

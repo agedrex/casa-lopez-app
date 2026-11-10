@@ -11,6 +11,21 @@ jobs:
   backend-tests:
     name: Backend tests
     runs-on: ubuntu-latest
+    services:
+      # Disposable database for the integration tests; the credentials are throwaway values, not secrets.
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: casa_lopez_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d casa_lopez_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -23,6 +38,9 @@ jobs:
         with:
           enable-cache: true
       - name: Run backend tests
+        # conftest.py applies the Alembic migrations to this database before the integration tests.
+        env:
+          TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/casa_lopez_test
         run: uv run --directory backend pytest -q
 
   frontend-checks:

@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
+from backend.auth import Usuario, get_verifier
 from backend.database import get_session
 from backend.main import app
 
@@ -12,6 +13,7 @@ def read_client(monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
     session = MagicMock()
     app.dependency_overrides[get_session] = lambda: session
+    app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="admin-de-prueba", role="admin"))
     with TestClient(app) as client:
         yield client, session
     app.dependency_overrides.clear()
@@ -52,8 +54,12 @@ def test_database_errors_never_reveal_driver_details(read_client, path):
 @pytest.mark.parametrize("path", ["/db/estado", "/catalogo/etapas"])
 def test_missing_database_is_a_generic_503(monkeypatch, path):
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    with TestClient(app) as client:
-        response = client.get(path)
+    app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="admin-de-prueba", role="admin"))
+    try:
+        with TestClient(app) as client:
+            response = client.get(path)
+    finally:
+        app.dependency_overrides.clear()
     assert response.status_code == 503
     assert response.json() == {"detail": "Database unavailable."}
 

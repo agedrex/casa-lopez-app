@@ -67,11 +67,12 @@ def test_require_user_has_no_default_verifier():
     assert require_user is not None
 
 
-def test_existing_public_routes_stay_public():
+def test_only_health_and_the_stage_catalog_stay_public():
     with TestClient(app) as client:
-        assert client.get("/api/health").status_code == 200
-        assert client.get("/api/demo/resources").status_code == 200
-        assert client.get("/db/estado").status_code == 503  # no database, but not 401
+        assert client.get("/api/health").status_code == 503  # no database, but not 401
+        assert client.get("/api/demo/resources").status_code == 404
+        assert client.get("/db/estado").status_code == 401  # closed: admin only
+        assert client.get("/catalogo/etapas").status_code == 503  # no database, but not 401
 
 
 def test_money_is_returned_as_strings_not_floats(monkeypatch):
