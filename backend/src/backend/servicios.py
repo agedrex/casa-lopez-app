@@ -275,10 +275,15 @@ def _patron(palabra: str) -> str:
     return f"%{escapada}%"
 
 
-def _filtrar_productos(consulta, cuero, q: str | None, categoria: str | None, revisar: bool = False):
+def _filtrar_productos(
+    consulta, cuero, q: str | None, categoria: str | None, revisar: bool = False,
+    sin_cuero: bool = False, sin_color: bool = False, estado: str | None = None,
+):
     """Search: every word of `q` must appear in the code or in a part of the computed name.
 
     `revisar` keeps only the products whose note has a `REVISAR:` mark, by the same criterion as `motivos_de_revision`.
+    `sin_cuero` and `sin_color` keep the products with no leather / no color chosen; `estado` keeps one lifecycle state
+    (the API only lets the four valid ones through). Every filter is additive and, when absent, adds nothing to the query.
     """
     for palabra in (q or "").split():
         patron = _patron(palabra)
@@ -292,12 +297,19 @@ def _filtrar_productos(consulta, cuero, q: str | None, categoria: str | None, re
         consulta = consulta.where(Categoria.nombre == categoria)
     if revisar:
         consulta = consulta.where(Producto.nota.op("~")(PATRON_REVISAR_SQL))
+    if sin_cuero:
+        consulta = consulta.where(Producto.cuero_id.is_(None))
+    if sin_color:
+        consulta = consulta.where(Producto.color_id.is_(None))
+    if estado:
+        consulta = consulta.where(Producto.estado_del_ciclo == estado)
     return consulta
 
 
 def cargar_productos(
     session: Session, codigos: list[str] | None = None, limit: int | None = None, offset: int = 0,
     q: str | None = None, categoria: str | None = None, revisar: bool = False,
+    sin_cuero: bool = False, sin_color: bool = False, estado: str | None = None,
 ) -> list[DatosProducto]:
     cuero, forro = aliased(Material), aliased(Material)
     consulta = (
@@ -311,7 +323,7 @@ def cargar_productos(
     )
     if codigos is not None:
         consulta = consulta.where(Producto.codigo.in_(codigos))
-    consulta = _filtrar_productos(consulta, cuero, q, categoria, revisar)
+    consulta = _filtrar_productos(consulta, cuero, q, categoria, revisar, sin_cuero, sin_color, estado)
     if limit is not None:
         consulta = consulta.limit(limit).offset(offset)
     filas = session.execute(consulta).all()
@@ -461,6 +473,7 @@ def _costo_hoy_seguro(datos, ctx, catalogo) -> tuple[ResultadoCotizacion | None,
 
 def contar_productos(
     session: Session, q: str | None = None, categoria: str | None = None, revisar: bool = False,
+    sin_cuero: bool = False, sin_color: bool = False, estado: str | None = None,
 ) -> int:
     cuero = aliased(Material)
     consulta = (
@@ -470,14 +483,17 @@ def contar_productos(
         .outerjoin(cuero, cuero.id == Producto.cuero_id)
         .outerjoin(Color, Color.id == Producto.color_id)
     )
-    return session.scalar(_filtrar_productos(consulta, cuero, q, categoria, revisar)) or 0
+    return session.scalar(_filtrar_productos(consulta, cuero, q, categoria, revisar, sin_cuero, sin_color, estado)) or 0
 
 
 def listar_productos(
     session: Session, limit: int = 100, offset: int = 0, q: str | None = None, categoria: str | None = None,
-    revisar: bool = False,
+    revisar: bool = False, sin_cuero: bool = False, sin_color: bool = False, estado: str | None = None,
 ) -> list[dict]:
-    base = cargar_productos(session, limit=limit, offset=offset, q=q, categoria=categoria, revisar=revisar)
+    base = cargar_productos(
+        session, limit=limit, offset=offset, q=q, categoria=categoria, revisar=revisar,
+        sin_cuero=sin_cuero, sin_color=sin_color, estado=estado,
+    )
     catalogo = expandir_kits(session, base)
     ctx = cargar_contexto(session)
     filas = []
