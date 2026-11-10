@@ -2,7 +2,15 @@
 
 > Contexto obligatorio para cualquier agente de código que trabaje en este repo (Codex CLI, Gentle AI, etc.).
 > Leelo entero antes de tocar el DER, el importador o el motor de costeo.
-> Última revisión: 2026-10-11 (v5, 2026-10-12: sincronizado con el DER v1 de la WO 1). Fuente: Excel `COSTOS1 en vigencia al 01-09-2026.xlsx`, meeting del equipo e informe de hallazgos.
+> Última revisión: **2026-11-10 (v6)**. Antes: v5 (2026-10-12, sincronizada con el DER v1 de la WO 1). Fuente original: Excel `COSTOS1 en vigencia al 01-09-2026.xlsx`, meeting del equipo e informe de hallazgos. Desde 2026-10-27 la fuente del modelo es la plantilla v4.1 (DER v3), ver sección 5.
+> **Qué cambió en la v6:** el DER vigente es el v3 (28 tablas, migraciones 0001 a 0007), no el v1; la prueba de paridad con el Excel se descartó y el GG de 11 % se eliminó del costo; el importador real es `generate_seed_v3.py` + `importar_productos.py`; roles `admin`, `gerente` y `taller`; sección nueva "Producción y despliegue" (9.2); las secciones 3 y 4 quedan como historia del Excel viejo.
+> **Marcas:** **[V]** = verificado en esta revisión contra el archivo citado del repo. **SUPUESTO** = lo dijo el equipo o es inferido, sin verificar desde el repo: confirmarlo antes de apoyarse en eso.
+
+| Secciones | Estado |
+|---|---|
+| 1, 2, 5, 5.1, 6, 7, 8, 9, 10, 11 | **Vigentes**: describen el sistema real (DER v3). |
+| 3 y 4 | **Historia del Excel viejo.** Explican de dónde vienen los datos y qué trampas tiene leerlos. No son el modelo ni las reglas de costo vigentes. |
+| Anexo | Memorias para Engram. Las marcadas "(histórico)" ya no rigen. |
 
 ---
 
@@ -24,15 +32,15 @@
 | Agustin | Forward deployment engineer, dueño del proyecto. | Nuevo en modelado de datos. Quiere cero errores arrastrados. |
 | Robert | Compañero y jefe de Agustin (equipo de La Fábrica). | Define alcance, prioridades y decisiones de producto. Lo que no es una regla del Excel sino una decisión del proyecto se habla con él. |
 
-**Sprint:** 3 semanas (15 días hábiles). Cierre esperado: **Gerardo cotiza 2 o 3 productos nuevos sin abrir el Excel.**
+**Sprint inicial:** 3 semanas (15 días hábiles) desde el 2026-10-11, fecha del primer commit [V: `git log`]. Cierre esperado: **Gerardo cotiza 2 o 3 productos nuevos sin abrir el Excel.** SUPUESTO: en el repo no hay evidencia de que esa prueba con Gerardo ya se hizo; preguntarle a Agustin.
 
-**Alcance de la primera versión:** "una forma más amena de usar este Excel", no un cambio del proceso. Se respetan las etapas (es el idioma de Gerardo y de los talleres) y se les ponen nombres claros. El valor nuevo es lo que el Excel no tiene: fechas, historia, costo real y margen real.
+**Alcance de la primera versión:** "una forma más amena de usar este Excel", no un cambio del proceso. Se respetan las etapas (es el idioma de Gerardo y de los talleres) y se les ponen nombres claros. El valor nuevo es lo que el Excel no tiene: fechas, historia, costo real y margen real. **El alcance se movió el 2026-10-27:** la fuente de datos pasó a ser la plantilla v4.1 y se dejaron las reglas del Excel viejo donde chocan con ella (GG de 11 %, prueba de paridad); ver sección 5 y `odd/tasks/app-casa-lopez-v3.md` [V].
 
 **Métrica tentativa:** qué porcentaje de las tareas de Gerardo se automatiza o mejora (sin definir del todo).
 
 **Riesgo principal:** que Gerardo no tenga tiempo antes de irse. Todo lo que el código necesite de él se junta en una lista de preguntas y se prioriza lo bloqueante.
 
-**Stack (acordado, puede cambiar después):** Next.js (frontend) · FastAPI (API y motor de costeo) · Postgres. LLM opcional, solo para clasificar o explicar, **nunca** para calcular costos.
+**Stack en uso [V: `front/package.json`, `backend/pyproject.toml`, `README.md`]:** Next.js 16 + React 19 + Better Auth (`front/`, pnpm) · FastAPI + SQLAlchemy 2 + Alembic (`backend/`, Python 3.13, uv) · Postgres, todo en Railway. Integraciones: dólar del BNA (`docs/dolar-bna.md`), voz y OCR de facturas con un LLM (`docs/voz.md`), copia de solo vista a un Google Sheet (`docs/sheets-sync.md`). El LLM **nunca** calcula costos: interpreta o lee texto y una persona confirma.
 
 **Gestión del trabajo:** el MCP de La Fábrica (kanban, work orders, documentos fundacionales y blueprints). Git y GitHub para el código.
 
@@ -40,21 +48,23 @@
 
 ## 2. Reglas de oro (no negociables)
 
-1. **Paridad con el Excel primero, mejoras después.** El motor tiene que dar el mismo costo que el Excel en todas las filas sanas antes de "mejorar" cualquier criterio. Las mejoras entran como parámetros, nunca cambiando la fórmula base en silencio.
+1. **Sin paridad con el Excel (decisión del usuario, 2026-10-28).** Se descartó comparar el motor contra el Excel viejo: el motor se prueba regla por regla [V: `odd/tasks/app-casa-lopez-v3.md`, T2 y L6]. Los valores del Excel viejo quedan como referencia (`modelo.excel_viejo_*`, parámetros `GG_PCT_EXCEL` y `DOLAR_PARIDAD`), nunca como verdad. Las mejoras entran como parámetros, nunca cambiando una fórmula en silencio.
 2. **No inventar reglas de negocio.** Si algo no está en este archivo o en el Excel, no se asume: se marca como `SUPUESTO` y se pregunta. Ver la sección 6.
 3. **Dinero con `Decimal`, nunca `float`.** Python `decimal.Decimal`, Postgres `NUMERIC`. En el frontend no se calcula plata: el backend devuelve los montos ya calculados como string. El recálculo en vivo del formulario llama a la API (o a un endpoint de "previsualizar" sin guardar).
-4. **Las cotizaciones son inmutables y versionadas.** Una cotización guardada no se edita: se crea una nueva versión. Hay una sola vigente por producto. Cada cotización guarda una foto de todo lo que usó (dólar, GG, precios de materiales, consumos), para poder reproducir el número años después.
+4. **Las cotizaciones son inmutables.** Una cotización guardada no se edita ni se pisa: se agrega otra. Hay una por producto + fecha + tipo (`INICIAL`, `RECOTIZACION`, `FINAL`) y repetirla es un conflicto [V: `servicios.guardar_cotizacion`, `models.Cotizacion`]. No hay marca "vigente". Cada una guarda una foto del dólar, un monto por etapa y los totales; **no** guarda precios ni consumos unitarios, que salen de las tablas con historia (`precio_material`, `tipo_cambio`).
 5. **Nada subjetivo sin consenso.** Si una decisión depende del criterio de una persona (qué producto es "comparable", si un consumo es razonable, qué M.O. usar), la app no la toma sola: la propone y una persona la confirma.
-6. **El motor es una función pura.** Recibe datos, devuelve un desglose. No lee la base, no lee la hora, no llama a internet. Así se testea contra el Excel sin trampas.
-7. **Cada cambio al motor corre la prueba de paridad.** Si la paridad se rompe, el cambio no entra.
-8. **El motor es el único que calcula.** Subtotal, GG, costo y USD los calcula el backend. Ni el frontend ni un usuario pueden escribirlos. Si alguien quiere otro número, cambia un dato de entrada y queda registrado quién y por qué.
+6. **El motor es una función pura.** Recibe datos, devuelve un desglose. No lee la base, no lee la hora, no llama a internet [V: docstring de `backend/src/backend/costeo.py`]. Así se testea sin base ni reloj.
+7. **Cada cambio al motor corre los tests del backend** (`uv run --directory backend pytest -q`; `test_costeo.py` y `test_receta.py` fijan cada regla). Si un test se rompe, el cambio no entra.
+8. **El motor es el único que calcula.** Los montos por etapa, el IVA de compras, los arreglos y el total en ARS y USD los calcula el backend. Ni el frontend ni un usuario pueden escribirlos. Si alguien quiere otro número, cambia un dato de entrada y queda registrado quién y por qué.
 9. **Cada precio guarda su moneda y su unidad de origen.** Nada se convierte "por las dudas". La conversión a pesos se hace en el motor, con el dólar de la cotización, solo cuando el material está en USD.
-10. **Todo tiene fecha.** Precios, dólar, GG, margen, cotizaciones, órdenes y ventas. Sin fecha no hay margen real.
+10. **Todo tiene fecha.** Precios, dólar, costos fijos, precios de venta, cotizaciones y órdenes. Sin fecha no hay margen real. Excepción conocida: los parámetros se editan en el lugar, sin historial (el valor anterior solo queda en el log) [V: `odd/tasks/app-casa-lopez-v3.md`, L15].
 11. **Nada se borra.** Archivar un producto lo oculta de las listas, pero conserva su historia. Lo que se corrige en la migración queda marcado, no se tira.
 
 ---
 
 ## 3. Cómo funciona el Excel (verificado celda por celda)
+
+> **Historia del Excel viejo, no el modelo vigente.** Las secciones 3 y 4 describen cómo funciona `COSTOS1 en vigencia al 01-09-2026.xlsx` (hoja `Marroquineria1`). Se conservan porque explican el origen de los datos (los consumos de los 325 modelos del seed vienen de ahí: `origen_de_los_consumos = EXCEL` [V: `test_seeds.py`]) y las trampas al leerlo. Las reglas de costo de ese Excel (GG de 11 %, REB, PREP y M.O. por separado, comparación contra el Excel) **ya no rigen**: ver 3.5.4 y la sección 5.
 
 Hoja `Marroquineria1`. Tabla central: encabezado en la fila 21, productos en las filas 22 a 347. Cada fila es un producto y las columnas son etapas.
 
@@ -100,9 +110,9 @@ Proveedor y fecha en S (ej. "3/9/26 Rouez", "3/9/26 Acropol"), precio por rollo 
 | Costo | **AH** | `AF + AG` | ARS |
 | Costo en USD | **AI** | `AH / dólar` | USD |
 
-**Ejemplo real, fila 22 (Portafolio Simple Ch., modelo 6):** cuero 37080 × 0,25 = 9270; forro tela 4053 × 0,2 = 810,6; herrajes 4 USD = 6180; flex 0,45 m² = 4500; goma 0; corte 3000 + reb 1500 + prep 1500; M.O. 12000. Subtotal 38760,6; GG 4263,67; **costo 43024,27 ARS = 27,85 USD**. Este caso tiene que ser el primer test del motor.
+**Ejemplo real, fila 22 (Portafolio Simple Ch., modelo 6):** cuero 37080 × 0,25 = 9270; forro tela 4053 × 0,2 = 810,6; herrajes 4 USD = 6180; flex 0,45 m² = 4500; goma 0; corte 3000 + reb 1500 + prep 1500; M.O. 12000. Subtotal 38760,6; GG 4263,67; **costo 43024,27 ARS = 27,85 USD**. Fue el primer caso de la prueba de paridad, que se descartó (sección 8); hoy no es un test.
 
-### 3.5 Fórmula del motor (decidida para la paridad)
+### 3.5 Fórmula del Excel viejo (la que se iba a usar para la paridad, descartada)
 ```
 subtotal = cuero + forro + herrajes + flex + goma_eva + corte + reb + prep + mano_de_obra
 gg       = subtotal × (gg_pct / 100)          # gg_pct = 11 hoy, parámetro
@@ -114,8 +124,8 @@ costo_usd = costo / dolar
 - `flex = consumo_flex × precio_flex_ars_m2` y `goma = consumo_goma × precio_goma_ars_m2`. Modelarlos en ARS directamente.
 - Ganancia y desperdicio **no entran** en el costo de paridad. Existen como parámetros con valor 0 o desactivados.
 
-### 3.5.1 Segundo caso de prueba: recotización
-Misma fila 22 con dólar 1700: cuero 0,25 × 24 × 1700 = 10200; herrajes 4 × 1700 = 6800; forro, flex, corte, reb, prep y M.O. **no cambian** (están en pesos). Subtotal 40310,6 → **costo 44744,77 ARS = 26,32 USD**. Este test prueba que el motor respeta la moneda de cada insumo. Fíjate que el costo en USD **baja** cuando sube el dólar, porque la parte en pesos pesa menos en dólares.
+### 3.5.1 Segundo caso de paridad: recotización (histórico)
+Misma fila 22 con dólar 1700: cuero 0,25 × 24 × 1700 = 10200; herrajes 4 × 1700 = 6800; forro, flex, corte, reb, prep y M.O. **no cambian** (están en pesos). Subtotal 40310,6 → **costo 44744,77 ARS = 26,32 USD**. Ilustra que cada insumo tiene su moneda (el motor vigente conserva esa regla: un precio en USD se multiplica por el dólar de la fecha y uno en ARS no). Fíjate que el costo en USD **baja** cuando sube el dólar, porque la parte en pesos pesa menos en dólares.
 
 ### 3.5.2 Cuánto pesa cada etapa (mediana sobre el subtotal)
 Cuero 38 %, M.O. 25 %, herrajes 12 %, corte 6,5 %, reb 3,3 %, prep 3,3 %, forro 2,5 %; flex y goma eva están en cero en la mitad de los productos. **Cuero y M.O. son el 63 % del costo:** ahí van las validaciones y las alertas de valores raros. El consumo de forro es, en mediana, el 69 % del de cuero.
@@ -129,8 +139,17 @@ Cuero 38 %, M.O. 25 %, herrajes 12 %, corte 6,5 %, reb 3,3 %, prep 3,3 %, forro 
 - **Fila 242** está pegada como valores con precios de otro dólar (cuero 33600, potro 26600).
 - **Nombres definidos rotos** ("este", "Título1", "VentasDePuntoDeEquilibrio") y celdas sueltas B1 y F20: ignorar.
 
+### 3.5.4 Qué quedó de esa fórmula en el motor vigente (`costeo.py`, `receta.py`)
+Todo [V: `backend/src/backend/costeo.py`, `receta.py`, `servicios.cargar_contexto`, `test_costeo.py`]:
+- **No hay GG.** El motor no aplica ningún porcentaje de gastos generales (`test_no_gg_is_applied_total_is_subtotal_without_extras`). El 11 % queda solo como parámetro de referencia `GG_PCT_EXCEL` y el dólar 1545 como `DOLAR_PARIDAD` [V: `seed_v3.json`]. Los costos fijos de la fábrica y la tienda viven en `gasto_periodo` y alimentan el panel de costo-volumen, no el costo del producto. SUPUESTO: que ese sea el reemplazo de hecho del GG; sin confirmar con Gerardo.
+- **Línea de material** = `consumo × (1 + desperdicio) × precio`. El precio en USD se multiplica por el dólar vigente a la fecha de la cotización (el más nuevo que no sea posterior); el precio en ARS no se toca. Sin dólar o sin precio para esa fecha, la cotización queda incompleta con un aviso.
+- **Ocho etapas:** CUERO, FORRO, FLEX, GOMA_EVA, HERRAJES, HILO_CEMENTO, CORTE y CONFECCION. HILO_CEMENTO se separó de HERRAJES; CORTE vale siempre 0 (el sueldo de Alderete es un costo fijo); CONFECCION reemplaza a REB + PREP + M.O. y vale 0 si el producto lo confecciona la casa (`INTERNA`).
+- **Confección externa** = promedio del precio por unidad del lote más nuevo (el pagado; si no hay, el cotizado); sin lotes, la estimación del modelo (`confeccion_estimada_ars`).
+- **Total** = subtotal de etapas + componentes de kit + IVA de compras (solo si el impuesto `IVA` está marcado como costo; hoy no) + arreglos (`ARREGLOS_PCT`, hoy 0). USD = total ÷ dólar.
+- **Desperdicio:** `FACTOR_DESPERDICIO_DEFAULT` (hoy 0) o `material.desperdicio_manual` si el material lo tiene. Sigue sin aplicarse el 30 % del Excel.
+
 ### 3.6 Otros bloques de la hoja
-- **Filas 351-366: variantes.** Código de modelo con barra (`103/1`, `2538/3`): son variantes de un producto base. En el DER: `producto.producto_base_id`.
+- **Filas 351-366: variantes.** Código de modelo con barra (`103/1`, `2538/3`): son variantes de un producto base. En el DER v1 era `producto.producto_base_id`; el DER v3 no tiene esa columna [V: `models.py`] y los 325 modelos del seed cubren solo las filas 22 a 347, sin las variantes 351-366 [V: `seed_v3.json`]. SUPUESTO: cómo se van a cargar las variantes sigue sin definirse.
 - **Filas 368-370: M.O. "tentativa" por tamaño** (fecha 31/7/2024): Bolso grande 20000, Portafolio mediano 12000, Cartera chica 8000. Es una referencia, no una regla.
 - **Filas 374-381: tabla de Necesaires.** Es un duplicado de filas del bloque central con dos columnas extra (AJ costo anterior, AK % de variación). **No es otra tabla:** "necesaire" es una categoría de producto. Al importar, deduplicar.
 - **Zona AJ373 en adelante:** ignorar (decisión de Agustin).
@@ -139,7 +158,7 @@ Cuero 38 %, M.O. 25 %, herrajes 12 %, corte 6,5 %, reb 3,3 %, prep 3,3 %, forro 
 
 ### 3.7 Reglas implícitas de Gerardo (su baseline)
 
-Son las reglas que el Excel aplica sin decirlo: de fórmula, de criterio o de forma de pensar. Sirven para entender cómo cotiza Gerardo hoy y como **referencia de paridad**. No son reglas aprobadas para la app: las que son criterio se convierten en sugerencias o parámetros, nunca en automatismos, hasta que Gerardo y Alejandro las confirmen.
+Son las reglas que el Excel aplica sin decirlo: de fórmula, de criterio o de forma de pensar. Sirven para entender cómo cotiza Gerardo hoy y como referencia del origen de los datos (la paridad con el Excel se descartó, sección 8). No son reglas aprobadas para la app: las que son criterio se convierten en sugerencias o parámetros, nunca en automatismos, hasta que Gerardo y Alejandro las confirmen.
 
 - **Observada:** verificada en celdas, fórmulas, valores o comentarios del Excel, o dicha textualmente en la meeting.
 - **Inferida:** interpretación nuestra a partir de un patrón. Hay que confirmarla con Gerardo.
@@ -188,13 +207,15 @@ Son las reglas que el Excel aplica sin decirlo: de fórmula, de criterio o de fo
 | C15 | Mete notas de costeo dentro del nombre (medidas, fechas, "costo x 5 unidades", kits). | Nombres de las filas 202, 258, 298, 310. | Observada | El importador las separa en campos propios. |
 
 **Cómo usar esta tabla:**
-1. En la paridad, las reglas A se replican al pie de la letra.
-2. Las reglas B y C **no** se automatizan. Alimentan las sugerencias para productos nuevos (`plantilla_linea`, fase 2) y las alertas de calidad, por ejemplo "M.O. fuera del escalón de su tamaño" o "forro mayor que el cuero".
-3. Cada regla inferida es una pregunta para Gerardo (ver `preguntas-gerardo-robert.md`). Cuando la confirme, se cambia "Inferida" por "Confirmada" con la fecha.
+1. Las reglas A describen la fórmula del Excel viejo. Ya no se replican: la columna "Qué hace el agente" de la tabla A es la de la v5 (ver 3.5.4 para lo que rige hoy).
+2. Las reglas B y C **no** se automatizan. Alimentan las sugerencias para productos nuevos (la tabla `plantilla_linea` no existe todavía, ver sección 5) y las alertas de calidad, por ejemplo "M.O. fuera del escalón de su tamaño" o "forro mayor que el cuero".
+3. Cada regla inferida es una pregunta para Gerardo (la lista, `preguntas-gerardo-robert.md`, no está en el repo [V: no figura en `docs/`]). Cuando la confirme, se cambia "Inferida" por "Confirmada" con la fecha.
 
 ---
 
 ## 4. Trampas del Excel que un agente puede romper
+
+> Historia del Excel viejo. Son trampas de **leer ese archivo**; las que hablan de "paridad" o de GG se mantienen como contexto del origen de los datos, no como reglas del motor vigente.
 
 1. **Grano largo (H11) está tipeado en 34040**, no es `23 × dólar`. Para la paridad hay que usar 34040 tal cual. Para el futuro: marcarlo como precio en ARS fijo y preguntarle a Gerardo cuál es el bueno.
 2. **Lagarto y yacaré cotizan en "USD por cm"** como texto y dan error. Su unidad no es compatible con el consumo en m². No convertir por tu cuenta: el material tiene `unidad_consumo` en m² y el precio tiene `unidad_precio` en cm, así que la regla del backend los bloquea; además van con `cotizable = false` hasta que Gerardo defina la regla.
@@ -227,66 +248,66 @@ Son las reglas que el Excel aplica sin decirlo: de fórmula, de criterio o de fo
 
 ---
 
-## 5. Modelo de datos (DER v1)
+## 5. Modelo de datos (DER v3, vigente)
 
-**La fuente de verdad es `docs/der.md` (DER v1, 2026-10-12, WO 1).** Su porqué está en `wo1-modelo-conceptual.md`, sección 2. Si este archivo y `der.md` no coinciden, **gana `der.md`** y se corrige este. El DER es **provisional**: Robert lo autorizó para la base demo de staging mientras Gerardo responde las preguntas. No se cambia sin pasar por un work order.
+**La fuente de verdad es el código:** `backend/src/backend/models.py` y las migraciones, explicados en `docs/der-v3.md`. Su origen es la pestaña `Diccionario` de `Plantilla Costos Casa Lopez v4.1 (trabajo).xlsx`, que el 2026-10-27 reemplazó al DER v1 y a las reglas del Excel viejo [V: `odd/tasks/app-casa-lopez-v3.md`, S1 y L1]. Si este archivo y el código no coinciden, **gana el código** y se corrige este. `docs/der-v3.md` está algo atrasado: no lista `precio_venta`, `proveedor` ni `documento_proveedor` (migraciones 0006 y 0007) y dice consumos `NUMERIC(10,4)` cuando son `(12,6)` [V: `models.py`]. `docs/der.md`, `der-borrador.sql`, `wo1-modelo-conceptual.md`, `wo2-decisiones.md` y `wo2-staging.md` hablan del DER v1 (11 tablas, `cotizacion_linea`, GG): son **históricos**, no se implementan.
 
-### Fase 1: primera migración (11 tablas)
+### Migraciones (7, cabeza `0007_proveedores_documentos`) [V: `backend/migrations/versions`]
+| Revisión | Qué hace |
+|---|---|
+| `0001_esquema_costos`, `0002_semillas` | DER v1 y sus semillas. Históricas. |
+| `0003_der_v3` | Borra las tablas del DER v1 y crea el DER v3. |
+| `0004_semillas_v3` | Carga `seed_data/seed_v3.json` (ver sección 7). |
+| `0005_gasto_reemplaza_a` | `gasto_periodo.reemplaza_a_id`: una corrección es una fila nueva que apunta a la que reemplaza. |
+| `0006_precio_venta` | Tabla `precio_venta`. |
+| `0007_proveedores_documentos` | Tablas `proveedor` y `documento_proveedor`. |
 
-| Tabla | Para qué | Lo que no hay que romper |
+Todas tienen `downgrade`, pero bajar de 0007, 0006 o 0005 borra datos (ver `docs/produccion.md`, sección 5).
+
+### Tablas (28 en el schema `costos`) [V: `models.py`, `docs/der-v3.md`]
+| Grupo | Tablas | Lo que no hay que romper |
 |---|---|---|
-| `categoria` | Lista abierta: cartera, portafolio, billetera, necesaire… | `nombre` único. |
-| `producto` | Cada artículo. Una variante apunta a su base con `producto_base_id`. | **`id` es la única identidad estable.** `codigo_modelo` es texto y **no es único**. `codigo_erp` es nullable y único (vacío hasta que Alejandro diga cuál es). `fila_excel` es única y sirve para trazar. `nombre_original` guarda la columna F tal cual. El estado (activo/archivado) lo cambia una persona. |
-| `etapa` | Datos fijos: CUERO, FORRO, HERRAJES, REFUERZO, CORTE, REB, PREP, MANO_OBRA. | **REB y PREP no se renombran** hasta que Gerardo diga qué son. Flex y goma son una sola etapa, REFUERZO. |
-| `material` | Cada cosa que se compra, con `tipo`, `unidad_consumo` y `codigo_excel` (`cuero:1`, `forro:1`, `insumo:W5`). `cotizable = false` bloquea lagarto y yacaré. | **No tiene `proveedor_id` ni moneda.** El proveedor y la moneda viven solo en `precio_material`. |
-| `proveedor` | Mínimo viable: nombre, CUIT, dirección, teléfono, contacto, categorías, activo. | CUIT único, nullable. |
-| `precio_material` | La oferta de un proveedor a una fecha. Solo se agregan filas. | `proveedor_id` nullable (no sabemos a quién se le compra el cuero). Guarda `precio` por `unidad_precio`, `moneda`, y la presentación de compra (plancha 1 × 1,40 m a $14.000). |
-| `tipo_cambio` | Dólar por fecha y fuente. | Único por (`fecha`, `fuente`). |
-| `parametro` | **Tabla nueva.** Claves `GG_PCT` y `GANANCIA_PCT`, con `vigente_desde` y `estado_validacion` (supuesto o confirmado). | Semilla: GG 11 y ganancia 0, ambos `supuesto`. La ganancia **no entra en el costo**. |
-| `cotizacion` | La foto del costo de un producto. Versionada, inmutable. | Una sola `vigente` por producto (índice único parcial). Guarda `tc_valor` y `gg_pct` como foto. En la migración, `fecha` = **2026-09-01**; la columna E del Excel va a `dato_origen` (jsonb), junto con B, D, AI original, AJ/AK y comentarios. |
-| `cotizacion_linea` | Un renglón del costo: etapa, material, cantidad, precio en moneda original, total en pesos. | `orden` permite dos líneas de cuero. **`cantidad` NULL = dato faltante (con marca). Un 0 en el Excel no crea línea: significa "no lleva".** |
-| `marca_calidad` | Alertas sobre datos dudosos, con la celda de origen. | Al menos uno de producto, cotización o material. |
+| Catálogo | `modelo`, `producto`, `receta_linea`, `kit_componente`, `molde`, `modelo_molde` | `modelo` es qué se fabrica y trae los consumos por unidad (cuero, forro, flex, goma EVA, herrajes en USD, hilo y cemento) y la confección estimada. `producto` es un modelo en un cuero y un color (`modelo_id` puede ser NULL en un kit). `receta_linea` guarda **solo** las líneas `EXTRA` (un segundo cuero, un herraje puntual); las del modelo se calculan. En `modelo`, NULL = dato faltante y 0 = "no lleva". `nombre_del_modelo` es único. |
+| Referencias | `etapa` (8 fijas), `categoria`, `color`, `persona`, `taller`, `impuesto`, `parametro`, `material` | `material.cotizable = false` bloquea lagarto y yacaré. Las unidades son una lista cerrada (`m2`, `cm`, `juego`, `unidad`, `USD`). Los parámetros llevan `fuente_estado`; ninguno está confirmado. |
+| Con historia (solo se agregan filas) | `precio_material`, `tipo_cambio`, `precio_venta`, `gasto_periodo` | Un precio es único por material + color + `vigente_desde` (color NULL = todos los colores); el del color gana al genérico y nunca se usa uno de fecha futura. Cada precio guarda `moneda`, `unidad_del_precio` e `iva_incluido`. El dólar es único por fecha + tipo + fuente (fuentes `BNA`, `EXCEL_VIEJO`, `MANUAL`). El precio de venta vigente es el más nuevo. Un gasto se corrige con una fila nueva (`reemplaza_a_id`). |
+| Cotización | `cotizacion` | Foto calculada e inmutable (regla de oro 4). La escribe el motor, nadie la edita. |
+| Fabricación | `orden_fabricacion` (el "lote"), `orden_item`, `orden_estado`, `registro_tarea` | `orden_item` separa el precio pedido del pagado por unidad. `orden_estado` es el historial de estados (`PLANIFICADA` a `CERRADA`). El precio del taller se edita en el lugar, sin historial [V: `odd/tasks/app-casa-lopez-v3.md`, L14]. |
+| Inventario de cuero | `pieza_cuero`, `movimiento_cuero`, `conteo_inventario` | Un movimiento `CORTE` tiene que apuntar a su `orden_item`. |
+| Proveedores | `proveedor`, `documento_proveedor` | Las facturas e imágenes se guardan en la base (`bytea`, sin object storage). El OCR solo sugiere: **no crea precios**. `precio_material.proveedor` es texto y **no** está vinculado a `proveedor` [V: docstring de la migración 0007]. |
 
-### Fase 2: definida, todavía no se migra
+Reglas transversales:
+- `codigo` es la clave de negocio: único y nunca cambia (`MOD-`, `PRD-`, `PRE-`, `GF-`, `PRV-` más número; `REX-`, `LOT-` y `LIT-` son prefijos nuestros, SUPUESTO: validar). Las claves foráneas apuntan a `id`.
+- `modelo.modelo_excel_viejo` y `fila_excel_viejo` conservan el código y la fila del Excel viejo; el código de modelo del Excel **no es único** (trampa 10).
+- **M.O. en dos lugares:** la estimación del modelo (`confeccion_estimada_ars`) y el precio real del taller (`orden_item`). Se compara contra el mismo modelo en lotes anteriores, no contra "productos parecidos".
+- No existe la tabla `marca_calidad` del DER v1: las alertas se calculan en la pantalla Alertas y las marcas `REVISAR` del importador viven en la `nota` del producto [V: `servicios.motivos_de_revision`, `docs/importar-productos.md`].
+- Todavía no existen `venta` ni `plantilla_linea`. Copiar y ajustar un producto parecido (regla C1) es un flujo posible, no una tabla.
+- Procedencia: los precios llevan `nota_fuente`, el dólar `fuente`; `cotizacion.creado_por`, `precio_venta.creado_por` y `documento_proveedor.subido_por` guardan el id de usuario como texto, sin FK.
 
-`taller`, `orden_fabricacion` (el "lote"), `precio_venta`, `venta` y `plantilla_linea`. Esperan a que Gerardo responda sobre M.O., talleres y lotes, y Alejandro sobre ventas y ERP. **No las crees antes** ni las inventes distintas: están definidas en `der.md`, sección 7.
-- `orden_fabricacion` separa `precio_pedido_unitario` de `precio_pagado_unitario` (comentario AE53: "pidió $1.000, pagamos $750").
-- La "receta" de un producto existente no necesita tabla: son las cantidades de su cotización vigente. Recotizar copia esas cantidades y actualiza precios y dólar. `plantilla_linea` es solo para sugerir productos nuevos.
-
-### Reglas que siguen valiendo
-- `cotizacion_linea.material_id` obligatorio si la etapa lo requiere (cuero, forro, refuerzo); lo valida el backend.
-- **Una línea solo usa un precio si `unidad_precio = material.unidad_consumo`** (regla del backend). Así el lagarto en cm no se multiplica por un consumo en m².
-- **M.O. en dos lugares:** la cotización guarda la estimación de la planilla; el precio real del taller vivirá en `orden_fabricacion` (fase 2). Se compara contra el mismo modelo en lotes anteriores, no contra "productos parecidos".
-- **Consumo:** se migra como bruto con `incluye_desperdicio = true` (supuesto). La cantidad neta y el desperdicio por material se agregan como columnas solo si Gerardo lo confirma.
-- **GG y margen** son parámetros con fecha. Ojo: un recargo de 27 % sobre costo 100 da precio 127 (margen real 21 %); un margen de 27 % sobre el precio da 137. Está sin definir.
-- **Procedencia:** precios, dólar, parámetros y líneas llevan `fuente` y `fuente_detalle` (por ejemplo `Marroquineria1!W5`).
-
-### Convenciones técnicas
-- Plata `NUMERIC(14,4)`, consumos `NUMERIC(10,4)`, dólar `NUMERIC(12,4)`, porcentajes `NUMERIC(6,3)`. En SQLAlchemy, `Numeric(14, 4, asdecimal=True)`; ids `BigInteger` + `Identity()`.
-- `created_at timestamptz` en todas las tablas; `updated_at` en `producto`.
-- **Todas las tablas van en el schema `costos`**, incluida la tabla de versiones de Alembic (`version_table_schema="costos"`). Alembic solo mira ese schema. **Better Auth (WO 4) queda en `public`** con su propia CLI: nunca generar migraciones que toquen `user`, `session`, `account` o `verification`. `cotizacion.creado_por` guarda el id de usuario como texto, sin FK por ahora.
-- Migraciones con Alembic (WO 2). `der-borrador.sql` es una prueba, **no** la migración. Nunca cambiar la base a mano.
-- Plataforma: Railway, environment `staging`. Producción no se toca sin autorización.
-- Las cosas con historia (precios, dólar, parámetros, cotizaciones) no tienen `UPDATE`: se agrega una fila con fecha.
+### Convenciones técnicas [V: `models.py`, `migrations/env.py`, `README.md`]
+- Plata `NUMERIC(14,4)`, consumos **`NUMERIC(12,6)`** (el DER v1 decía `(10,4)`; se ensanchó para no redondear 12 valores de la plantilla), dólar `NUMERIC(12,4)`, porcentajes `NUMERIC(6,3)` guardados como fracción (0.05 = 5 %; SUPUESTO: validar la lectura de `desperdicio_manual`). En SQLAlchemy, `Numeric(p, s, asdecimal=True)`; ids `BigInteger` + `Identity(always=True)`; `created_at timestamptz` en todas las tablas (ya no hay `updated_at`).
+- **Todas las tablas van en el schema `costos`**, incluida `alembic_version` (`version_table_schema="costos"`). Alembic solo mira ese schema (`include_name`).
+- **Better Auth** (`user`, `session`, `account`, `verification`) queda en `public` con su propia CLI (`pnpm auth:migrate` en `front/`): nunca generar migraciones que lo toquen.
+- Migraciones con Alembic. `der-borrador.sql` es histórico. Nunca cambiar la base a mano.
+- Las cosas con historia (precios, dólar, precios de venta, gastos, cotizaciones) no tienen `UPDATE`: se agrega una fila con fecha.
+- Plataforma: Railway (ver 9.2).
 
 ---
 
-## 5.1 Pantallas y roles (arquitectura de información)
+## 5.1 Pantallas y roles
 
-| Sección | Para quién | Qué hace |
-|---|---|---|
-| Tablero | Alejandro | Costo actual en ARS y USD, variación desde la última cotización, margen teórico y real, alertas |
-| Productos | Todos | Buscador y filtros (categoría, tamaño, estado, alertas). Ficha con costo por etapa, historial, órdenes, precio de venta |
-| Cotizar | Cotizador | Paso a paso por etapa con valores sugeridos por la plantilla y total en vivo (calculado por la API) |
-| Materiales y precios | Cotizador | Catálogo con unidad y moneda, precios nuevos, dólar del día, recotización masiva con variación por etapa |
-| Fabricación | Cotizador, Alejandro | Órdenes por taller con cantidad, fecha y precio real, contra la cotización |
-| Talleres y proveedores | Cotizador | Agenda básica de activos |
-| Calidad de datos | Cotizador | Productos migrados con alertas para ir limpiándolos |
-| Configuración | Administrador | Etapas, categorías, plantillas, GG, margen, desperdicio por material |
+Menú del admin, en el orden del trabajo [V: `front/lib/nav.ts`]: **Panel del negocio** (costo-volumen) · **1 · Datos de base** (Dólar, Materiales y precios, Cueros, Proveedores, Modelos) · **2 · Productos y costos** (Productos: lista y ficha con cotizaciones y precio de venta) · **3 · Producción** (Lotes, Talleres) · **4 · Fin de mes** (Costos fijos) · **Consultas** (Grilla completa) · **Control** (Alertas) · **Herramientas** (Voz, Administración: usuarios, parámetros, modelos, catálogos, personas e impuestos). Además hay una pantalla **Corte** para el rol taller. Principio de UI: resumen primero (una línea por producto), detalle a demanda; no replicar el ir y venir del Excel.
 
-Roles: **cotizador** (Gerardo y quien lo reemplace), **dueño** (Alejandro: ve todo y aprueba cambios de GG o margen), **administrador** (nosotros). Principio de UI: resumen primero (una línea por producto), detalle a demanda; no replicar el ir y venir del Excel.
+Roles de la app (`user.role` de Better Auth) [V: `backend/src/backend/auth.py`, `front/lib/permissions.ts`, `odd/tasks/roles-admin-gerente-taller.md`]. Los endpoints niegan por defecto:
 
-Taxonomía: etapas fijas en este orden: material exterior, material interior, accesorios y detalles (herrajes, refuerzos, insumos de armado), refinamiento (corte, reb, prep; en la base los códigos son CORTE, REB y PREP y no se renombran a "rebajado" ni "preparación" hasta que Gerardo lo confirme), mano de obra, gastos generales, costo. Categorías inferidas de los nombres (lista abierta, a validar): cartera (unas 120), portadocumentos, portavalores, portarretratos, portafolio, carpeta, billetera, monedero, necesaire, bolso, tarjetero, sobre, morral, mochila, bandolera, riñonera, llavero, bandeja, organizador, alhajero, mantel o individual, cinturón y correa, otros. Tamaño: chico, mediano, grande.
+| Rol | Qué puede |
+|---|---|
+| `admin` | Todo: lecturas, escrituras y la administración de usuarios. Es el único que escribe. |
+| `gerente` | Solo lectura de Productos (lista y ficha), su rentabilidad y la Grilla. Es el rol por defecto de un usuario nuevo. |
+| `taller` | Corte, Cueros, Voz y la **lista** de productos con sus costos (no la ficha). Por voz confirma solo `registrar_precio_taller`. No ve lo pagado por m² de cuero. |
+
+Los nombres viejos se leen mapeados: `cotizador` → `admin`, `corte` → `taller`, `consulta` → `gerente`. Un usuario sin rol reconocido cae en `/sin-acceso`. SUPUESTO: qué persona real (Gerardo, Alejandro, quien reemplace a Gerardo) tiene qué rol no figura en el repo; el rol `taller` y su alcance están marcados "validar" en la spec de roles.
+
+Etapas, en este orden: CUERO, FORRO, FLEX, GOMA_EVA, HERRAJES, HILO_CEMENTO, CORTE, CONFECCION [V: `etapa` en `seed_v3.json`]. Las categorías son una lista abierta (16 sembradas) y el tamaño es CHICO, MEDIANO o GRANDE.
 
 ---
 
@@ -294,7 +315,7 @@ Taxonomía: etapas fijas en este orden: material exterior, material interior, ac
 
 Todos van como **parámetros configurables** con el valor que hoy usa el Excel, y un comentario `# SUPUESTO: validar con Gerardo`.
 
-| # | Tema | Valor de paridad | Pregunta pendiente |
+| # | Tema | Valor del Excel viejo | Pregunta pendiente |
 |---|---|---|---|
 | 1 | GG | 11 % sobre el subtotal | ¿Qué es? ¿Gastos generales? (no parece IVA) |
 | 2 | Ganancia 27 % | 0, no se usa | ¿Se usa para el precio de venta? ¿Dónde? |
@@ -311,60 +332,73 @@ Todos van como **parámetros configurables** con el valor que hoy usa el Excel, 
 | 13 | IVA en precios de compra | se toman como vienen en el Excel | ¿USD 24/m², $14.000 la plancha, etc. son con o sin IVA? Puede cambiar todos los costos. Si se discrimina, se agrega `incluye_iva` en `precio_material`. |
 | 14 | Presentación de compra | plancha | ¿Flex y tela se compran en plancha o en rollo? Cambia `presentacion` y `contenido_presentacion`. |
 
-La lista completa de preguntas, ordenada por sección y prioridad, está en `preguntas-gerardo-robert.md`.
+La lista completa de preguntas, ordenada por sección y prioridad, estaba en `preguntas-gerardo-robert.md`, que no está en el repo [V: no figura en `docs/`]; pedírsela a Agustin.
+
+**Cómo quedó cada uno en el modelo v3** (revisión 2026-11-10). Las preguntas siguen abiertas con Gerardo; lo de abajo es lo que el código hace hoy mientras tanto:
+- **1 GG:** eliminado del costo por decisión del modelo v3; el 11 % queda solo como `GG_PCT_EXCEL`, referencia. La pregunta ya no bloquea nada [V: `odd/tasks/app-casa-lopez-v3.md` S1; `seed_v3.json`].
+- **2 Ganancia 27 %:** no existe un parámetro de ganancia. El precio de venta es una tabla propia (`precio_venta`, lo fija una persona) y la rentabilidad sale de costo-volumen (margen de contribución y punto de equilibrio) [V: `models.py`, `costeo.py`]. De dónde salía el 27 % sigue sin respuesta.
+- **3 Desperdicio:** `FACTOR_DESPERDICIO_DEFAULT` = 0 y `material.desperdicio_manual` por material. Sigue abierto si el consumo ya lo trae.
+- **4 Consumos:** los de `modelo`, con `origen_de_los_consumos` (`EXCEL`, `MOLDE`, `ESTIMADO`, `MEDIDO`) y la marca `validado` (ninguno validado en el seed).
+- **5 Lagarto / yacaré:** `cotizable = false`, sin precio sembrado.
+- **6, 7 y 8:** HILO_CEMENTO se separó de HERRAJES; CORTE vale 0 (sueldo en costos fijos); CONFECCION une REB, PREP y M.O. (ver 3.5.4). Los códigos REB y PREP ya no existen como etapas. Qué eran exactamente sigue abierto.
+- **9 Código de modelo:** `modelo.codigo` (`MOD-nnnn`) y `producto.codigo` (`PRD-nnnn`) son claves internas; el código del Excel es `modelo_excel_viejo`. Sigue sin saberse si es el del ERP de Alejandro.
+- **10 Recotización:** la app marca RECOTIZAR si el costo se desvía más de `TOLERANCIA_DESVIO_PCT` (0,05) o el dólar se movió más de `VARIACION_DOLAR_RECOTIZAR_PCT` (0,10). Ambos están sembrados como "Propuesta, a confirmar con Robert" (SUPUESTO).
+- **11 Impuestos:** existe la tabla `impuesto` (IVA 21 %, no es costo: supuesto del DER, a validar con el contador; IIBB y Ganancias sin alícuota) y `ARREGLOS_PCT` = 0.
+- **12 Dólar:** `tipo_cambio.tipo` (`VENDEDOR` o `COMPRADOR`); el botón y `backend.actualizar_dolar` cargan el vendedor del BNA (SUPUESTO: validar con Gerardo, ver `docs/dolar-bna.md`). El cron todavía no está configurado.
+- **13 IVA en precios de compra:** existe `precio_material.iva_incluido` (por defecto `false`); sigue sin saberse si los precios del Excel lo incluyen.
+- **14 Presentación de compra:** el modelo v3 no guarda plancha ni rollo; solo precio por unidad de consumo.
 
 Regla: si una tarea del kanban necesita una de estas respuestas, se implementa con el parámetro y se deja anotado en el work order que falta validar. **No se "elige" un valor nuevo.**
 
 ---
 
-## 7. Importador del Excel
+## 7. Datos iniciales e importadores
 
-- Script en Python (`openpyxl`) que lee el Excel original y genera los datos iniciales.
-- Lee **valores y fórmulas** (dos pasadas: `data_only=True` y `False`) para saber qué celdas son fórmula y cuáles están tipeadas.
-- Sigue las reglas de migración de `der.md`, sección 5. En resumen:
-- Importa materiales y precios en su moneda real (cueros 1, 2, 6 y potro en USD por m²; grano largo ARS 34.040 por m² con marca `dolar_congelado`; tela, flex, goma y cartón en ARS por m² con la plancha como presentación; lagarto y yacaré en USD por cm, `cotizable = false`), productos (bloque central + variantes, deduplicando necesaires) y una cotización por producto con dólar 1545 y **fecha 2026-09-01** (Rouez y Acropol, 2026-09-03). Los consumos van como líneas de esa cotización, **no** como `plantilla_linea` (es fase 2).
-- Herrajes: una línea sin material, cantidad 1, unidad `global`, precio en USD. Corte, reb, prep y M.O.: una línea cada una, cantidad 1, unidad `producto`, en ARS.
-- **Un 0 no crea línea; una celda vacía donde debería haber dato crea la línea con `cantidad` NULL** y una marca.
-- Filas con error: producto creado, cotización en `borrador` con lo que se sabe y marca. Fila 242: líneas con el precio tipeado en ARS, sin `precio_material_id`, marca `dolar_congelado`.
-- Variantes "/n": `producto_base_id` solo si hay exactamente un producto con ese código base; si hay dos (514) o ninguno (1/65, 149/2, 500/1, 553/1, 620/1), queda NULL con marca.
-- Columna E → `dato_origen.fecha_costeo_excel`; AI → `dato_origen.ai_excel`.
-- Cada fila problemática entra con su `marca_calidad` ("error en origen", "costo tipeado", "modelo duplicado", "sin fecha", "multi-cuero", "costeo por varias unidades"); no se descarta nada en silencio.
-- Lee también los **comentarios de celda** (columna AE y R140) y las columnas B, D y E, y los guarda como notas (los comentarios, como historia, no como precios).
-- Lee G como texto, descarta las filas 348 a 350 y deduplica la tabla de Necesaires (374 a 381) contra el bloque central.
-- Recalcula siempre el costo; AI del Excel queda solo como comparación.
-- Tipos de `marca_calidad` (lista de `der.md`): error_origen, costo_tipeado, dolar_congelado (242, H11), sin_consumo_cuero (38, 234), costeo_parcial (48, 111), unidad_incompatible, modelo_repetido, variante_sin_base, base_ambigua, costeo_varias_unidades, multi_cuero, costo_alternativo_sin_rotulo (AJ/AK de 180, 244, 245, 301, 312), sin_tipo_cuero.
-- Proveedores y fechas de insumos: Rouez (flex) y Acropol (goma eva) con fecha 03/09/2026; el resto con 01/09/2026, fuente "manual Excel".
-- Al terminar imprime un resumen: cuántos productos, cuántos sanos, cuántos marcados y por qué.
-- Genera un fixture `tests/fixtures/excel_paridad.json` con, por fila sana: entradas y el costo ARS y USD que dio el Excel.
+El importador del Excel al DER v1 (cotización por producto, `dato_origen`, fixture de paridad) **no existe en el repo** [V: no hay script ni `tests/fixtures/excel_paridad.json`]. Lo que hay hoy:
+
+1. **Semillas v3** (`backend/scripts/generate_seed_v3.py`). Lee `Plantilla Costos Casa Lopez v4.1 (trabajo).xlsx` y escribe `backend/migrations/seed_data/seed_v3.json`, que se commitea. La migración `0004_semillas_v3` carga ese JSON y **nunca lee el xlsx**. Se corre aislado y sin confiar en el archivo: `uv run --with openpyxl python -I backend/scripts/generate_seed_v3.py "<plantilla.xlsx>" backend/migrations/seed_data/seed_v3.json`. Contenido: 8 etapas, 16 categorías, 7 personas, 3 talleres (de ejemplo), 3 impuestos, 8 parámetros, 13 materiales, 11 precios (fechas 2026-09-01 y 2026-09-03), 1 dólar (1545, `EXCEL_VIEJO`, 2026-09-01), 325 modelos y 15 gastos fijos [V: `seed_v3.json`]. Montos y cantidades van como string y se cargan como `Decimal`.
+2. **Productos desde el Excel** (`backend/scripts/importar_productos.py`, guía completa en `docs/importar-productos.md`). Pasa la lista de la hoja `Marroquineria1` (filas 22 a 347) a `producto`: solo productos, **no** precios, costos ni cotizaciones. Enlaza cada fila con su `modelo` por `fila_excel_viejo`, deja nombre, cuero y color, y marca con `REVISAR` (en la `nota`) lo dudoso: error en origen, sin nombre, lagarto o yacaré, sin tipo de cuero, modelo repetido, posible kit. Pasa por `servicios.crear_producto` y se puede correr dos veces sin duplicar. Las columnas sin encabezado (B, D, E) y los comentarios de celda de AE van a la `nota` como texto, **nunca como precio vigente**.
+   - **Guardas:** por defecto es un *dry-run*. Para escribir hacen falta `--entorno staging|production` **y** `--confirmar`, y `DATABASE_URL`. Si existe `RAILWAY_ENVIRONMENT_NAME` tiene que ser igual a `--entorno`; sin esa variable (corrida local) solo se acepta `staging`. Nunca imprime la URL ni las credenciales [V: `importar_productos.py`, `docs/importar-productos.md`].
+   - En production solo se escribe desde dentro del contenedor de production (`railway ssh`), con backup verificado y autorización (ver 9.2).
+3. **Datos de ejemplo** (`backend/scripts/cargar_ejemplo.py`). Filas sintéticas con la palabra `EJEMPLO` en la nota, **solo staging** (rechaza cualquier otro entorno) [V: `cargar_ejemplo.py`, función `main`].
+
+Las reglas de importación de la v5 (marcas `dolar_congelado`, `costo_tipeado`, cotización en `borrador`, deduplicar Necesaires, etc.) eran para el DER v1 y no están implementadas. Las trampas de la sección 4 siguen sirviendo para entender por qué una fila sale marcada.
 
 ---
 
-## 8. Prueba de aceptación: paridad
+## 8. Pruebas de aceptación (la paridad se descartó)
 
-- Test automático (`pytest`) que corre el motor sobre cada fila del fixture y compara el costo ARS y USD contra el Excel con tolerancia de 0,01.
-- **Filas sanas** = el costo USD (columna AI) sale de una fórmula y no da error. Mi reconteo: 296 en el bloque central, más las variantes y necesaires con fórmula; el informe habla de 315. El importador reporta el número exacto y ese número queda fijo en el test.
-- Casos de prueba fijos, ya verificados con el SQL borrador en Postgres 16:
-  - Fila 22 (Portafolio Simple Ch.): **43.024,27 ARS = 27,85 USD**.
-  - Fila 22 con dólar 1.700: **44.744,77 ARS = 26,32 USD** (solo suben cuero y herrajes).
-  - Fila 85 (Cartera Bugatti portafolio, carpincho y forro potro en USD): **201.003,24 ARS = 130,10 USD**.
-- Si la paridad no da, se busca la causa en el Excel antes de tocar el motor. Nunca se ajusta el test para que pase.
+- **Decisión:** el modelo v3 se hace **sin prueba de paridad con el Excel**; el usuario la descartó el 2026-10-28 y pidió que solo funcione la lógica [V: `odd/tasks/app-casa-lopez-v3.md`, T2 y L6]. No hay fixture del Excel ni test de paridad en el repo.
+- **Lo que hay en cambio:** un test por regla del motor y de la receta (`backend/tests/test_costeo.py`, `test_receta.py`, `test_servicios.py`, `test_roles.py`, etc.). Se corren con `uv run --directory backend pytest -q` y, para el frontend, `cd front && corepack pnpm lint && corepack pnpm build`.
+- **Tests de integración:** necesitan una Postgres descartable local en `TEST_DATABASE_URL`; sin esa variable se saltean [V: `backend/tests/conftest.py`]. El CI de GitHub Actions hoy corre el backend sin Postgres [V: `.github/workflows/ci.yml`]; agregarlo es la spec S4 de `odd/tasks/produccion-listo.md`.
+- Los números del Excel (fila 22: 43.024,27 ARS = 27,85 USD, etc., sección 3) quedan como ejemplos históricos. Si algún día se quiere volver a comparar contra el Excel, es una decisión de Robert y Agustin, no del agente.
+- Nunca se ajusta un test para que pase: si falla, se busca la causa.
 
 ---
 
-## 9. Plan del sprint (orden de trabajo)
+## 9. Estado del proyecto y producción
 
-1. **DER** (2 días, revisarlo con Gerardo).
-2. **Importador** (2 días).
-3. **Motor + paridad** (1 día; el código es corto, el tiempo se va en igualar al Excel).
-4. **API** FastAPI (2-3 días).
-5. **Pantallas** Next.js: lista y ficha de producto (2), formulario de cotizar con recálculo en vivo y validaciones (2).
-6. **Precios y dólar** con recotización (2-3).
-7. **Órdenes de fabricación y precio de venta** (2), **tablero y calidad** (3-4): versión mínima o sprint 2.
-8. **Prueba con Gerardo** (2-3).
+### 9.1 Dónde estamos (según `odd/tasks/*.md` y `git log`)
+El plan original (DER, importador, motor con paridad, API, pantallas) quedó superado por el modelo v3. Hoy [V: `odd/tasks/app-casa-lopez-v3.md`, `git log --oneline`]:
+- **Hecho en código:** DER v3 y migraciones 0003 a 0007; motor y recetas v3; API con login fail-closed y roles; frontend (Better Auth, módulos de la sección 5.1, panel admin); costo-volumen y precio de venta; fabricación, talleres y costos fijos con correcciones; inventario de cuero; proveedores con facturas y OCR; carga por voz; copia a Google Sheet; dólar del BNA (botón y comando); importador de productos con guardas.
+- **Pendiente o sin probar con servicios reales:** conectar el Google Sheet real y probar voz y OCR con modelo real (a 2026-10-28 y según `docs/voz.md` y `docs/sheets-sync.md`; SUPUESTO: puede haber cambiado); cron del dólar; activar backups en Railway; las respuestas de Gerardo (sección 6).
+- **En curso:** cierre de la auditoría de producción en `odd/tasks/produccion-listo.md` (healthcheck real, cerrar `/db/estado` y `/api/demo/*`, cabeceras de seguridad, CI con Postgres, filtros de productos). Mirar ese archivo para el estado actual.
+- **Más adelante (no ahora):** integración con el ERP, sugerir cuándo producir según demanda y costo, detalle de herrajes.
 
-Total estimado 18-24 días contra 15 disponibles: órdenes y tablero quedan mínimos. Switch gradual: lo nuevo se cotiza en la app; lo viejo solo registra venta.
+### 9.2 Producción y despliegue
+Detalle y comandos: `docs/produccion.md` (promoción, rollback y backups), `docs/wo2-staging.md` (aplicar migraciones a mano) y el `README.md`. Sin valores secretos en este archivo: las URLs y claves se piden a Railway o a Agustin.
 
-**Más adelante (no ahora):** proveedores completos (hay un Excel aparte, con datos desde 2004), scraping del dólar, integración con el ERP, sugerir cuándo producir según demanda y costo.
+- **Ambientes [V: `docs/produccion.md`, `README.md`, `odd/tasks/railway-staging-deploy.md`]:** proyecto Railway `casa-lopez` con `staging` y `production`; servicios `backend` (raíz `/backend`), `frontend` (raíz `/front`) y un servicio Postgres.
+- **Staging** despliega solo al llegar un commit a `main`, y solo si el CI de GitHub Actions pasa (Railway "Wait for CI" en los triggers de staging). El CI no bloquea el commit: un commit roto puede entrar a `main`, pero no se despliega [V: `odd/tasks/ci-gated-staging-deploy.md`, `README.md`].
+- **Production es manual** y no se activa el auto-deploy. Se despliega un SHA que ya pasó por staging con `railway redeploy -e production -s <servicio> --commit <SHA> -y` [V: comando tal como figura en `odd/tasks/produccion-listo.md`; `docs/produccion.md` usa además `--from-source`].
+- **Migraciones en el deploy:** el pre-deploy corre `uv run alembic upgrade head`; está en `backend/railway.toml` y, según el equipo, también configurado en el servicio del dashboard (SUPUESTO: no se puede verificar desde el repo; `docs/produccion.md` sección 0 explica por qué conviene: Railway deja de leer `railway.toml` el 2026-12-01). Si la migración falla, el deploy no sigue. El healthcheck es `/api/health` (120 s) [V: `backend/railway.toml`, `backend/tests/test_railway_config.py`].
+- **Desde dónde se corre Railway:** los comandos `railway ...` se corren desde el **checkout principal**, el único vinculado al proyecto; los worktrees nuevos no lo están [V: lo dice `odd/tasks/produccion-listo.md`; no se probó en un worktree].
+- **Operar dentro del contenedor:** `railway ssh -e <ambiente> -s backend`, y lo primero es `test "$RAILWAY_ENVIRONMENT_NAME" = production || exit 1` (o `staging`) [V: `docs/produccion.md`].
+- **Nada en production sin backup previo y sin autorización explícita de Agustin:** ni migrar a mano, ni importar, ni `alembic downgrade` [V: `docs/produccion.md` secciones 3 y 7]. Los backups de Postgres se activan en el dashboard (servicio Postgres, pestaña Backups; el CLI no tiene comandos para eso); propuesta: Diario + Semanal y uno manual antes de cada promoción. **Estado: sin confirmar que estén activados.**
+- **Guardas de los scripts:** `importar_productos.py` (`--entorno` + `--confirmar`, ver sección 7), `cargar_ejemplo.py` y `verificar_db` solo corren en staging o local [V: los tres scripts]. Los scripts de staging nunca se apuntan a production.
+- **Roles en la app:** `admin`, `gerente` y `taller` (sección 5.1). El `taller` ve la lista de productos con costos, no la ficha.
+- **Estado de production:** SUPUESTO. El equipo dice que production corre el modelo v3; `docs/produccion.md` (2026-11-10) daba la base en `0004_semillas_v3`, informado por Agustin y sin verificar, y el `README.md` decía que todavía no había un deploy exitoso. Antes de apoyarse en esto: `railway deployment list -e production -s backend` y `alembic current` dentro del contenedor.
+- **Pendientes de la auditoría:** healthcheck real que mire la base, `/db/estado` y `/api/demo/*` públicos, cabeceras de seguridad, CI con Postgres, rotar la credencial de admin de staging, observabilidad, cron del dólar y pasar `railway.toml` a Infrastructure as Code (`docs/produccion.md` sección 8; el estado vivo está en `odd/tasks/produccion-listo.md`).
 
 ---
 
@@ -381,11 +415,11 @@ Total estimado 18-24 días contra 15 disponibles: órdenes y tablero quedan mín
 
 ## 11. Checklist antes de cada PR
 
-- [ ] ¿Toqué el motor? Corrí la prueba de paridad y pasa.
+- [ ] ¿Toqué el motor o la receta? Corrí `uv run --directory backend pytest -q` y pasa (y agregué el test de la regla nueva).
 - [ ] ¿Algún monto pasó por `float`? (No debería.)
 - [ ] ¿Agregué una regla de negocio nueva? Está como parámetro y marcada `SUPUESTO`.
-- [ ] ¿Modifiqué una cotización guardada? (No se puede: nueva versión.)
-- [ ] ¿Cambié el DER? Hay migración de Alembic.
+- [ ] ¿Modifiqué una cotización guardada? (No se puede: se agrega otra.)
+- [ ] ¿Cambié el DER? Hay migración de Alembic (con `downgrade`) y se actualizó `docs/der-v3.md`. ¿La migración va a production? Revisar `docs/produccion.md` antes.
 - [ ] ¿El PR explica en simple qué cambia para el usuario?
 
 ---
@@ -395,27 +429,29 @@ Total estimado 18-24 días contra 15 disponibles: órdenes y tablero quedan mín
 Listas para cargar como memorias persistentes (una por línea o bloque).
 
 ### Decisiones
-- `decision`: Stack Next.js + FastAPI + Postgres. LLM solo para clasificar o explicar, nunca para calcular costos.
-- `decision`: El motor de costeo replica el Excel: subtotal = cuero + forro + herrajes + flex + goma + corte + reb + prep + M.O.; costo = subtotal × 1,11; USD = costo / dólar.
-- `decision`: Paridad con el Excel primero (tolerancia 0,01 ARS en filas sanas); mejoras de criterio después, como parámetros.
+- `decision`: Stack Next.js 16 + Better Auth, FastAPI + SQLAlchemy + Alembic, Postgres, en Railway. LLM solo para interpretar voz y leer facturas, nunca para calcular costos.
+- `decision` (histórico, reemplazada): El motor replicaba el Excel con GG de 11 %. Vigente: sin GG; ocho etapas; total = subtotal + kit + IVA (si es costo) + arreglos; USD = total / dólar de la fecha (ver 3.5.4).
+- `decision`: Sin prueba de paridad con el Excel (2026-10-28): el motor se prueba regla por regla. Mejoras como parámetros.
 - `decision`: Dinero con Decimal y NUMERIC. Nunca float. El frontend no calcula plata.
-- `decision`: Cotizaciones inmutables y versionadas; una vigente por producto; guardan foto de dólar, GG y precios usados.
+- `decision`: Cotizaciones inmutables: una por producto + fecha + tipo (INICIAL, RECOTIZACION, FINAL); guardan dólar, un monto por etapa y totales. No hay marca "vigente".
 - `decision`: Necesaires no son una tabla aparte: es una categoría de producto.
 - `decision`: Consumo del Excel = consumo estándar por producto; productos nuevos se sugieren con la mediana de su categoría y tamaño, confirmada por una persona.
 - `decision`: Activo/archivado de un producto lo decide una persona.
 - `decision`: Ignorar la zona AJ373 del Excel.
-- `decision`: Orden del sprint: DER, importador, motor, API, pantallas. Órdenes y tablero mínimos o al sprint 2.
-- `decision`: DER v1 (2026-10-12) es la fuente de verdad: docs/der.md. Fase 1 = 11 tablas (categoria, producto, etapa, material, proveedor, precio_material, tipo_cambio, parametro, cotizacion, cotizacion_linea, marca_calidad). Fase 2 = taller, orden_fabricacion, precio_venta, venta, plantilla_linea.
-- `decision`: producto.codigo_modelo es texto y no es único; codigo_erp nullable y único; fila_excel única. La identidad es producto.id.
-- `decision`: material no tiene proveedor ni moneda; ambos viven en precio_material.
-- `decision`: En cotizacion_linea, cantidad NULL = dato faltante; un 0 del Excel no crea línea.
-- `decision`: Cotizaciones migradas con fecha 2026-09-01; la columna E va a dato_origen.
-- `decision`: Tablas en el schema "costos"; Better Auth en "public". Railway staging.
-- `decision`: Etapas REB y PREP no se renombran hasta que Gerardo diga qué son.
+- `decision` (histórico): Orden del sprint inicial: DER, importador, motor, API, pantallas.
+- `decision`: El DER v3 (plantilla v4.1, desde 2026-10-27) es la fuente de verdad: `models.py` + `docs/der-v3.md`; 28 tablas en `costos`, migraciones 0001 a 0007. El DER v1 (`docs/der.md`) es histórico.
+- `decision`: `codigo` (MOD-, PRD-, etc.) es la clave de negocio única e inmutable; el código de modelo del Excel es `modelo.modelo_excel_viejo` y no es único.
+- `decision`: precio, moneda, unidad e `iva_incluido` viven en `precio_material`; `material` solo dice etapa, unidad de consumo y si es cotizable.
+- `decision`: En `modelo`, un consumo NULL es dato faltante y un 0 significa "no lleva".
+- `decision`: El dólar y los precios iniciales del seed tienen fecha 2026-09-01 (Rouez y Acropol, 2026-09-03).
+- `decision`: Tablas en el schema "costos"; Better Auth en "public". Railway: staging se despliega solo desde main con CI; production es manual con backup y autorización.
+- `decision` (histórico): REB y PREP no se renombraban hasta que Gerardo dijera qué son. En v3 ya no son etapas: se unieron en CONFECCION.
+- `decision`: Roles `admin`, `gerente` y `taller` (2026-11-05); el `taller` ve la lista de productos con costos pero no la ficha.
+- `decision`: Los comandos de Railway se corren desde el checkout principal; production se despliega con `railway redeploy -e production -s <servicio> --commit <SHA> -y`.
 
 ### Supuestos abiertos (validar con Gerardo antes de cambiarlos)
-- `supuesto`: GG 11 % probablemente es Gastos Generales, no IVA.
-- `supuesto`: La ganancia 27 % vale 0 y no se usa; el Excel termina en costo.
+- `supuesto` (histórico): GG 11 % probablemente era Gastos Generales, no IVA. Se eliminó del costo en el modelo v3; queda como referencia `GG_PCT_EXCEL`.
+- `supuesto`: La ganancia 27 % valía 0 y no se usaba; el Excel terminaba en costo. En v3 el precio de venta es la tabla `precio_venta`.
 - `supuesto`: El desperdicio del 30 % no se aplica; ya está dentro de los consumos (20-28 %).
 - `supuesto`: Lagarto y yacaré tienen precio en USD por cm; bloqueados hasta definir la unidad.
 - `supuesto`: M.O. real la cobra el taller por producto/lote; el artesano cotiza en horas. Hoy se usa "productos comparables" (subjetivo).
@@ -423,22 +459,22 @@ Listas para cargar como memorias persistentes (una por línea o bloque).
 - `supuesto`: No sabemos qué son exactamente corte, reb y prep ni quién da el dato.
 
 ### Trampas
-- `trampa`: Grano largo (H11) está tipeado 34040, no 23 × dólar. Usarlo tal cual para la paridad.
+- `trampa`: Grano largo (H11) está tipeado 34040, no 23 × dólar (Excel viejo). El seed no trae un precio para ese material como tal.
 - `trampa`: Flex, goma EVA y tela de forro son precios en ARS; el paso por USD del Excel se cancela.
 - `trampa`: El dólar solo mueve cuero, potro y herrajes; lo que está en pesos no se actualiza solo.
 - `trampa`: El CHOOSE del cuero tiene una 7ª opción que apunta al Potro. No existe un cuero 7.
 - `trampa`: El GG devuelve el texto "consumo" si el subtotal es ≤ 1: en la app es error de validación.
-- `trampa`: 11 filas con error, 13 con costo USD tipeado, fila 242 pegada como valores: se importan marcadas y no entran en la paridad.
-- `trampa`: Test de recotización: fila 22 con dólar 1700 da 44744,77 ARS = 26,32 USD (solo suben cuero y herrajes).
+- `trampa`: 11 filas con error, 13 con costo USD tipeado, fila 242 pegada como valores (Excel viejo): el importador de productos las deja con marca `REVISAR`.
+- `trampa` (histórico): Caso de paridad descartado: fila 22 con dólar 1700 daba 44744,77 ARS = 26,32 USD (solo suben cuero y herrajes).
 - `trampa`: Los ids de cuero y forro se pisan en el Excel (Estándar y Potro son "1"); en la base cada material tiene id único.
-- `trampa`: Hay productos de varios cueros: la cotización usa líneas genéricas por etapa, no columnas fijas.
+- `trampa`: Hay productos de varios cueros: en v3 el segundo cuero va como línea `EXTRA` (`receta_linea`).
 - `trampa`: Los comentarios de celda de la columna AE son la única traza de costo real del taller; importarlos.
 - `baseline`: Gerardo cotiza un producto nuevo copiando uno parecido y ajustando (nombres como "como 1660 pero…", "514+chica").
 - `baseline`: Consumo = superficie × 2 caras + 20-28 % de desperdicio, muchas veces × 1,2. Forro ≈ 0,7 del cuero.
 - `baseline`: M.O. tiende a subir con el tamaño (medianas 6, 8, 12 y 20 mil) pero tiene 36 valores distintos: se importa por fila, no hay escalones. Reb y prep fijos en 1.500; corte por producto (1.500 a 4.000, casi siempre 3.000).
 - `baseline`: Herrajes en USD "a criterio"; USD 2 es el piso (hilo y cemento); los actualiza subiendo 10 % sobre el valor viejo (× 1,1, × 1,21, × 1,331).
 - `baseline`: Valida al taller por proporción con un producto parecido ("menos de 85 si la otra costó 100"). No replicar.
-- `trampa`: Test base: fila 22, Portafolio Simple Ch., costo 43024,27 ARS = 27,85 USD con dólar 1545.
+- `trampa` (histórico): Caso de paridad descartado: fila 22, Portafolio Simple Ch., costo 43024,27 ARS = 27,85 USD con dólar 1545 y GG de 11 %.
 
 ### Personas y forma de trabajo
 - `contexto`: Gerardo arma los costos y se va pronto; es la fuente de verdad. Alejandro (dueño) quiere margen real y todo masticado.

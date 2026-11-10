@@ -20,8 +20,7 @@ uv run --directory backend fastapi dev src/backend/main.py --host 127.0.0.1 --po
 
 The API provides:
 
-- `GET http://localhost:8000/api/health`
-- `GET http://localhost:8000/api/demo/resources`
+- `GET http://localhost:8000/api/health` (answers 200 only when the database responds, 503 otherwise)
 
 Start the frontend in another terminal:
 
@@ -32,7 +31,7 @@ corepack pnpm dev
 
 Open <http://localhost:3000>. The frontend reads the API server-side from `API_URL` (default `http://127.0.0.1:8000` outside production); the browser never calls the API directly. See [Authentication](#authentication-and-environment-variables) for the variables the app needs to sign in.
 
-The API includes PostgreSQL connection/session support through `DATABASE_URL`. See [backend configuration and the internal connection check](backend/README.md#postgresql-connection). Demo endpoints still return fictional data; no DER tables or migrations have been added.
+The API includes PostgreSQL connection/session support through `DATABASE_URL`. See [backend configuration and the internal connection check](backend/README.md#postgresql-connection). The schema (DER v3) is created by the Alembic migrations in `backend/migrations`; see `AGENTS.md` for the current model.
 
 ## Authentication and environment variables
 
@@ -61,7 +60,7 @@ SEED_USER_PASSWORD='choose-a-password' corepack pnpm seed:user   # creates conta
 
 `auth:migrate` applies changes to whatever database `DATABASE_URL` points to, so check that variable before running it against a shared environment. The backend verifier forwards the `Cookie` (and `Authorization`) header to `AUTH_VERIFY_URL` with a 3 second timeout and answers `401 No autenticado.` on any failure.
 
-Roles (stored in `user.role`): `admin` (everything, plus the `/admin` area and user management), `cotizador` (quotes and loads data; may also create models and mark them as validated) and `consulta` (read only). New users get `consulta`; sign-up is disabled, an admin creates users in `/admin/usuarios`.
+Roles (stored in `user.role`): `admin` (everything, plus the `/admin` area and user management), `gerente` (reads products, quotes and costs) and `taller` (a workshop: sees the products list with costs, cuts and confirms its own price by voice). The legacy names `cotizador`, `consulta` and `corte` are still read and mapped to `admin`, `gerente` and `taller`. New users get the default role defined in `front/lib/permissions.ts`; sign-up is disabled, an admin creates users in `/admin/usuarios`.
 
 The admin area (`/admin/*`: users, parameters, models, catalogs, people, taxes) is `admin` only at three levels: `proxy.ts` redirects everybody else, every server action re-checks the role, and the API answers 403 to the admin-only writes (see the table in [`backend/README.md`](backend/README.md#costing-api-t3b)). Users are never deleted, only deactivated; nobody can demote or deactivate themselves, and the last active admin can never lose the role (enforced inside Better Auth, so a direct call to `/api/auth/admin/*` is refused too).
 
@@ -79,6 +78,6 @@ Push tested changes directly to `main`; no issue or pull request is required. Gi
 - Frontend: <https://frontend-staging-8dc6.up.railway.app/>
 - API health check: <https://backend-staging-566d.up.railway.app/api/health>
 
-Verify the change in staging before promoting it. Production does **not** deploy automatically; promote only after explicit approval. The current production services have not had a successful deployment yet; after staging is verified, deploy the same tested commit to production and smoke-test both URLs. Railway variables and domains are already configured separately for each environment. Demo endpoints work without a database; PostgreSQL access uses the backend's `DATABASE_URL` reference.
+Verify the change in staging before promoting it. Production does **not** deploy automatically; promote only after explicit approval. After staging is verified, deploy the same tested commit to production by hand (`railway redeploy -e production -s <service> --commit <SHA> -y`, run from the main checkout) once a database backup is verified, and smoke-test both URLs. See [`docs/produccion.md`](docs/produccion.md) for the checklist, rollback and backups. Railway variables and domains are already configured separately for each environment. Demo endpoints work without a database; PostgreSQL access uses the backend's `DATABASE_URL` reference.
 
 `main` remains directly writable without PRs; the checks gate Railway's staging deployment, not the GitHub commit itself. Do not enable Railway production auto-deploy.
