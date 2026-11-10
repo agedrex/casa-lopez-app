@@ -236,25 +236,138 @@ def sin_base(monkeypatch):
 
 
 @pytest.mark.parametrize("argumentos", [
-    ["--confirmar"], ["--entorno", "staging"], ["--entorno", "produccion", "--confirmar"],
-    ["--entorno", "local", "--confirmar"], ["--entorno", "produccion"],
+    ["--confirmar"], ["--entorno", "staging"], ["--entorno", "production"],
+    ["--entorno", "produccion", "--confirmar"], ["--entorno", "local", "--confirmar"], ["--entorno", "produccion"],
 ])
 def test_it_refuses_to_write_without_both_flags(argumentos, sin_base, capsys):
     assert ip.main(["libro.xlsx", *argumentos]) == 2
     salida = capsys.readouterr()
-    assert "staging" in salida.err and "--confirmar" in salida.err
+    assert "--entorno" in salida.err and "--confirmar" in salida.err
     assert salida.out == ""
 
 
-def test_it_refuses_a_railway_environment_that_is_not_staging(sin_base, monkeypatch, capsys):
-    monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", "production-secreto")
-    assert ip.main(["libro.xlsx", "--entorno", "staging", "--confirmar"]) == 2
-    assert "production-secreto" not in capsys.readouterr().err  # arbitrary environment text is never echoed
+@pytest.mark.parametrize("entorno", ["Staging", "STAGING", "Production", "PRODUCTION", "prod", "produccion", "", " production", "staging ", "local"])
+def test_only_the_exact_names_staging_and_production_are_accepted(entorno, sin_base, monkeypatch, capsys):
+    monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", "production")
+    assert ip.main(["libro.xlsx", "--entorno", entorno, "--confirmar"]) == 2
+    salida = capsys.readouterr()
+    assert salida.out == "" and "No se importó nada" in salida.err
+
+
+@pytest.mark.parametrize("entorno", ["staging", "production"])
+def test_the_same_environment_in_the_flag_and_in_railway_passes_the_guard(entorno, sin_base, monkeypatch, capsys):
+    monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", entorno)
+    # the guard let it through: it stops later, for lack of DATABASE_URL, before reading the workbook
+    assert ip.main(["libro.xlsx", "--entorno", entorno, "--confirmar"]) == 1
+    assert "DATABASE_URL" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("flag,railway", [("production", "staging"), ("staging", "production")])
+def test_a_flag_that_does_not_match_the_railway_environment_is_always_refused(flag, railway, sin_base, monkeypatch, capsys):
+    monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", railway)
+    monkeypatch.setenv("DATABASE_URL", "postgresql://usuario:clave-secreta@host/base")
+    assert ip.main(["libro.xlsx", "--entorno", flag, "--confirmar"]) == 2
+    salida = capsys.readouterr()
+    assert salida.out == "" and "clave-secreta" not in salida.err and "postgresql" not in salida.err
+
+
+@pytest.mark.parametrize("railway", ["production-secreto", "", "Production", "zzz-secreto", "staging-2"])
+@pytest.mark.parametrize("flag", ["staging", "production"])
+def test_an_unexpected_railway_environment_is_refused_without_echoing_it(flag, railway, sin_base, monkeypatch, capsys):
+    monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", railway)
+    assert ip.main(["libro.xlsx", "--entorno", flag, "--confirmar"]) == 2
+    err = capsys.readouterr().err
+    assert err.startswith("No se importó nada")
+    assert railway == "" or railway not in err  # arbitrary environment text is never echoed
+
+
+def test_production_is_refused_outside_the_production_container(sin_base, capsys):
+    assert ip.main(["libro.xlsx", "--entorno", "production", "--confirmar"]) == 2
+    salida = capsys.readouterr()
+    assert salida.out == "" and "production" in salida.err  # it names the flag value, that is all
+
+
+def test_staging_without_the_railway_variable_is_still_allowed_locally(sin_base, capsys):
+    assert ip.main(["libro.xlsx", "--entorno", "staging", "--confirmar"]) == 1
+    assert "DATABASE_URL" in capsys.readouterr().err
 
 
 def test_writing_without_database_url_stops_before_reading_anything(sin_base, capsys):
     assert ip.main(["libro.xlsx", "--entorno", "staging", "--confirmar"]) == 1
     assert "DATABASE_URL" in capsys.readouterr().err
+
+
+class _Sesion:
+    def __init__(self, motor):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+    def rollback(self):
+        pass
+
+
+@pytest.fixture
+def con_base_falsa(sin_base, monkeypatch):
+    """A fake database: records what `importar` is asked to do, never opens a connection."""
+    llamadas = []
+
+    class Motor:
+        def dispose(self):
+            llamadas.append("dispose")
+
+    def importar_falso(session, plan, escribir):
+        llamadas.append(("importar", escribir))
+        return ip.Resumen(plan, True, escribir, [], [], [], [], [])
+
+    monkeypatch.setattr(ip, "create_database_engine", lambda: Motor())
+    monkeypatch.setattr(ip, "Session", _Sesion)
+    monkeypatch.setattr(ip, "importar", importar_falso)
+    monkeypatch.setattr(ip, "get_database_url", lambda: "postgresql://usuario:clave-secreta@host/base")
+    monkeypatch.setattr(ip, "leer_excel", lambda ruta: [fila()])
+    monkeypatch.setenv("DATABASE_URL", "postgresql://usuario:clave-secreta@host/base")
+    return llamadas
+
+
+def test_staging_keeps_writing_only_with_both_flags_and_dry_run_never_writes(con_base_falsa, monkeypatch, capsys):
+    monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", "staging")
+    assert ip.main(["libro.xlsx"]) == 0
+    assert ("importar", False) in con_base_falsa
+    assert "No se escribió nada (dry-run)." in capsys.readouterr().out
+    con_base_falsa.clear()
+    assert ip.main(["libro.xlsx", "--entorno", "staging", "--confirmar"]) == 0
+    assert ("importar", True) in con_base_falsa
+    salida = capsys.readouterr()
+    assert "Modo escritura" in salida.out and "staging" in salida.out
+    assert "clave-secreta" not in salida.out + salida.err and "postgresql" not in salida.out + salida.err
+
+
+def test_production_writes_from_inside_its_own_container_and_names_only_the_flag(con_base_falsa, monkeypatch, capsys):
+    monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", "production")
+    assert ip.main(["libro.xlsx", "--entorno", "production", "--confirmar"]) == 0
+    assert ("importar", True) in con_base_falsa
+    salida = capsys.readouterr()
+    assert "Modo escritura en production: terminó." in salida.out
+    assert "clave-secreta" not in salida.out + salida.err and "postgresql" not in salida.out + salida.err
+
+
+def test_the_dry_run_is_the_same_in_any_environment_and_names_none(con_base_falsa, monkeypatch, capsys):
+    salidas = []
+    for railway in [None, "staging", "production"]:
+        if railway is None:
+            monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
+        else:
+            monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", railway)
+        con_base_falsa.clear()
+        assert ip.main(["libro.xlsx"]) == 0
+        assert ("importar", True) not in con_base_falsa
+        salidas.append(capsys.readouterr())
+    assert salidas[0].out == salidas[1].out == salidas[2].out
+    assert "production" not in salidas[2].out and "staging" not in salidas[1].out
 
 
 def test_the_default_is_a_dry_run_that_reads_the_workbook_without_a_database(sin_base, monkeypatch, capsys):

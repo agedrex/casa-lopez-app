@@ -4,7 +4,8 @@ Dry-run (default, writes nothing; without DATABASE_URL it only reads the Excel a
 
     uv run --with openpyxl python -I backend/scripts/importar_productos.py "/path/to/COSTOS1 en vigencia al 01-09-2026.xlsx"
 
-Write (staging only; needs DATABASE_URL and both flags):
+Write (staging or production; needs DATABASE_URL and both flags; `--entorno` must equal RAILWAY_ENVIRONMENT_NAME when it exists,
+and `--entorno production` is only accepted from inside the production container):
 
     DATABASE_URL=... uv run --with openpyxl python -I backend/scripts/importar_productos.py "/path/to/COSTOS1 ....xlsx" \
         --entorno staging --confirmar
@@ -273,20 +274,27 @@ def rechazar(mensaje: str) -> int:
     return 2
 
 
+ENTORNOS = ("staging", "production")
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Importa los productos del Excel de costos (por defecto, solo muestra qué haría).")
     parser.add_argument("excel", help="Ruta del Excel (solo lectura).")
-    parser.add_argument("--entorno", help="Para escribir tiene que ser 'staging'.")
+    parser.add_argument("--entorno", help="Para escribir tiene que ser exactamente 'staging' o 'production'.")
     parser.add_argument("--confirmar", action="store_true", help="Confirma que querés escribir productos.")
     opciones = parser.parse_args(argv)
     escribir = opciones.entorno is not None or opciones.confirmar
     if escribir:
-        if opciones.entorno != "staging" or not opciones.confirmar:
-            return rechazar("No se importó nada: para escribir hacen falta los dos avisos juntos, --entorno staging y --confirmar. "
+        if opciones.entorno not in ENTORNOS or not opciones.confirmar:
+            return rechazar("No se importó nada: para escribir hacen falta los dos avisos juntos, --entorno (staging o production) y --confirmar. "
                             "Sin ellos el script solo muestra qué haría.")
-        entorno = os.environ.get("RAILWAY_ENVIRONMENT_NAME")
-        if entorno is not None and entorno != "staging":
-            return rechazar("No se importó nada: el entorno de Railway no es staging.")  # the value itself is never echoed
+        railway = os.environ.get("RAILWAY_ENVIRONMENT_NAME")
+        if railway is None:
+            # SUPUESTO: production solo se escribe desde dentro de su contenedor; una corrida local solo puede apuntar a staging
+            if opciones.entorno == "production":
+                return rechazar("No se importó nada: production solo se escribe desde dentro del contenedor de production (no hay entorno de Railway).")
+        elif railway != opciones.entorno:
+            return rechazar(f"No se importó nada: el entorno de Railway no coincide con --entorno {opciones.entorno}.")  # the Railway value is never echoed
     hay_base = bool(os.environ.get("DATABASE_URL"))
     if (escribir or hay_base) and not HAY_BACKEND:
         return rechazar("Para hablar con la base corré el script desde backend/: "
@@ -321,7 +329,7 @@ def main(argv=None) -> int:
             return 1
         finally:
             engine.dispose()
-    imprimir(resumen)
+    imprimir(resumen, opciones.entorno if escribir else None)
     return 0
 
 
@@ -333,7 +341,7 @@ def _contar(titulo: str, conteo: Counter) -> None:
         print("  ninguno")
 
 
-def imprimir(resumen: Resumen) -> None:
+def imprimir(resumen: Resumen, entorno: str | None = None) -> None:
     plan = resumen.plan
     print(f"Filas leídas del bloque central: {len(plan.filas)}")
     print(f"Filas con nombre: {plan.con_nombre}")
@@ -355,7 +363,8 @@ def imprimir(resumen: Resumen) -> None:
             print(f"Colores {'creados' if resumen.escribio else 'a crear'}: {', '.join(resumen.colores_nuevos)}")
         for aviso in resumen.avisos:
             print(f"Aviso: {aviso}")
-    print("Modo escritura: terminó." if resumen.escribio else "No se escribió nada (dry-run).")
+    # the environment named here is the one the user passed with --entorno, never the Railway variable
+    print(f"Modo escritura{f' en {entorno}' if entorno else ''}: terminó." if resumen.escribio else "No se escribió nada (dry-run).")
 
 
 if __name__ == "__main__":
