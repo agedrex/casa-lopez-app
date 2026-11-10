@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { securityHeaders } from "./lib/security-headers";
 
 const nextConfig: NextConfig = {
   /* config options here */
@@ -10,6 +11,16 @@ const nextConfig: NextConfig = {
     // by default), so it needs the same room. The backend stays the authority on size.
     serverActions: { bodySizeLimit: "12mb" },
     proxyClientMaxBodySize: "12mb",
+  },
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: securityHeaders({
+          dev: process.env.NODE_ENV !== "production",
+        }),
+      },
+    ];
   },
   turbopack: {
     rules: {

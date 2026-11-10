@@ -20,7 +20,13 @@ import {
 import { apiGet } from "@/lib/api";
 import { formatArs, formatUsd, lifecycleLabel } from "@/lib/format";
 import { canOpenProductSheet, canWrite } from "@/lib/permissions";
-import { collapseSpaces, costoFaltante } from "@/lib/productos";
+import {
+  collapseSpaces,
+  costoFaltante,
+  LIFECYCLE_STATES,
+  type LifecycleState,
+  parseLifecycleState,
+} from "@/lib/productos";
 import { requireSession } from "@/lib/session";
 import type { Catalogos, Conteo, ProductoResumen } from "@/lib/types";
 
@@ -33,6 +39,9 @@ type Search = Promise<{
   q?: string | string[];
   categoria?: string | string[];
   revisar?: string | string[];
+  sin_cuero?: string | string[];
+  sin_color?: string | string[];
+  estado?: string | string[];
 }>;
 
 function first(value: string | string[] | undefined): string {
@@ -51,6 +60,9 @@ export default async function ProductosPage({
   const q = first(params.q);
   const categoria = first(params.categoria);
   const revisar = first(params.revisar) === "true";
+  const sinCuero = first(params.sin_cuero) === "true";
+  const sinColor = first(params.sin_color) === "true";
+  const estado = parseLifecycleState(first(params.estado));
   // Taller reads the list but not the product sheet, and `/catalogos` is closed to it:
   // without the catalog there is no category selector for that role.
   const openSheet = canOpenProductSheet(user.role);
@@ -59,6 +71,9 @@ export default async function ProductosPage({
   if (q) filter.set("q", q);
   if (categoria) filter.set("categoria", categoria);
   if (revisar) filter.set("revisar", "true");
+  if (sinCuero) filter.set("sin_cuero", "true");
+  if (sinColor) filter.set("sin_color", "true");
+  if (estado) filter.set("estado", estado);
   const paged = new URLSearchParams(filter);
   paged.set("limit", String(PAGE_SIZE));
   paged.set("offset", String((page - 1) * PAGE_SIZE));
@@ -90,6 +105,9 @@ export default async function ProductosPage({
         q={q}
         categoria={categoria}
         revisar={revisar}
+        sinCuero={sinCuero}
+        sinColor={sinColor}
+        estado={estado}
         categorias={catalogos?.ok ? catalogos.data.categorias : null}
       />
       {result.ok ? (
@@ -98,7 +116,7 @@ export default async function ProductosPage({
           page={page}
           total={count.ok ? count.data.total : null}
           filter={filter}
-          filtered={Boolean(q || categoria || revisar)}
+          filtered={filter.size > 0}
           openSheet={openSheet}
         />
       ) : (
@@ -113,11 +131,17 @@ function SearchForm({
   q,
   categoria,
   revisar,
+  sinCuero,
+  sinColor,
+  estado,
   categorias,
 }: {
   q: string;
   categoria: string;
   revisar: boolean;
+  sinCuero: boolean;
+  sinColor: boolean;
+  estado: LifecycleState | "";
   /** `null`: the role has no catalog, so the category selector is not shown. */
   categorias: string[] | null;
 }) {
@@ -168,6 +192,47 @@ function SearchForm({
             </select>
           </div>
         )}
+        <div className="w-full sm:w-auto sm:min-w-48">
+          <label
+            htmlFor="buscar-estado"
+            className="mb-1.5 block text-xs uppercase tracking-caps-sm text-muted"
+          >
+            Estado
+          </label>
+          <select
+            id="buscar-estado"
+            name="estado"
+            defaultValue={estado}
+            className={inputClass}
+          >
+            <option value="">Todos los estados</option>
+            {LIFECYCLE_STATES.map((state) => (
+              <option key={state} value={state}>
+                {lifecycleLabel(state)}
+              </option>
+            ))}
+          </select>
+        </div>
+        <label className="flex min-h-11 items-center gap-2 text-sm sm:min-h-0 sm:py-2.5">
+          <input
+            type="checkbox"
+            name="sin_cuero"
+            value="true"
+            defaultChecked={sinCuero}
+            className="size-4"
+          />
+          Sin cuero
+        </label>
+        <label className="flex min-h-11 items-center gap-2 text-sm sm:min-h-0 sm:py-2.5">
+          <input
+            type="checkbox"
+            name="sin_color"
+            value="true"
+            defaultChecked={sinColor}
+            className="size-4"
+          />
+          Sin color
+        </label>
         <label className="flex min-h-11 items-center gap-2 text-sm sm:min-h-0 sm:py-2.5">
           <input
             type="checkbox"
@@ -184,7 +249,7 @@ function SearchForm({
         >
           Buscar
         </button>
-        {q || categoria || revisar ? (
+        {q || categoria || revisar || sinCuero || sinColor || estado ? (
           <Link
             href="/productos"
             className="flex min-h-11 items-center px-2 text-sm text-muted underline decoration-gold underline-offset-4 sm:min-h-0 sm:py-2.5"

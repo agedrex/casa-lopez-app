@@ -16,3 +16,18 @@ export function costoFaltante(avisos: readonly string[]): string {
   const first = avisos.map(collapseSpaces).find((aviso) => aviso !== "");
   return first ?? COSTO_SIN_CAUSA;
 }
+
+/** Lifecycle states the product list can be filtered by, in the order of the cycle (the API accepts only these). */
+export const LIFECYCLE_STATES = [
+  "EN_DEFINICION",
+  "COTIZADO",
+  "EN_PRODUCCION",
+  "PRODUCIDO",
+] as const;
+
+export type LifecycleState = (typeof LIFECYCLE_STATES)[number];
+
+/** A state read from the URL: anything that is not one of the four is dropped instead of sent (the API would answer 422). */
+export function parseLifecycleState(value: string): LifecycleState | "" {
+  return LIFECYCLE_STATES.find((state) => state === value) ?? "";
+}

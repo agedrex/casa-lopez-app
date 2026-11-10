@@ -965,13 +965,27 @@ class CalidadOut(Salida):
 
 # --- Read ----------------------------------------------------------------------------------------------------
 
+EstadoDelCiclo = Literal["EN_DEFINICION", "COTIZADO", "EN_PRODUCCION", "PRODUCIDO"]
+
+
+def _filtros_extra_de_productos(sin_cuero: bool, sin_color: bool, estado: str | None) -> dict:
+    """The leather / color / state filters of the list, only the active ones, so no filter means the same call as before."""
+    activos = {"sin_cuero": sin_cuero or None, "sin_color": sin_color or None, "estado": estado}
+    return {nombre: valor for nombre, valor in activos.items() if valor is not None}
+
+
 @router.get("/productos", dependencies=LECTURA_GENERAL, response_model=list[ProductoResumen])
 def productos(
     session: Sesion, limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0),
     q: str | None = Query(None, max_length=100), categoria: str | None = None,
     revisar: bool = Query(False, description="true: only products whose note has a `REVISAR:` mark; false: no filter."),
+    sin_cuero: bool = Query(False, description="true: only products with no leather chosen; false: no filter."),
+    sin_color: bool = Query(False, description="true: only products with no color chosen; false: no filter."),
+    estado: EstadoDelCiclo | None = Query(None, description="Only the products in this lifecycle state."),
 ):
-    return servicios.listar_productos(session, limit, offset, q, categoria, revisar)
+    return servicios.listar_productos(
+        session, limit, offset, q, categoria, revisar, **_filtros_extra_de_productos(sin_cuero, sin_color, estado),
+    )
 
 
 # Declared before `/productos/{codigo}` so "conteo" is not read as a product code.
@@ -980,8 +994,12 @@ def productos(
 def productos_conteo(
     session: Sesion, q: str | None = Query(None, max_length=100), categoria: str | None = None,
     revisar: bool = Query(False, description="true: only products whose note has a `REVISAR:` mark; false: no filter."),
+    sin_cuero: bool = Query(False, description="true: only products with no leather chosen; false: no filter."),
+    sin_color: bool = Query(False, description="true: only products with no color chosen; false: no filter."),
+    estado: EstadoDelCiclo | None = Query(None, description="Only the products in this lifecycle state."),
 ):
-    return {"total": servicios.contar_productos(session, q, categoria, revisar)}
+    extra = _filtros_extra_de_productos(sin_cuero, sin_color, estado)
+    return {"total": servicios.contar_productos(session, q, categoria, revisar, **extra)}
 
 
 @router.get("/productos/{codigo}", dependencies=LECTURA_PRODUCTOS, response_model=FichaOut)
