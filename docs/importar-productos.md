@@ -21,9 +21,28 @@ DATABASE_URL=... uv run --with openpyxl python -I scripts/importar_productos.py 
 ```
 
 - Hacen falta **los dos avisos juntos**. Con uno solo, se rechaza.
-- Si existe `RAILWAY_ENVIRONMENT_NAME` y no es `staging`, se rechaza (sin mostrar el valor).
-- Nunca imprime la URL ni las credenciales.
+- `--entorno` acepta exactamente `staging` o `production` (en minúsculas, cualquier otro valor se rechaza).
+- Regla de coincidencia: si existe `RAILWAY_ENVIRONMENT_NAME`, tiene que ser **igual** al valor de `--entorno`. Si no coincide, se rechaza antes de conectarse a la base y sin mostrar el valor.
+- Sin `RAILWAY_ENVIRONMENT_NAME` (corrida local) solo se acepta `--entorno staging`; `--entorno production` se rechaza.
+- Nunca imprime la URL ni las credenciales. El resumen final nombra el entorno solo si lo pasaste vos con `--entorno`.
 - Nada se borra ni se actualiza: solo se agregan productos (y el color `Arena` si no existe).
+
+## Escribir en production
+
+Solo se escribe **desde dentro del contenedor de production**, nunca desde tu máquina. Antes de correr:
+
+1. Tener un **backup verificado** de la base de production.
+2. Verificar que `alembic current` da `0007_proveedores_documentos` (0007).
+
+```bash
+railway ssh -e production -s backend
+# ya adentro del contenedor, desde backend/:
+uv run --with openpyxl python -I scripts/importar_productos.py "/ruta/COSTOS1 ....xlsx" \
+  --entorno production --confirmar
+```
+
+- `--entorno production` dentro de un contenedor de staging (o `--entorno staging` dentro de uno de production) se rechaza siempre.
+- En production las filas entran igual que en staging, con sus marcas `REVISAR` (ver más abajo).
 
 ## Qué hace con cada fila
 
