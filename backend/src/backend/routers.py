@@ -1,9 +1,10 @@
-"""Read-only database diagnostics and non-sensitive stage catalog."""
+"""Read-only database diagnostics (admin only) and non-sensitive stage catalog (public)."""
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
+from backend.auth import SOLO_ADMIN
 from backend.database import get_session
 from backend.models import Etapa
 
@@ -11,7 +12,7 @@ from backend.models import Etapa
 router = APIRouter()
 
 
-@router.get("/db/estado")
+@router.get("/db/estado", dependencies=[Depends(SOLO_ADMIN)])  # admin only: it shows the revision and the table count
 def database_state(session: Session = Depends(get_session)) -> dict[str, object]:
     try:
         revision, count = session.execute(text(

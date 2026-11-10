@@ -56,8 +56,8 @@ Fuentes oficiales (consultadas 2026-11-10):
 | Production **no** despliega sola (auto-deploy apagado) | README, sección Deployment | [V] |
 | Un push a `main` despliega staging (si CI pasa) pero **no migra** (hasta este cambio) | README + `docs/wo2-staging.md` | [V] |
 | El README dice que production "no tuvo un deploy exitoso todavía"; no coincide con una base ya migrada a 0004 | Hay que mirar `railway deployment list` | [I] |
-| `/api/health` responde `{"status":"ok","mode":"demo"}` y **no mira la base** | `backend/src/backend/main.py` | [V] |
-| `/db/estado` devuelve `alembic_revision` y `tablas_costos`; es público | `backend/src/backend/routers.py` | [V] |
+| `/api/health` responde `200 {"status":"ok"}` solo si la base contesta un `SELECT 1` (tope de 2 s) y `503 {"status":"unavailable"}` si no; es público y no muestra detalles | `backend/src/backend/main.py`, `db_check.py` | [V] |
+| `/db/estado` devuelve `alembic_revision` y `tablas_costos`; **solo admin** (sin sesión da 401) | `backend/src/backend/routers.py` | [V] |
 | Better Auth vive en el schema `public`; Alembic solo mira el schema `costos` | `backend/migrations/env.py` (`include_name`) | [V] |
 
 ---
@@ -82,7 +82,7 @@ Lo que **sí** destruye datos es **bajar** (downgrade), ver sección 5.
 ## 3. Checklist previo a promover (todo tiene que estar tildado)
 
 - [ ] **CI verde en `main`** para el commit que se va a promover (pestaña Actions de GitHub). Anotar el SHA: `git rev-parse origin/main`.
-- [ ] **Ese mismo commit está andando bien en staging**: `/api/health` ok, `/db/estado` muestra `0007_proveedores_documentos`, login y lista de productos funcionan. No se promueve algo que no pasó por staging.
+- [ ] **Ese mismo commit está andando bien en staging**: `/api/health` da 200, `alembic current` (dentro del contenedor, ver el paso 5 de la sección 4) muestra `0007_proveedores_documentos`, login y lista de productos funcionan. No se promueve algo que no pasó por staging.
 - [ ] **En staging ya corrió el pre-deploy** (log del deploy de staging con la línea de `alembic`, no-op). Si no corrió, el archivo no se está leyendo: resolver la sección 0 antes de seguir.
 - [ ] **Backup de la base de production hecho y verificado** (sección 6). Sin backup verificado no se sigue.
 - [ ] **`alembic current` de production** anotado (se espera `0004_semillas_v3`). Si da otra cosa, parar y avisar a Agustin:
@@ -149,12 +149,12 @@ Lo que **sí** destruye datos es **bajar** (downgrade), ver sección 5.
 
    ```sh
    curl -s -o /dev/null -w "%{http_code}\n" https://<URL_BACKEND_PRODUCTION>/api/health
-   curl -s https://<URL_BACKEND_PRODUCTION>/db/estado
+   railway ssh -e production -s backend -- sh -c 'cd /app && /app/.venv/bin/python -m alembic current'
    ```
 
-   Esperado: `200`, y `/db/estado` con `"ok":true` y `"alembic_revision":"0007_proveedores_documentos"`.
+   Esperado: `200` en el health, y `alembic current` con `0007_proveedores_documentos (head)`. (`/db/estado` ahora exige sesión de admin: sin sesión da 401, así que no sirve para el smoke test desde la terminal.)
    Después, en el navegador con la URL del frontend de production: **iniciar sesión**, abrir la **lista de productos** y abrir la pantalla de **proveedores** (que es la que 0007 habilita). Si hay datos reales, ver que el producto cargado se vea igual que antes.
-6. **Criterio de rollback**: si el pre-deploy falla, si `/db/estado` no muestra `0007...`, si el login falla, o si la lista de productos o proveedores da error 5xx → **rollback** (sección 5). No se "arregla sobre la marcha" en production.
+6. **Criterio de rollback**: si el pre-deploy falla, si `alembic current` no muestra `0007...`, si el login falla, o si la lista de productos o proveedores da error 5xx → **rollback** (sección 5). No se "arregla sobre la marcha" en production.
 
 ---
 
@@ -287,12 +287,12 @@ Este cambio **no** los resuelve; quedan como trabajo aparte.
 
 | # | Pendiente | Por qué importa |
 |---|---|---|
-| 1 | Healthcheck real que mire la base | `/api/health` hoy responde ok aunque la base esté caída [V]; el healthcheck de Railway no detecta ese caso |
-| 2 | `/db/estado` es público | Muestra la revisión de Alembic y la cantidad de tablas a cualquiera [V]. Proteger o sacar de production |
-| 3 | Rutas demo | `/api/demo/*` sigue en el backend [V]; no deberían estar en production |
-| 4 | Cabeceras de seguridad | No hay middleware de cabeceras de seguridad en `main.py` [V: solo CORS] |
+| 1 | ~~Healthcheck real que mire la base~~ | **Resuelto** (`feat/hardening-backend`): `/api/health` da 503 si la base no contesta |
+| 2 | ~~`/db/estado` es público~~ | **Resuelto**: ahora exige rol admin |
+| 3 | ~~Rutas demo~~ | **Resuelto**: se eliminó `/api/demo/resources` |
+| 4 | Cabeceras de seguridad (frontend) | En curso en `feat/productos-filtros` |
 | 5 | Rotar la credencial de admin de staging | Pendiente de la auditoría; hacerlo antes de usar datos reales |
 | 6 | Observabilidad | Sin alertas ni monitoreo continuo: Railway no vigila el healthcheck después del deploy [V: doc de healthchecks] |
-| 7 | CI sin Postgres | El CI no corre los tests de integración (se saltean sin `TEST_DATABASE_URL`) [V: `.github/workflows/ci.yml` + tests] |
+| 7 | ~~CI sin Postgres~~ | **Resuelto** en el workflow (servicio `postgres:16` y `TEST_DATABASE_URL`); falta verlo correr en GitHub |
 | 8 | Cron del dólar | La actualización automática del dólar no está programada |
 | 9 | Migrar `railway.toml` a Infrastructure as Code | Config as Code deja de leerse el **2026-12-01** [V]; mientras tanto el pre-deploy va también en el dashboard (sección 0) |
