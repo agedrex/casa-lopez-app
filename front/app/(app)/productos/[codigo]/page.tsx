@@ -29,7 +29,9 @@ import {
   STAGE_ORDER,
   stageLabel,
 } from "@/lib/format";
+import { parseNota } from "@/lib/notas";
 import { canWrite } from "@/lib/permissions";
+import { collapseSpaces, costoFaltante } from "@/lib/productos";
 import { requireSession } from "@/lib/session";
 import type {
   Catalogos,
@@ -93,7 +95,8 @@ export default async function FichaPage({
       <BackLink />
       <PageHeader
         eyebrow={`Producto ${ficha.codigo}`}
-        title={ficha.nombre}
+        title={collapseSpaces(ficha.nombre)}
+        clampTitle
         actions={
           <div className="flex flex-wrap gap-2">
             <Badge>{lifecycleLabel(ficha.estado_del_ciclo)}</Badge>
@@ -248,12 +251,35 @@ function Details({ ficha }: { ficha: Ficha }) {
           </div>
         ))}
       </dl>
-      {ficha.nota ? (
-        <p className="mt-6 border-t border-line pt-4 text-sm text-muted">
-          {ficha.nota}
-        </p>
-      ) : null}
+      <Nota nota={ficha.nota} />
     </Card>
+  );
+}
+
+/** The imported note as a list of items; the REVISAR marks stand out. The stored text is not touched. */
+function Nota({ nota }: { nota: string | null }) {
+  const items = parseNota(nota);
+  if (items.length === 0) return null;
+  return (
+    <div className="mt-6 border-t border-line pt-4">
+      <h3 className="mb-2 text-xs uppercase tracking-caps-sm text-muted">
+        Nota
+      </h3>
+      <ul className="space-y-1.5 text-sm">
+        {items.map((item, index) => (
+          // The same text can repeat in a note, so the position is part of the key.
+          <li key={`${index}-${item.text}`} className="break-words">
+            {item.revisar ? (
+              <Badge tone="warn" wrap>
+                Revisar: {item.text}
+              </Badge>
+            ) : (
+              <span className="text-muted">{item.text}</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -313,13 +339,17 @@ function CostToday({ ficha }: { ficha: Ficha }) {
         <RecotizarNotice recotizar={ficha.recotizar} />
         {costo === null ? (
           <Card>
-            <p className="font-display text-xl">Falta cargar dólar o precios</p>
-            <p className="mt-2 text-sm text-muted">
-              Sin esos datos no se puede calcular el costo de hoy.
+            <p className="font-display text-xl">
+              {costoFaltante(ficha.avisos)}
             </p>
             {ficha.avisos.length > 0 ? (
+              <p className="mt-2 text-sm text-muted">
+                Por eso no se puede calcular el costo de hoy.
+              </p>
+            ) : null}
+            {ficha.avisos.length > 1 ? (
               <ul className="mt-4 list-disc space-y-1 pl-5 text-sm">
-                {ficha.avisos.map((aviso) => (
+                {ficha.avisos.slice(1).map((aviso) => (
                   <li key={aviso}>{aviso}</li>
                 ))}
               </ul>

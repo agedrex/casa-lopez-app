@@ -207,6 +207,30 @@ def nombre_de_producto(nombre_propio: str | None, modelo: str | None, cuero: str
     return nombre_propio or " - ".join(parte for parte in (modelo, cuero, color) if parte)
 
 
+# The ONE definition of a `REVISAR: <reason>` mark, shared by the list filter (SQL) and the parser (Python).
+# A mark is an item of the note (start of the text or after ` | `, spaces around allowed) that starts with
+# `REVISAR:` in capitals and whose reason is not empty (its first character is neither a space nor `|`).
+# The SQL filter uses only the start of the pattern (`~`, case sensitive); the parser extends the very same start to
+# the end of the item, which always succeeds, so a note matches the filter if and only if it has a reason to show.
+# Both regex engines read this subset the same way (`\s` is whitespace; Postgres follows its locale, Python Unicode).
+_INICIO_REVISAR = r"(?:^|\s\|\s)\s*REVISAR:\s*"
+_PRIMER_CARACTER_DEL_MOTIVO = r"[^\s|]"
+PATRON_REVISAR_SQL = _INICIO_REVISAR + _PRIMER_CARACTER_DEL_MOTIVO
+_PATRON_MOTIVO = re.compile(
+    _INICIO_REVISAR + "(" + _PRIMER_CARACTER_DEL_MOTIVO + r".*?)\s*(?=\s\|\s|$)", re.DOTALL,
+)
+
+
+def motivos_de_revision(nota: str | None) -> list[str]:
+    """Reasons of the `REVISAR: <reason>` marks of a product note, in order (the importer writes them first).
+
+    See PATRON_REVISAR_SQL for what counts as a mark: only an item that STARTS with `REVISAR:` (a comment that
+    merely mentions it is not one) and has a reason. Empty or missing notes, and text that does not follow the
+    format, give an empty list.
+    """
+    return [coincidencia.group(1) for coincidencia in _PATRON_MOTIVO.finditer(nota or "")]
+
+
 # --- Loading --------------------------------------------------------------------------------------
 
 def cargar_contexto(session: Session) -> Contexto:
@@ -251,8 +275,11 @@ def _patron(palabra: str) -> str:
     return f"%{escapada}%"
 
 
-def _filtrar_productos(consulta, cuero, q: str | None, categoria: str | None):
-    """Search: every word of `q` must appear in the code or in a part of the computed name."""
+def _filtrar_productos(consulta, cuero, q: str | None, categoria: str | None, revisar: bool = False):
+    """Search: every word of `q` must appear in the code or in a part of the computed name.
+
+    `revisar` keeps only the products whose note has a `REVISAR:` mark, by the same criterion as `motivos_de_revision`.
+    """
     for palabra in (q or "").split():
         patron = _patron(palabra)
         consulta = consulta.where(or_(
@@ -263,12 +290,14 @@ def _filtrar_productos(consulta, cuero, q: str | None, categoria: str | None):
         ))
     if categoria:
         consulta = consulta.where(Categoria.nombre == categoria)
+    if revisar:
+        consulta = consulta.where(Producto.nota.op("~")(PATRON_REVISAR_SQL))
     return consulta
 
 
 def cargar_productos(
     session: Session, codigos: list[str] | None = None, limit: int | None = None, offset: int = 0,
-    q: str | None = None, categoria: str | None = None,
+    q: str | None = None, categoria: str | None = None, revisar: bool = False,
 ) -> list[DatosProducto]:
     cuero, forro = aliased(Material), aliased(Material)
     consulta = (
@@ -282,7 +311,7 @@ def cargar_productos(
     )
     if codigos is not None:
         consulta = consulta.where(Producto.codigo.in_(codigos))
-    consulta = _filtrar_productos(consulta, cuero, q, categoria)
+    consulta = _filtrar_productos(consulta, cuero, q, categoria, revisar)
     if limit is not None:
         consulta = consulta.limit(limit).offset(offset)
     filas = session.execute(consulta).all()
@@ -430,7 +459,9 @@ def _costo_hoy_seguro(datos, ctx, catalogo) -> tuple[ResultadoCotizacion | None,
     return resultado, list(resultado.cotizado.avisos)
 
 
-def contar_productos(session: Session, q: str | None = None, categoria: str | None = None) -> int:
+def contar_productos(
+    session: Session, q: str | None = None, categoria: str | None = None, revisar: bool = False,
+) -> int:
     cuero = aliased(Material)
     consulta = (
         select(func.count(Producto.id)).select_from(Producto)
@@ -439,25 +470,28 @@ def contar_productos(session: Session, q: str | None = None, categoria: str | No
         .outerjoin(cuero, cuero.id == Producto.cuero_id)
         .outerjoin(Color, Color.id == Producto.color_id)
     )
-    return session.scalar(_filtrar_productos(consulta, cuero, q, categoria)) or 0
+    return session.scalar(_filtrar_productos(consulta, cuero, q, categoria, revisar)) or 0
 
 
 def listar_productos(
     session: Session, limit: int = 100, offset: int = 0, q: str | None = None, categoria: str | None = None,
+    revisar: bool = False,
 ) -> list[dict]:
-    base = cargar_productos(session, limit=limit, offset=offset, q=q, categoria=categoria)
+    base = cargar_productos(session, limit=limit, offset=offset, q=q, categoria=categoria, revisar=revisar)
     catalogo = expandir_kits(session, base)
     ctx = cargar_contexto(session)
     filas = []
     for datos in base:
         resultado, avisos = _costo_hoy_seguro(datos, ctx, catalogo)
         costo = _desglose_a_dict(resultado)
+        motivos = motivos_de_revision(datos.nota)
         filas.append({
             "codigo": datos.codigo, "nombre": datos.nombre, "categoria": datos.categoria,
+            "modelo": datos.modelo_codigo,
             "estado_del_ciclo": datos.estado_del_ciclo, "es_kit": datos.es_kit,
             "costo_hoy_ars": costo["total_ars"] if costo else None,
             "costo_hoy_usd": costo["total_usd"] if costo else None,
-            "avisos": avisos,
+            "avisos": avisos, "revisar": bool(motivos), "motivos_revisar": motivos,
         })
     return filas
 

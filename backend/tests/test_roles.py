@@ -81,8 +81,8 @@ def test_require_role_accepts_legacy_names_in_its_arguments():
 
 ACCESO: dict[tuple[str, str], frozenset[str]] = {
     # Product and quote data: admin and gerente. /materiales has no prices, so every role reads it.
-    ("GET", "/productos"): TODOS,  # taller: the "alcanza" selector of the cut pages
-    ("GET", "/productos/conteo"): PRODUCTOS,
+    ("GET", "/productos"): TODOS,  # taller: the "alcanza" selector of the cut pages and the product list
+    ("GET", "/productos/conteo"): TODOS,  # taller: the pagination of that list (the sheet itself stays admin / gerente)
     ("GET", "/productos/{codigo}"): PRODUCTOS,
     ("GET", "/productos/{codigo}/rentabilidad"): PRODUCTOS,
     ("GET", "/productos/{codigo}/precio-venta"): PRODUCTOS,
@@ -203,7 +203,7 @@ def test_admin_only_routes_refuse_everyone_else_without_calling_the_service(monk
     ("gerente", [("GET", "/productos"), ("GET", "/productos/conteo"), ("GET", "/productos/X-1"),
                  ("GET", "/productos/X-1/rentabilidad"), ("GET", "/productos/X-1/precio-venta"), ("GET", "/grilla"),
                  ("GET", "/catalogos"), ("GET", "/materiales")]),
-    ("taller", [("GET", "/productos"), ("GET", "/materiales"), ("GET", "/cueros"), ("GET", "/cueros/PZC-1"),
+    ("taller", [("GET", "/productos"), ("GET", "/productos/conteo"), ("GET", "/materiales"), ("GET", "/cueros"), ("GET", "/cueros/PZC-1"),
                 ("GET", "/cueros/alcanza?producto=P&cantidad=1"), ("GET", "/colores"), ("GET", "/ordenes"),
                 ("GET", "/ordenes/LOT-1"), ("GET", "/voz/estado"),
                 ("POST", "/cueros/PZC-1/cortes"), ("POST", "/cueros/PZC-1/sobrante"), ("POST", "/voz/interpretar")]),
@@ -230,6 +230,25 @@ def test_gerente_and_taller_are_refused_on_the_representative_admin_routes(metod
         return
     respuesta = cliente.request(metodo, ruta, json={} if metodo == "POST" else None)
     assert respuesta.status_code == 403 and respuesta.json() == SIN_PERMISO
+
+
+@pytest.mark.parametrize("metodo, ruta", [
+    ("GET", "/productos/X-1"), ("GET", "/productos/X-1/rentabilidad"), ("GET", "/productos/X-1/precio-venta"),
+    ("GET", "/productos/X-1/precios-talleres"), ("GET", "/catalogos"), ("GET", "/grilla"), ("POST", "/productos"),
+])
+def test_taller_reads_the_product_list_and_count_but_nothing_else_of_the_products(monkeypatch, metodo, ruta):
+    # The list (with costs) and its count are open to taller on purpose; the sheet and the rest stay closed.
+    for nombre in dir(servicios):
+        if callable(getattr(servicios, nombre)) and not nombre.startswith("_") and nombre.islower():
+            monkeypatch.setattr(servicios, nombre, lambda *a, **k: pytest.fail("the service must not be called"))
+    respuesta = _cliente("taller").request(metodo, ruta, json={} if metodo == "POST" else None)
+    assert respuesta.status_code == 403 and respuesta.json() == SIN_PERMISO
+
+
+def test_the_product_count_is_still_closed_without_a_role():
+    for role in ("otro", "", None):
+        respuesta = _cliente(role).get("/productos/conteo")
+        assert respuesta.status_code == 403 and respuesta.json() == SIN_PERMISO
 
 
 def test_the_public_routes_stay_open_without_a_session():

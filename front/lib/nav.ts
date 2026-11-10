@@ -63,7 +63,8 @@ export const NAV_ITEMS: NavGroup[] = [
 const MOBILE_TAB_HREFS: Record<Role, readonly string[]> = {
   admin: ["/", "/productos", "/materiales", "/fabricacion"],
   gerente: ["/productos", "/grilla"],
-  taller: ["/corte", "/cueros", "/voz"],
+  // Three tabs around the "+" button; Voz stays one tap away in that button's quick actions.
+  taller: ["/corte", "/cueros", "/productos"],
 };
 
 // Menus of the restricted roles. They match the paths of ROLE_ACCESS in permissions.ts.
@@ -83,6 +84,7 @@ const TALLER_NAV: NavGroup[] = [
     items: [
       { href: "/corte", label: "Corte" },
       { href: "/cueros", label: "Cueros" },
+      { href: "/productos", label: "Productos" },
       { href: "/voz", label: "Voz" },
     ],
   },
@@ -144,10 +146,20 @@ function filterByRole(groups: NavGroup[], roles: Role[]): NavGroup[] {
 
 /** Admin gets the full menu; the other roles get only their own groups (none for no role). */
 function restrictedNav(roles: Role[]): NavGroup[] {
-  return [
+  const groups = [
     ...(roles.includes("gerente") ? GERENTE_NAV : []),
     ...(roles.includes("taller") ? TALLER_NAV : []),
   ];
+  // gerente and taller share some entries (Productos): the first group keeps them.
+  const seen = new Set<string>();
+  return groups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter(
+        (item) => !seen.has(item.href) && seen.add(item.href),
+      ),
+    }))
+    .filter((group) => group.items.length > 0);
 }
 
 export function desktopNavForRole(roles: Role[]): NavGroup[] {
@@ -166,8 +178,12 @@ export function mobileTabs(groups: NavGroup[], roles: Role[]): NavItem[] {
   const items = groups.flatMap((group) => group.items);
   const hrefs = roles.includes("admin")
     ? MOBILE_TAB_HREFS.admin
-    : ROLES.flatMap((role) =>
-        roles.includes(role) ? MOBILE_TAB_HREFS[role] : [],
-      );
+    : [
+        ...new Set(
+          ROLES.flatMap((role) =>
+            roles.includes(role) ? MOBILE_TAB_HREFS[role] : [],
+          ),
+        ),
+      ];
   return hrefs.flatMap((href) => items.filter((item) => item.href === href));
 }
