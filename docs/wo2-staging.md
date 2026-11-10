@@ -1,3 +1,7 @@
+> **Nota (migraciones en el deploy):** desde el cambio `feat/release-migraciones`, las migraciones corren solas en el
+> pre-deploy de Railway (`backend/railway.toml`: `uv run alembic upgrade head`). Esta guía queda como **alternativa
+> manual** por si el pre-deploy no corre. Para production ver [`produccion.md`](produccion.md).
+
 # WO 2: aplicar y verificar el esquema en staging
 
 Esta guía prepara el siguiente pedido. **Todavía no se aplicaron estas

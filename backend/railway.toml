@@ -1,0 +1,15 @@
+# Railway config as code for the backend service (root directory /backend).
+# Railway does not follow the root directory for this file: the service setting
+# "Railway Config File" must be the absolute path /backend/railway.toml.
+# The start command is NOT set here on purpose; it lives in the dashboard.
+# Config as Code is deprecated by Railway and stops being read on 2026-12-01:
+# keep the pre-deploy command in the dashboard too (see docs/produccion.md).
+
+[deploy]
+# Runs in a separate container after the build and before the new deployment starts.
+# If it exits non-zero the deployment does not proceed. A no-op when already at head.
+preDeployCommand = ["uv run alembic upgrade head"]
+healthcheckPath = "/api/health"
+healthcheckTimeout = 120
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
