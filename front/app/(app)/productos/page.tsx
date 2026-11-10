@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { Avisos } from "@/components/avisos";
 import { inputClass } from "@/components/form";
 import {
@@ -18,7 +19,8 @@ import {
 } from "@/components/ui";
 import { apiGet } from "@/lib/api";
 import { formatArs, formatUsd, lifecycleLabel } from "@/lib/format";
-import { canWrite } from "@/lib/permissions";
+import { canOpenProductSheet, canWrite } from "@/lib/permissions";
+import { collapseSpaces, costoFaltante } from "@/lib/productos";
 import { requireSession } from "@/lib/session";
 import type { Catalogos, Conteo, ProductoResumen } from "@/lib/types";
 
@@ -30,6 +32,7 @@ type Search = Promise<{
   pagina?: string | string[];
   q?: string | string[];
   categoria?: string | string[];
+  revisar?: string | string[];
 }>;
 
 function first(value: string | string[] | undefined): string {
@@ -47,10 +50,15 @@ export default async function ProductosPage({
   const page = Number.isFinite(parsed) && parsed >= 1 ? parsed : 1;
   const q = first(params.q);
   const categoria = first(params.categoria);
+  const revisar = first(params.revisar) === "true";
+  // Taller reads the list but not the product sheet, and `/catalogos` is closed to it:
+  // without the catalog there is no category selector for that role.
+  const openSheet = canOpenProductSheet(user.role);
 
   const filter = new URLSearchParams();
   if (q) filter.set("q", q);
   if (categoria) filter.set("categoria", categoria);
+  if (revisar) filter.set("revisar", "true");
   const paged = new URLSearchParams(filter);
   paged.set("limit", String(PAGE_SIZE));
   paged.set("offset", String((page - 1) * PAGE_SIZE));
@@ -58,7 +66,7 @@ export default async function ProductosPage({
   const [result, count, catalogos] = await Promise.all([
     apiGet<ProductoResumen[]>(`/productos?${paged}`),
     apiGet<Conteo>(`/productos/conteo?${filter}`),
-    apiGet<Catalogos>("/catalogos"),
+    openSheet ? apiGet<Catalogos>("/catalogos") : null,
   ]);
 
   return (
@@ -81,7 +89,8 @@ export default async function ProductosPage({
       <SearchForm
         q={q}
         categoria={categoria}
-        categorias={catalogos.ok ? catalogos.data.categorias : []}
+        revisar={revisar}
+        categorias={catalogos?.ok ? catalogos.data.categorias : null}
       />
       {result.ok ? (
         <ProductTable
@@ -89,7 +98,8 @@ export default async function ProductosPage({
           page={page}
           total={count.ok ? count.data.total : null}
           filter={filter}
-          filtered={Boolean(q || categoria)}
+          filtered={Boolean(q || categoria || revisar)}
+          openSheet={openSheet}
         />
       ) : (
         <ErrorNotice message={result.message} />
@@ -102,11 +112,14 @@ export default async function ProductosPage({
 function SearchForm({
   q,
   categoria,
+  revisar,
   categorias,
 }: {
   q: string;
   categoria: string;
-  categorias: string[];
+  revisar: boolean;
+  /** `null`: the role has no catalog, so the category selector is not shown. */
+  categorias: string[] | null;
 }) {
   return (
     <search className="mb-8">
@@ -132,34 +145,46 @@ function SearchForm({
             className={inputClass}
           />
         </div>
-        <div className="w-full sm:w-auto sm:min-w-48">
-          <label
-            htmlFor="buscar-categoria"
-            className="mb-1.5 block text-xs uppercase tracking-caps-sm text-muted"
-          >
-            Categoría
-          </label>
-          <select
-            id="buscar-categoria"
-            name="categoria"
-            defaultValue={categoria}
-            className={inputClass}
-          >
-            <option value="">Todas</option>
-            {categorias.map((nombre) => (
-              <option key={nombre} value={nombre}>
-                {nombre}
-              </option>
-            ))}
-          </select>
-        </div>
+        {categorias === null ? null : (
+          <div className="w-full sm:w-auto sm:min-w-48">
+            <label
+              htmlFor="buscar-categoria"
+              className="mb-1.5 block text-xs uppercase tracking-caps-sm text-muted"
+            >
+              Categoría
+            </label>
+            <select
+              id="buscar-categoria"
+              name="categoria"
+              defaultValue={categoria}
+              className={inputClass}
+            >
+              <option value="">Todas</option>
+              {categorias.map((nombre) => (
+                <option key={nombre} value={nombre}>
+                  {nombre}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        <label className="flex min-h-11 items-center gap-2 text-sm sm:min-h-0 sm:py-2.5">
+          <input
+            type="checkbox"
+            name="revisar"
+            value="true"
+            defaultChecked={revisar}
+            className="size-4"
+          />
+          Solo los marcados para revisar
+        </label>
         <button
           type="submit"
           className="min-h-11 flex-1 rounded-card border border-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm hover:bg-ink hover:text-white sm:min-h-0 sm:flex-none"
         >
           Buscar
         </button>
-        {q || categoria ? (
+        {q || categoria || revisar ? (
           <Link
             href="/productos"
             className="flex min-h-11 items-center px-2 text-sm text-muted underline decoration-gold underline-offset-4 sm:min-h-0 sm:py-2.5"
@@ -179,18 +204,72 @@ function pageHref(filter: URLSearchParams, page: number): string {
   return text ? `/productos?${text}` : "/productos";
 }
 
+/** The name as typed in the Excel can be very long and full of spaces: two lines, the whole text in the tooltip. */
+function NombreProducto({ nombre }: { nombre: string }) {
+  const limpio = collapseSpaces(nombre);
+  return (
+    <span title={limpio} className="line-clamp-2 break-words">
+      {limpio}
+    </span>
+  );
+}
+
+/** Taller reads the list but cannot open the sheet: for that role the code and name are plain text. */
+function SheetLink({
+  codigo,
+  openSheet,
+  className,
+  children,
+}: {
+  codigo: string;
+  openSheet: boolean;
+  className: string;
+  children: ReactNode;
+}) {
+  if (!openSheet) return <div className={className}>{children}</div>;
+  return (
+    <Link
+      href={`/productos/${encodeURIComponent(codigo)}`}
+      className={className}
+    >
+      {children}
+    </Link>
+  );
+}
+
+/** "Revisar" badge plus the reasons as visible text (the tooltip is not the only place). */
+function MarcaRevisar({ motivos }: { motivos: string[] }) {
+  return (
+    <span className="flex flex-col items-start gap-1">
+      <Badge tone="warn">Revisar</Badge>
+      {motivos.length > 0 ? (
+        <span className="text-xs text-muted">{motivos.join(" · ")}</span>
+      ) : null}
+    </span>
+  );
+}
+
+/** Without a cost, the first warning is already shown where the cost would be: the rest goes in the warnings. */
+function restoDeAvisos(producto: ProductoResumen): string[] {
+  return producto.costo_hoy_ars === null
+    ? producto.avisos.slice(1)
+    : producto.avisos;
+}
+
 function ProductTable({
   productos,
   page,
   total,
   filter,
   filtered,
+  openSheet,
 }: {
   productos: ProductoResumen[];
   page: number;
   total: number | null;
   filter: URLSearchParams;
   filtered: boolean;
+  openSheet: boolean;
 }) {
   if (productos.length === 0) {
     return (
@@ -220,26 +299,29 @@ function ProductTable({
           <CardList>
             {productos.map((producto) => (
               <CardItem key={producto.codigo}>
-                <Link
-                  href={`/productos/${encodeURIComponent(producto.codigo)}`}
+                <SheetLink
+                  codigo={producto.codigo}
+                  openSheet={openSheet}
                   className="block"
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <p className="font-bold">
-                      {producto.nombre}{" "}
-                      {producto.es_kit ? <Badge>Kit</Badge> : null}
+                    <p className="min-w-0 font-bold">
+                      <NombreProducto nombre={producto.nombre} />
                     </p>
-                    <span className="shrink-0 text-xs text-muted underline decoration-gold underline-offset-4">
+                    <span
+                      className={`shrink-0 text-xs text-muted ${openSheet ? "underline decoration-gold underline-offset-4" : ""}`}
+                    >
                       {producto.codigo}
                     </span>
                   </div>
                   <p className="mt-1 text-xs text-muted">
+                    {producto.modelo ? `Modelo ${producto.modelo} · ` : ""}
                     {producto.categoria ?? "—"} ·{" "}
                     {lifecycleLabel(producto.estado_del_ciclo)}
                   </p>
                   {producto.costo_hoy_ars === null ? (
                     <p className="mt-3 text-sm text-muted">
-                      Falta cargar dólar o precios
+                      {costoFaltante(producto.avisos)}
                     </p>
                   ) : (
                     <p className="mt-3 flex items-baseline justify-between gap-3 tabular-nums">
@@ -251,10 +333,21 @@ function ProductTable({
                       </span>
                     </p>
                   )}
-                </Link>
-                <div className="mt-2 empty:hidden">
-                  <Avisos avisos={producto.avisos} />
-                </div>
+                </SheetLink>
+                {/* Badges and warnings stay outside the link: they are not part of its name. */}
+                {producto.es_kit || producto.revisar ? (
+                  <div className="mt-2 flex flex-wrap items-start gap-2">
+                    {producto.es_kit ? <Badge>Kit</Badge> : null}
+                    {producto.revisar ? (
+                      <MarcaRevisar motivos={producto.motivos_revisar} />
+                    ) : null}
+                  </div>
+                ) : null}
+                {restoDeAvisos(producto).length > 0 ? (
+                  <div className="mt-2">
+                    <Avisos avisos={restoDeAvisos(producto)} wrap />
+                  </div>
+                ) : null}
               </CardItem>
             ))}
           </CardList>
@@ -264,29 +357,60 @@ function ProductTable({
             <table className={tableClass}>
               <thead>
                 <tr>
-                  <th className={thClass}>Código</th>
-                  <th className={thClass}>Nombre</th>
-                  <th className={thClass}>Categoría</th>
-                  <th className={thClass}>Estado</th>
-                  <th className={`${thClass} ${numClass}`}>Costo hoy (ARS)</th>
-                  <th className={`${thClass} ${numClass}`}>Costo hoy (USD)</th>
-                  <th className={thClass}>Avisos</th>
+                  <th scope="col" className={thClass}>
+                    Código
+                  </th>
+                  <th scope="col" className={thClass}>
+                    Modelo
+                  </th>
+                  <th scope="col" className={thClass}>
+                    Nombre
+                  </th>
+                  <th scope="col" className={thClass}>
+                    Categoría
+                  </th>
+                  <th scope="col" className={thClass}>
+                    Estado
+                  </th>
+                  <th scope="col" className={`${thClass} ${numClass}`}>
+                    Costo hoy (ARS)
+                  </th>
+                  <th scope="col" className={`${thClass} ${numClass}`}>
+                    Costo hoy (USD)
+                  </th>
+                  <th scope="col" className={thClass}>
+                    Avisos
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {productos.map((producto) => (
                   <tr key={producto.codigo} className="hover:bg-paper-mid/50">
                     <td className={tdClass}>
-                      <Link
-                        href={`/productos/${encodeURIComponent(producto.codigo)}`}
-                        className="underline decoration-gold underline-offset-4"
-                      >
-                        {producto.codigo}
-                      </Link>
+                      {openSheet ? (
+                        <Link
+                          href={`/productos/${encodeURIComponent(producto.codigo)}`}
+                          className="underline decoration-gold underline-offset-4"
+                        >
+                          {producto.codigo}
+                        </Link>
+                      ) : (
+                        producto.codigo
+                      )}
                     </td>
+                    <td className={tdClass}>{producto.modelo ?? "—"}</td>
                     <td className={tdClass}>
-                      {producto.nombre}{" "}
-                      {producto.es_kit ? <Badge>Kit</Badge> : null}
+                      <div className="max-w-sm">
+                        <NombreProducto nombre={producto.nombre} />
+                      </div>
+                      {producto.es_kit || producto.revisar ? (
+                        <div className="mt-1 flex flex-wrap items-start gap-2">
+                          {producto.es_kit ? <Badge>Kit</Badge> : null}
+                          {producto.revisar ? (
+                            <MarcaRevisar motivos={producto.motivos_revisar} />
+                          ) : null}
+                        </div>
+                      ) : null}
                     </td>
                     <td className={tdClass}>{producto.categoria ?? "—"}</td>
                     <td className={tdClass}>
@@ -294,7 +418,7 @@ function ProductTable({
                     </td>
                     {producto.costo_hoy_ars === null ? (
                       <td className={`${tdClass} text-muted`} colSpan={2}>
-                        Falta cargar dólar o precios
+                        {costoFaltante(producto.avisos)}
                       </td>
                     ) : (
                       <>
@@ -307,7 +431,7 @@ function ProductTable({
                       </>
                     )}
                     <td className={tdClass}>
-                      <Avisos avisos={producto.avisos} />
+                      <Avisos avisos={restoDeAvisos(producto)} wrap />
                     </td>
                   </tr>
                 ))}

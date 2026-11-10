@@ -92,14 +92,22 @@ export function canUseVoice(value: string | null | undefined): boolean {
   return roles.includes("admin") || roles.includes("taller");
 }
 
-/** Where each role lands and which paths it may open. `null` paths = everything. */
+/**
+ * Where each role lands and which paths it may open. `null` paths = everything. `paths` open a
+ * route and everything below it; `exact` open only that route (taller reads the product LIST,
+ * /productos, but not the product sheet, /productos/<code>).
+ */
 const ROLE_ACCESS: Record<
   Role,
-  { home: string; paths: readonly string[] | null }
+  { home: string; paths: readonly string[] | null; exact?: readonly string[] }
 > = {
   admin: { home: "/", paths: null },
   gerente: { home: "/productos", paths: ["/productos", "/grilla"] },
-  taller: { home: "/corte", paths: ["/corte", "/cueros", "/voz"] },
+  taller: {
+    home: "/corte",
+    paths: ["/corte", "/cueros", "/voz"],
+    exact: ["/productos"],
+  },
 };
 
 /** Home of a user with no recognized role: a page that only explains it. */
@@ -122,14 +130,24 @@ export function canAccessPath(
   const roles = parseRoles(value);
   if (roles.length === 0) return matchesPath(pathname, NO_ROLE_HOME);
   return roles.some((role) => {
-    const { paths } = ROLE_ACCESS[role];
+    const { paths, exact } = ROLE_ACCESS[role];
     return (
-      paths === null || paths.some((route) => matchesPath(pathname, route))
+      paths === null ||
+      paths.some((route) => matchesPath(pathname, route)) ||
+      (exact?.includes(pathname) ?? false)
     );
   });
 }
 
-/** A taller user who is not also admin: sees no money (prices paid per m2, costs). */
+/** The product sheet (and anything below /productos) is for admin and gerente; taller only reads the list. */
+export function canOpenProductSheet(value: string | null | undefined): boolean {
+  return canAccessPath(value, "/productos/ficha");
+}
+
+/**
+ * A taller user who is not also admin: does not see what is paid per m2 of leather (the cueros
+ * pages hide it). The product list with its costs IS open to taller, by decision of the user.
+ */
 export function isTallerOnly(value: string | null | undefined): boolean {
   return hasRole(value, "taller") && !hasRole(value, "admin");
 }

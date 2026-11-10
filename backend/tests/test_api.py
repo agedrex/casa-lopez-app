@@ -272,17 +272,17 @@ def test_the_product_search_reaches_the_service(monkeypatch):
     client, _ = con_usuario("gerente")
     visto = {}
 
-    def listar(session, limit, offset, q=None, categoria=None):
-        visto.update(limit=limit, offset=offset, q=q, categoria=categoria)
+    def listar(session, limit, offset, q=None, categoria=None, revisar=False):
+        visto.update(limit=limit, offset=offset, q=q, categoria=categoria, revisar=revisar)
         return []
     monkeypatch.setattr(servicios, "listar_productos", listar)
     assert client.get("/productos", params={"q": "cartera", "categoria": "Carteras", "limit": 5}).json() == []
-    assert visto == {"limit": 5, "offset": 0, "q": "cartera", "categoria": "Carteras"}
+    assert visto == {"limit": 5, "offset": 0, "q": "cartera", "categoria": "Carteras", "revisar": False}
     assert client.get("/productos").status_code == 200
-    assert visto == {"limit": 100, "offset": 0, "q": None, "categoria": None}
+    assert visto == {"limit": 100, "offset": 0, "q": None, "categoria": None, "revisar": False}
 
 
 def test_the_count_is_a_separate_route_so_the_list_keeps_its_shape(monkeypatch):
     client, _ = con_usuario("gerente")
-    monkeypatch.setattr(servicios, "contar_productos", lambda session, q=None, categoria=None: 7)
+    monkeypatch.setattr(servicios, "contar_productos", lambda session, q=None, categoria=None, revisar=False: 7)
     assert client.get("/productos/conteo", params={"q": "x"}).json() == {"total": 7}

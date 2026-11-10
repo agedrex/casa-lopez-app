@@ -5,11 +5,16 @@ export type ProductoResumen = {
   codigo: string;
   nombre: string;
   categoria: string | null;
+  /** Model code (not unique: some codes repeat in the imported products). */
+  modelo: string | null;
   estado_del_ciclo: string;
   es_kit: boolean;
   costo_hoy_ars: string | null;
   costo_hoy_usd: string | null;
   avisos: string[];
+  /** The note has `REVISAR: <reason>` marks; `motivos_revisar` holds the reasons. */
+  revisar: boolean;
+  motivos_revisar: string[];
 };
 
 export type LineaReceta = {

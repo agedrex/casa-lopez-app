@@ -13,15 +13,18 @@ export function Badge({
   children,
   tone = "neutral",
   title,
+  wrap = false,
 }: {
   children: ReactNode;
   tone?: Tone;
   title?: string;
+  /** Let a long text break onto several lines instead of cutting it with an ellipsis. */
+  wrap?: boolean;
 }) {
   return (
     <span
       title={title}
-      className={`inline-block max-w-full truncate rounded-full px-2.5 py-0.5 align-middle text-sm tracking-caps-sm sm:text-xs ${TONES[tone]}`}
+      className={`inline-block max-w-full rounded-full px-2.5 py-0.5 align-middle text-sm tracking-caps-sm sm:text-xs ${wrap ? "break-words" : "truncate"} ${TONES[tone]}`}
     >
       {children}
     </span>
@@ -33,21 +36,29 @@ export function PageHeader({
   title,
   description,
   actions,
+  clampTitle = false,
 }: {
   eyebrow?: string;
   title: string;
   description?: string;
   actions?: ReactNode;
+  /** For long, user-typed titles: two lines at most, the whole text in the tooltip. */
+  clampTitle?: boolean;
 }) {
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-4 border-b border-line pb-5 sm:mb-10 sm:pb-6">
-      <div>
+      <div className={clampTitle ? "min-w-0 max-w-full" : undefined}>
         {eyebrow ? (
           <p className="mb-2 text-sm uppercase tracking-caps-md text-gold-deep sm:text-xs">
             {eyebrow}
           </p>
         ) : null}
-        <h1 className="text-2xl sm:text-4xl">{title}</h1>
+        <h1
+          className={`text-2xl sm:text-4xl ${clampTitle ? "line-clamp-2 break-words" : ""}`}
+          title={clampTitle ? title : undefined}
+        >
+          {title}
+        </h1>
         {description ? (
           <p className="mt-3 max-w-2xl text-sm text-muted">{description}</p>
         ) : null}

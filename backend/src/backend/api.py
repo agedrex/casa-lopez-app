@@ -36,7 +36,8 @@ router = APIRouter(dependencies=[Depends(require_user)])
 # `require_role` builds on `require_user`, so no session still answers 401, not 403. SUPUESTO: validar.
 #   admin    everything.
 #   gerente  read only: product and quote data (LECTURA_PRODUCTOS) and the plain catalogs (LECTURA_GENERAL).
-#   taller   voice, cutting and what the corte / cueros / voz pages read (CORTES, LECTURA_CORTE); no costs screens.
+#   taller   voice, cutting and what the corte / cueros / voz pages read (CORTES, LECTURA_CORTE), plus the product
+#            LIST and its count (LECTURA_GENERAL; costs included, by decision of the user). Not the product sheet.
 # Every write is admin only (ESCRITURA) except cutting and the voice interpreter (CORTES).
 ESCRITURA = [Depends(SOLO_ADMIN)]
 CORTES = [Depends(CORTE)]
@@ -370,11 +371,14 @@ class ProductoResumen(Salida):
     codigo: str
     nombre: str
     categoria: str | None
+    modelo: str | None
     estado_del_ciclo: str
     es_kit: bool
     costo_hoy_ars: Decimal | None
     costo_hoy_usd: Decimal | None
     avisos: list[str]
+    revisar: bool
+    motivos_revisar: list[str]
 
 
 class LineaRecetaOut(Salida):
@@ -965,14 +969,19 @@ class CalidadOut(Salida):
 def productos(
     session: Sesion, limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0),
     q: str | None = Query(None, max_length=100), categoria: str | None = None,
+    revisar: bool = Query(False, description="true: only products whose note has a `REVISAR:` mark; false: no filter."),
 ):
-    return servicios.listar_productos(session, limit, offset, q, categoria)
+    return servicios.listar_productos(session, limit, offset, q, categoria, revisar)
 
 
 # Declared before `/productos/{codigo}` so "conteo" is not read as a product code.
-@router.get("/productos/conteo", dependencies=LECTURA_PRODUCTOS, response_model=ConteoOut)
-def productos_conteo(session: Sesion, q: str | None = Query(None, max_length=100), categoria: str | None = None):
-    return {"total": servicios.contar_productos(session, q, categoria)}
+# Same filters as `/productos`; open to every role because it paginates the list, which taller also reads.
+@router.get("/productos/conteo", dependencies=LECTURA_GENERAL, response_model=ConteoOut)
+def productos_conteo(
+    session: Sesion, q: str | None = Query(None, max_length=100), categoria: str | None = None,
+    revisar: bool = Query(False, description="true: only products whose note has a `REVISAR:` mark; false: no filter."),
+):
+    return {"total": servicios.contar_productos(session, q, categoria, revisar)}
 
 
 @router.get("/productos/{codigo}", dependencies=LECTURA_PRODUCTOS, response_model=FichaOut)
