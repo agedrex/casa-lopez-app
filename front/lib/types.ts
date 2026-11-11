@@ -595,6 +595,7 @@ export type BloqueCostoMes = {
   fijos_cargados: boolean;
   fijos_pendientes: number;
   fijos_ficticios: boolean;
+  sueldos_fabrica: string;
   fijo_por_unidad: string | null;
   total_por_unidad: string | null;
   equilibrio: EquilibrioPanel;

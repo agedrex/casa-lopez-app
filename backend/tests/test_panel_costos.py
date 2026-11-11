@@ -11,7 +11,7 @@ from backend import servicios
 from backend.auth import Usuario, get_verifier
 from backend.database import get_session
 from backend.main import app
-from backend.servicios import FijosDelMes, ItemDatos, LoteDatos, armar_panel_de_costos
+from backend.servicios import FijosDelMes, _bloque_del_panel, ItemDatos, LoteDatos, armar_panel_de_costos
 
 HOY = date(2026, 11, 4)
 PERIODO = "2026-11"
@@ -380,3 +380,8 @@ def test_month_totals_are_none_when_a_part_is_missing():
         actual = resultado["actual"]
         assert actual["costo_total"] is None
         assert actual["fijos_pct_del_total"] is None
+
+
+def test_payroll_total_is_exposed_next_to_the_fixed_costs():
+    bloque = _bloque_del_panel("2026-10", None, [], [], {}, FijosDelMes(True, D("4000"), 0, False, D("1500")))
+    assert bloque["sueldos_fabrica"] == D("1500") and bloque["fijos_fabrica"] == D("4000")

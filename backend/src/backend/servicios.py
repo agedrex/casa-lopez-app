@@ -1426,6 +1426,7 @@ class FijosDelMes:
     total_fabrica: Decimal
     pendientes: int
     ficticios: bool
+    sueldos_fabrica: Decimal = ZERO  # part of `total_fabrica` filed under SUELDOS
 
 
 SIN_FIJOS = FijosDelMes(cargados=False, total_fabrica=ZERO, pendientes=0, ficticios=False)
@@ -1462,6 +1463,7 @@ def _bloque_del_panel(
         "periodo": periodo, "unidades": unidades, "unidades_sin_costo": sin_costo,
         "costo_variable_por_unidad": variable, "fijos_fabrica": fijos.total_fabrica, "fijos_cargados": fijos.cargados,
         "fijos_pendientes": fijos.pendientes, "fijos_ficticios": fijos.ficticios,
+        "sueldos_fabrica": fijos.sueldos_fabrica,
         "fijo_por_unidad": por_unidad.fijo_por_unidad,
         "total_por_unidad": por_unidad.total_por_unidad if variable is not None else None,
         "equilibrio": equilibrio,
@@ -1565,6 +1567,7 @@ def _fijos_de_fabrica(session: Session, periodos: list[str]) -> dict[str, FijosD
                 cargados=True, total_fabrica=sum((g.monto_ars_del_mes or ZERO for g in del_mes), ZERO),
                 pendientes=sum(1 for g in del_mes if g.monto_ars_del_mes is None),
                 ficticios=any(g.ficticio for g in del_mes),
+                sueldos_fabrica=sum((g.monto_ars_del_mes or ZERO for g in del_mes if g.categoria == "SUELDOS"), ZERO),
             )
     return resultado
 
