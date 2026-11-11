@@ -510,12 +510,12 @@ class ModeloOut(Salida):
     herrajes_usd_por_unidad: Decimal | None
     hilo_y_cemento: Decimal | None
     confeccion_estimada_ars: Decimal | None
+    horas_de_confeccion: Decimal | None
     origen_de_los_consumos: str | None
     validado: bool
 
 
 class ModeloDetalleOut(ModeloOut):
-    horas_de_confeccion: Decimal | None
     nota: str | None
     modelo_excel_viejo: str | None
     fila_excel_viejo: int | None

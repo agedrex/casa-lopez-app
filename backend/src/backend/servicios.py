@@ -548,7 +548,7 @@ def _modelo_a_dict(m: Modelo, categoria: str | None, forro_codigo: str | None) -
         "forro_m2_por_unidad": m.forro_m2_por_unidad, "flex_m2_por_unidad": m.flex_m2_por_unidad,
         "goma_eva_m2_por_unidad": m.goma_eva_m2_por_unidad, "herrajes_usd_por_unidad": m.herrajes_usd_por_unidad,
         "hilo_y_cemento": m.hilo_y_cemento, "confeccion_estimada_ars": m.confeccion_estimada_ars,
-        "origen_de_los_consumos": m.origen_de_los_consumos, "validado": m.validado,
+        "horas_de_confeccion": m.horas_de_confeccion, "origen_de_los_consumos": m.origen_de_los_consumos, "validado": m.validado,
     }
 
 
@@ -2153,7 +2153,7 @@ def detalle_modelo(session: Session, codigo: str) -> dict:
         raise NoEncontrado(f"No existe el modelo {codigo}.")
     m, categoria, forro_codigo = fila
     return {
-        **_modelo_a_dict(m, categoria, forro_codigo), "horas_de_confeccion": m.horas_de_confeccion, "nota": m.nota,
+        **_modelo_a_dict(m, categoria, forro_codigo), "nota": m.nota,
         "modelo_excel_viejo": m.modelo_excel_viejo, "fila_excel_viejo": m.fila_excel_viejo,
         "productos": session.scalar(select(func.count(Producto.id)).where(Producto.modelo_id == m.id)) or 0,
     }
@@ -2542,7 +2542,7 @@ def modelos_para_exportar(session: Session) -> list[dict]:
         .outerjoin(forro, forro.id == Modelo.forro_id).order_by(Modelo.id)
     ).all()
     return [{
-        **_modelo_a_dict(m, categoria, forro_codigo), "horas_de_confeccion": m.horas_de_confeccion, "nota": m.nota,
+        **_modelo_a_dict(m, categoria, forro_codigo), "nota": m.nota,
         "modelo_excel_viejo": m.modelo_excel_viejo, "fila_excel_viejo": m.fila_excel_viejo,
         "productos": usados.get(m.id, 0),
     } for m, categoria, forro_codigo in filas]

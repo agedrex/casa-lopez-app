@@ -177,3 +177,13 @@ def test_calculated_or_out_of_range_fields_are_refused_before_saving(api, extra)
 def test_a_body_without_the_rows_is_refused(api):
     como("admin")
     assert api.post("/modelos/consumos/lote", json={}).status_code == 422
+
+
+def test_the_models_list_carries_the_hours_so_a_grid_save_does_not_wipe_them(api):
+    como("admin")
+    modelo = api.session.scalars(select(Modelo).order_by(Modelo.id)).first()
+    modelo.horas_de_confeccion = D("1.5")
+    api.session.flush()
+    lista = {m["codigo"]: m for m in api.get("/modelos", params={"limit": 1000}).json()}
+    assert D(lista[modelo.codigo]["horas_de_confeccion"]) == D("1.5")
+    assert all("horas_de_confeccion" in m for m in lista.values())
