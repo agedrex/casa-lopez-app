@@ -178,6 +178,7 @@ export async function guardarGastosLote(
   periodo: string,
   cambios: CambioGastoLote[],
   nuevos: Record<string, string>[],
+  anulados: string[] = [],
 ): Promise<FormState> {
   const denied = await denyUnlessWriter();
   if (denied) return denied;
@@ -187,7 +188,10 @@ export async function guardarGastosLote(
   if (!Array.isArray(cambios) || !Array.isArray(nuevos)) {
     return error("No se pudieron leer los cambios. Recargue la página.");
   }
-  if (cambios.length + nuevos.length === 0) {
+  if (!Array.isArray(anulados)) {
+    return error("No se pudieron leer los cambios. Recargue la página.");
+  }
+  if (cambios.length + nuevos.length + anulados.length === 0) {
     return error("No hay cambios para guardar.");
   }
 
@@ -226,6 +230,12 @@ export async function guardarGastosLote(
       if (monto === null) return error(`${codigo}: ${montoError}`);
       body.monto = monto;
     }
+    // An empty person or note clears it; the API treats "" as "no value".
+    if ("persona" in valores)
+      body.persona = String(valores.persona ?? "").trim();
+    if ("nota_fuente" in valores) {
+      body.nota_fuente = String(valores.nota_fuente ?? "").trim();
+    }
     cambiosBody.push(body);
   }
 
@@ -259,6 +269,7 @@ export async function guardarGastosLote(
     periodo,
     cambios: cambiosBody,
     nuevos: nuevosBody,
+    anulados,
   });
   if (!result.ok) {
     return fromFailure(result, {
@@ -274,8 +285,9 @@ export async function guardarGastosLote(
     nuevosBody.length > 0
       ? `${nuevosBody.length} ${nuevosBody.length === 1 ? "gasto nuevo" : "gastos nuevos"}`
       : null,
+    anulados.length > 0
+      ? `${anulados.length} ${anulados.length === 1 ? "gasto borrado" : "gastos borrados"}`
+      : null,
   ].filter(Boolean);
-  return ok(
-    `Listo: ${partes.join(" y ")}. Si cambió un monto ya cargado, queda como corrección y el anterior sigue en el historial.`,
-  );
+  return ok(`Listo: ${partes.join(", ")}.`);
 }

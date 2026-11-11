@@ -83,7 +83,6 @@ export function CostosGrid({
         key: "persona",
         header: "Persona",
         kind: "select",
-        newOnly: true,
         emptyLabel: "Sin indicar",
         width: "min-w-40",
         options: personas.map((persona) => ({
@@ -95,9 +94,8 @@ export function CostosGrid({
       },
       {
         key: "nota_fuente",
-        header: "Nota o fuente",
+        header: "Nota",
         kind: "text",
-        newOnly: true,
         width: "min-w-56",
       },
     ],
@@ -107,11 +105,6 @@ export function CostosGrid({
   const defaults = useMemo(
     () => ({ fabrica_o_tienda: area, categoria: "" }),
     [area],
-  );
-
-  const byCode = useMemo(
-    () => new Map(gastos.map((gasto) => [gasto.codigo, gasto])),
-    [gastos],
   );
 
   const rows = useMemo<GridRow[]>(
@@ -161,22 +154,8 @@ export function CostosGrid({
         ),
       })),
       save.added,
+      save.deleted,
     );
-  }
-
-  function warning(save: GridSave): string | null {
-    const corrections = save.changes.filter((change) => {
-      const gasto = byCode.get(change.id);
-      return (
-        change.changed.includes("monto") &&
-        gasto !== undefined &&
-        gasto.monto_ars_del_mes !== null
-      );
-    }).length;
-    if (corrections === 0) return null;
-    return corrections === 1
-      ? "1 monto cargado va a quedar como corrección: el anterior se conserva en el historial."
-      : `${corrections} montos cargados van a quedar como correcciones: los anteriores se conservan en el historial.`;
   }
 
   return (
@@ -190,16 +169,8 @@ export function CostosGrid({
       allowNew
       newRowDefaults={defaults}
       newRowLabel="Gasto nuevo"
-      warning={warning}
+      allowDelete
       onSave={onSave}
-      note={
-        <p className="text-sm text-muted">
-          Cambiar el monto de un gasto que ya lo tiene crea una corrección y
-          conserva el historial: el monto anterior no se pisa ni se borra. Un
-          gasto sin monto queda pendiente y no entra en los totales. Guarde
-          antes de cambiar de período o de filtro.
-        </p>
-      }
       footer={
         <div className="space-y-1">
           <dl className="flex flex-wrap gap-x-8 gap-y-1 text-sm">
@@ -222,9 +193,6 @@ export function CostosGrid({
               </dd>
             </div>
           </dl>
-          <p className="text-xs text-muted">
-            Los totales los calcula la aplicación y se actualizan al guardar.
-          </p>
         </div>
       }
     />
