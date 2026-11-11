@@ -783,3 +783,40 @@ export type DocumentoProveedor = {
   subido_por: string;
   created_at: string;
 };
+
+export type ProductoReventa = {
+  codigo: string;
+  nombre: string;
+  categoria: string | null;
+  proveedor: string | null;
+  nota: string | null;
+  activo: boolean;
+  // Everything below comes calculated by the API; null while there is no purchase.
+  costo_unitario_ars: string | null;
+  precio_venta_unitario_ars: string | null;
+  margen_unitario_ars: string | null;
+  // A fraction: 0.4 = 40 %.
+  margen_pct: string | null;
+  ultima_compra: string | null;
+  compras: number;
+  unidades_compradas: string;
+};
+
+export type CompraReventa = {
+  fecha: string;
+  unidades: string;
+  costo_unitario_ars: string;
+  costo_total_ars: string;
+  precio_venta_unitario_ars: string | null;
+  margen_unitario_ars: string | null;
+  margen_pct: string | null;
+  proveedor: string | null;
+  nota: string | null;
+  creado_por: string | null;
+  creado_en: string | null;
+};
+
+export type ProductoReventaDetalle = ProductoReventa & {
+  // Newest first.
+  historial: CompraReventa[];
+};
