@@ -19,8 +19,8 @@ import type { Gasto, Persona } from "@/lib/types";
 import { guardarGastosLote } from "./actions";
 
 /**
- * The month's expenses as a sheet. Concept, area, category and amount are edited in the cell;
- * person and note can only be set on new rows. The totals shown are the ones the API sent.
+ * The month's expenses as a sheet. Every cell of a saved row is edited in place and a row can be
+ * marked for deletion. The totals shown are the ones the API sent.
  */
 export function CostosGrid({
   periodo,

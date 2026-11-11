@@ -258,3 +258,43 @@ def test_the_panel_and_the_factory_costs_ignore_annulled_rows(api):
     api.post(f"/costos-fijos/{CON_MONTO}/anular")
     fabrica = servicios._fijos_de_fabrica(api.session, [PERIODO])[PERIODO]
     assert fabrica.total_fabrica == sum((D(g["monto_ars_del_mes"] or 0) for g in mes(api)["gastos"] if g["fabrica_o_tienda"] == "FABRICA"), D(0))
+
+
+def test_a_month_with_one_live_row_among_annulled_ones_still_refuses_a_copy(api):
+    como("admin")
+    for concepto in ("Seguro", "Internet"):
+        creado = api.post("/costos-fijos", json={
+            "periodo": "2027-08", "concepto": concepto, "fabrica_o_tienda": "TIENDA", "categoria": "OTROS"})
+        assert creado.status_code == 201, creado.text
+    primera = api.get("/costos-fijos", params={"periodo": "2027-08"}).json()["gastos"][0]["codigo"]
+    assert api.post(f"/costos-fijos/{primera}/anular").status_code == 200
+    antes = api.session.scalar(select(func.count()).select_from(GastoPeriodo))
+    assert api.post("/costos-fijos/copiar", json={"desde": PERIODO, "hasta": "2027-08"}).status_code == 409
+    assert api.session.scalar(select(func.count()).select_from(GastoPeriodo)) == antes
+
+
+def test_a_month_whose_only_live_row_is_a_correction_refuses_a_copy(api):
+    como("admin")
+    api.post("/costos-fijos", json={
+        "periodo": "2027-09", "concepto": "Seguro", "fabrica_o_tienda": "TIENDA", "categoria": "OTROS",
+        "monto_ars_del_mes": "10"})
+    codigo = api.get("/costos-fijos", params={"periodo": "2027-09"}).json()["gastos"][0]["codigo"]
+    assert api.post(f"/costos-fijos/{codigo}/corregir", json={"monto_ars_del_mes": "20"}).status_code == 201
+    assert api.post("/costos-fijos/copiar", json={"desde": PERIODO, "hasta": "2027-09"}).status_code == 409
+
+
+def test_the_sheet_export_skips_annulled_rows(api):
+    como("admin")
+    assert api.post(f"/costos-fijos/{PENDIENTE}/anular").status_code == 200
+    exportados = {g["codigo"] for p in servicios.costos_fijos_de_todos_los_periodos(api.session) for g in p["gastos"]}
+    assert PENDIENTE not in exportados and CON_MONTO in exportados
+
+
+def test_a_month_with_every_row_annulled_leaves_the_period_list(api):
+    como("admin")
+    api.post("/costos-fijos", json={
+        "periodo": "2027-10", "concepto": "Seguro", "fabrica_o_tienda": "TIENDA", "categoria": "OTROS"})
+    assert "2027-10" in api.get("/costos-fijos/periodos").json()["periodos"]
+    codigo = api.get("/costos-fijos", params={"periodo": "2027-10"}).json()["gastos"][0]["codigo"]
+    assert api.post(f"/costos-fijos/{codigo}/anular").status_code == 200
+    assert "2027-10" not in api.get("/costos-fijos/periodos").json()["periodos"]

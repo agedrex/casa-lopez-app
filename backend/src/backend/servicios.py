@@ -1819,7 +1819,7 @@ def cambiar_activo_taller(session: Session, codigo: str, activo: bool) -> dict:
 # --- Fixed costs: periods and pending amounts -----------------------------------------------------------------
 
 def periodos_de_costos_fijos(session: Session) -> dict:
-    cargados = set(session.scalars(select(GastoPeriodo.periodo).distinct()))
+    cargados = set(session.scalars(select(GastoPeriodo.periodo).where(_gastos_vigentes()).distinct()))
     vigente = session.scalar(select(Parametro.valor_texto).where(Parametro.codigo == "PERIODO_VIGENTE"))
     return {"vigente": vigente, "periodos": sorted(cargados | ({vigente} if vigente else set()), reverse=True)}
 

@@ -64,7 +64,7 @@ def test_no_other_service_function_reads_gasto_periodo_without_the_shared_condit
     fuente = inspect.getsource(servicios)
     lectores = {nombre for nombre, f in inspect.getmembers(servicios, inspect.isfunction)
                 if f.__module__ == servicios.__name__ and "GastoPeriodo" in inspect.getsource(f)}
-    # corregir_gasto and crear_gasto write; periodos_de_costos_fijos only lists months (a month always keeps its current row)
+    # corregir_gasto and crear_gasto write; periodos_de_costos_fijos only lists months that still have a live row
     assert lectores <= {"costos_fijos", "_fijos_de_fabrica", "_hallazgos_de_gastos", "cargar_monto_de_gasto",
                         "copiar_mes_de_gastos", "corregir_gasto", "crear_gasto", "guardar_gastos_en_lote", "periodos_de_costos_fijos",
                         "_gastos_vigentes", "_gasto_actual_de", "_gastos_vigentes_del_mes", "anular_gasto",
