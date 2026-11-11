@@ -1,4 +1,4 @@
-import { Badge, Card, ErrorNotice, Notice } from "@/components/ui";
+import { Badge, Card, ErrorNotice } from "@/components/ui";
 import {
   formatArs,
   formatDate,
@@ -79,14 +79,6 @@ export function PanelCvu({ panel }: { panel: PanelCostos }) {
 
   return (
     <div className="space-y-6">
-      {panel.avisos.length > 0 ? (
-        <div className="space-y-2">
-          {panel.avisos.map((aviso) => (
-            <Notice key={aviso.codigo} title={aviso.texto} />
-          ))}
-        </div>
-      ) : null}
-
       <section aria-labelledby="resumen-titulo">
         <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
           <h2 id="resumen-titulo" className="text-xl">
