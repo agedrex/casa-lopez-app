@@ -32,7 +32,7 @@ def gasto(id, codigo, periodo="2026-10", monto="1000", concepto="Alquiler", fict
     return SimpleNamespace(
         id=id, codigo=codigo, periodo=periodo, concepto=concepto, fabrica_o_tienda="FABRICA", categoria="ALQUILER",
         persona_id=persona_id, monto_ars_del_mes=None if monto is None else D(monto), ficticio=ficticio,
-        nota_fuente=nota_fuente, reemplaza_a_id=None)
+        nota_fuente=nota_fuente, reemplaza_a_id=None, anulado=False)
 
 
 @pytest.fixture
@@ -67,7 +67,8 @@ def test_no_other_service_function_reads_gasto_periodo_without_the_shared_condit
     # corregir_gasto and crear_gasto write; periodos_de_costos_fijos only lists months (a month always keeps its current row)
     assert lectores <= {"costos_fijos", "_fijos_de_fabrica", "_hallazgos_de_gastos", "cargar_monto_de_gasto",
                         "copiar_mes_de_gastos", "corregir_gasto", "crear_gasto", "guardar_gastos_en_lote", "periodos_de_costos_fijos",
-                        "_gastos_vigentes", "_gasto_actual_de", "_gastos_vigentes_del_mes"}, lectores
+                        "_gastos_vigentes", "_gasto_actual_de", "_gastos_vigentes_del_mes", "anular_gasto",
+                        "_gasto_para_cambiar"}, lectores
     assert fuente.count("def _gastos_vigentes") == 1
 
 

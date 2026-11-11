@@ -395,6 +395,8 @@ class GastoCambioIn(Entrada):
     concepto: str | None = None
     fabrica_o_tienda: Literal["FABRICA", "TIENDA"] | None = None
     categoria: Literal["SUELDOS", "CARGAS_SOCIALES", "ALQUILER", "SERVICIOS", "IMPUESTOS_FIJOS", "OTROS"] | None = None
+    persona: str | None = None  # person code; sent as null or "" it clears the person
+    nota_fuente: str | None = None
 
 
 class GastoNuevoIn(Entrada):
@@ -410,6 +412,7 @@ class GastosLoteIn(Entrada):
     periodo: Annotated[str, Field(pattern=PERIODO)]
     cambios: list[GastoCambioIn] = []
     nuevos: list[GastoNuevoIn] = []
+    anulados: list[str] = []  # codes of current rows to delete (soft)
 
 
 # --- Responses -------------------------------------------------------------------------------------------
@@ -1388,10 +1391,10 @@ def cambiar_activo_de_taller(codigo: str, cuerpo: ActivoIn, session: Sesion):
 
 @router.post("/costos-fijos/lote", dependencies=ESCRITURA, response_model=CostosFijosOut)
 def guardar_costos_fijos_en_lote(cuerpo: GastosLoteIn, session: Sesion):
-    """Grid save of one month: corrections (new rows that replace) and new rows, all or nothing."""
+    """Grid save of one month: corrections (new rows that replace), new rows and annulments, all or nothing."""
     return servicios.guardar_gastos_en_lote(
         session, cuerpo.periodo, [c.model_dump(exclude_unset=True) for c in cuerpo.cambios],
-        [n.model_dump() for n in cuerpo.nuevos])
+        [n.model_dump() for n in cuerpo.nuevos], anulados=cuerpo.anulados)
 
 
 @router.post("/costos-fijos/{codigo}/monto", dependencies=ESCRITURA, response_model=CostosFijosOut)
@@ -1405,6 +1408,12 @@ def corregir_gasto(codigo: str, cuerpo: CorreccionIn, session: Sesion):
     """Creates a NEW row that replaces `codigo` (kept, no longer counted); 409 if it was already replaced."""
     return servicios.corregir_gasto(
         session, codigo, cuerpo.monto_ars_del_mes, nota=cuerpo.nota, ficticio=cuerpo.ficticio)
+
+
+@router.post("/costos-fijos/{codigo}/anular", dependencies=ESCRITURA, response_model=CostosFijosOut)
+def anular_gasto(codigo: str, session: Sesion):
+    """Soft delete: the row is kept flagged `anulado` and stops counting; 409 if it was already corrected or annulled."""
+    return servicios.anular_gasto(session, codigo)
 
 
 @router.post("/costos-fijos/copiar", dependencies=ESCRITURA, response_model=CostosFijosOut, status_code=201)

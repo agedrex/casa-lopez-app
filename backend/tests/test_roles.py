@@ -118,7 +118,7 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
         "/cueros", "/productos", "/productos/{codigo}/precio-venta", "/productos/{codigo}/extras",
         "/productos/{codigo}/componentes", "/productos/{codigo}/cotizaciones", "/cvu/escenario", "/precios", "/dolar",
         "/dolar/actualizar-bna", "/costos-fijos", "/costos-fijos/{codigo}/monto", "/costos-fijos/{codigo}/corregir",
-        "/costos-fijos/copiar", "/ordenes", "/ordenes/{codigo}/estado", "/ordenes/{codigo}/items",
+        "/costos-fijos/{codigo}/anular", "/costos-fijos/copiar", "/ordenes", "/ordenes/{codigo}/estado", "/ordenes/{codigo}/items",
         "/talleres", "/talleres/{codigo}/activo", "/parametros/{codigo}",
         "/personas", "/personas/{codigo}/activo", "/colores", "/categorias", "/modelos", "/modelos/{codigo}/validado",
         "/modelos/{codigo}/consumos", "/sync/sheets", "/costos-fijos/lote", "/modelos/consumos/lote")},

@@ -167,6 +167,12 @@ def test_gasto_periodo_reemplaza_a_id_is_a_nullable_self_reference():
     assert {fk.target_fullname for fk in column.foreign_keys} == {"costos.gasto_periodo.id"}
 
 
+def test_gasto_periodo_anulado_is_a_not_null_boolean_that_defaults_to_false():
+    column = table("gasto_periodo").c.anulado
+    assert column.nullable is False and str(column.type.compile(dialect=postgresql.dialect())) == "BOOLEAN"
+    assert str(column.server_default.arg) == "false"
+
+
 def test_proveedor_is_a_business_key_table_with_unique_cuit_and_a_case_insensitive_unique_name():
     t = table("proveedor")
     assert set(t.c.keys()) == {"id", "created_at", "codigo", "nombre", "cuit", "contacto", "telefono", "direccion",

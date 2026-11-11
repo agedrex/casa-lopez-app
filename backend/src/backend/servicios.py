@@ -681,18 +681,19 @@ def listar_personas(session: Session) -> list[dict]:
 
 
 def _gastos_vigentes():
-    """Condition for the current fixed-cost rows: those that no later row replaces (S6).
+    """Condition for the current fixed-cost rows: those that no later row replaces (S6) and that were not annulled.
 
-    Every read of GastoPeriodo that lists or sums rows must filter with this, so a corrected row never counts twice.
+    Every read of GastoPeriodo that lists or sums rows must filter with this, so a corrected row never counts twice
+    and an annulled one never counts at all.
     """
     reemplazo = aliased(GastoPeriodo)
-    return ~exists().where(reemplazo.reemplaza_a_id == GastoPeriodo.id)
+    return ~exists().where(reemplazo.reemplaza_a_id == GastoPeriodo.id) & GastoPeriodo.anulado.is_(False)
 
 
 def costos_fijos(session: Session, periodo: str | None = None) -> dict:
     """Fixed costs of a month with factory/store totals; pending amounts (NULL) are counted, not summed.
 
-    Rows replaced by a correction are left out of the list and the totals (they stay in the database).
+    Rows replaced by a correction or annulled are left out of the list and the totals (they stay in the database).
     """
     if periodo is None:
         periodo = session.scalar(select(Parametro.valor_texto).where(Parametro.codigo == "PERIODO_VIGENTE"))
@@ -1833,6 +1834,8 @@ def cargar_monto_de_gasto(session: Session, codigo: str, monto: Decimal) -> dict
     if cargado is None:
         if session.scalar(select(GastoPeriodo.id).where(GastoPeriodo.codigo == codigo)) is None:
             raise NoEncontrado(f"No existe el gasto {codigo}.")
+        if session.scalar(select(GastoPeriodo.id).where(GastoPeriodo.codigo == codigo, GastoPeriodo.anulado.is_(True))) is not None:
+            raise Conflicto(f"El gasto {codigo} está anulado: no se le puede cargar un monto.")
         if session.scalar(select(GastoPeriodo.id).where(GastoPeriodo.codigo == codigo, ~_gastos_vigentes())) is not None:
             raise Conflicto(f"El gasto {codigo} ya fue reemplazado por una corrección: cargá el monto en el gasto vigente.")
         raise Conflicto(f"El gasto {codigo} ya tiene monto: para cambiarlo usá la corrección (queda el historial).")
@@ -1847,6 +1850,28 @@ def _gasto_actual_de(session: Session, gasto: GastoPeriodo) -> GastoPeriodo:
     return gasto
 
 
+def _gasto_para_cambiar(session: Session, codigo: str, periodo: str | None = None) -> GastoPeriodo:
+    """The saved row `codigo` if it is still the current, not annulled row of its chain; otherwise the matching error."""
+    viejo = session.scalar(select(GastoPeriodo).where(GastoPeriodo.codigo == codigo))
+    if viejo is None:
+        raise NoEncontrado(f"No existe el gasto {codigo}.")
+    if periodo is not None and viejo.periodo != periodo:
+        raise DatosInvalidos(f"El gasto {viejo.codigo} no es de {periodo}.")
+    if (actual := _gasto_actual_de(session, viejo)) is not viejo:
+        raise Conflicto(f"El gasto {viejo.codigo} ya fue corregido: corregí el vigente {actual.codigo}.")
+    if viejo.anulado:
+        raise Conflicto(f"El gasto {viejo.codigo} ya está anulado.")
+    return viejo
+
+
+def anular_gasto(session: Session, codigo: str) -> dict:
+    """Delete a fixed cost without losing it: the row stays, flagged `anulado`, and stops counting everywhere (S3)."""
+    viejo = _gasto_para_cambiar(session, codigo)
+    viejo.anulado = True
+    session.commit()
+    return costos_fijos(session, viejo.periodo)
+
+
 def corregir_gasto(
     session: Session, codigo: str, monto: Decimal, *, nota: str | None = None, ficticio: bool | None = None,
 ) -> dict:
@@ -1856,11 +1881,7 @@ def corregir_gasto(
     """
     if monto < 0:
         raise DatosInvalidos("El monto no puede ser negativo.")
-    viejo = session.scalar(select(GastoPeriodo).where(GastoPeriodo.codigo == codigo))
-    if viejo is None:
-        raise NoEncontrado(f"No existe el gasto {codigo}.")
-    if (actual := _gasto_actual_de(session, viejo)) is not viejo:
-        raise Conflicto(f"El gasto {codigo} ya fue corregido: corregí el vigente {actual.codigo}.")
+    viejo = _gasto_para_cambiar(session, codigo)
     fila = GastoPeriodo(
         codigo=f"GF-{_siguiente_numero(session, GastoPeriodo.codigo, 'GF'):04d}", periodo=viejo.periodo,
         concepto=viejo.concepto, fabrica_o_tienda=viejo.fabrica_o_tienda, categoria=viejo.categoria,
@@ -1872,31 +1893,34 @@ def corregir_gasto(
     return costos_fijos(session, viejo.periodo)
 
 
-def guardar_gastos_en_lote(session: Session, periodo: str, cambios: list[dict], nuevos: list[dict]) -> dict:
+def guardar_gastos_en_lote(
+    session: Session, periodo: str, cambios: list[dict], nuevos: list[dict], *, anulados: list[str] | None = None,
+) -> dict:
     """Grid save of a month, ONE transaction (all or nothing).
 
-    `cambios`: {codigo, monto?, concepto?, fabrica_o_tienda?, categoria?}. A pending row (monto NULL) with only an
-    amount is filled in place, like `cargar_monto_de_gasto`; anything else is a NEW row that replaces the old one, like
-    `corregir_gasto` (S5). `nuevos`: rows for `periodo`, as in `crear_gasto`.
+    `cambios`: {codigo, monto?, concepto?, fabrica_o_tienda?, categoria?, persona?, nota_fuente?}. A pending row
+    (monto NULL) with only an amount is filled in place, like `cargar_monto_de_gasto`; anything else is a NEW row that
+    replaces the old one, like `corregir_gasto` (S5). `persona` null or "" clears the person; `nota_fuente` replaces the
+    default note `Corrige <codigo>`. `nuevos`: rows for `periodo`, as in `crear_gasto`. `anulados`: codes of current
+    rows to delete (soft: they only get `anulado`), never the same code as a change.
     """
+    anulados = anulados or []
     if not PERIODO_AAAA_MM.fullmatch(periodo):
         raise DatosInvalidos(f"El período {periodo} no es válido: usá AAAA-MM.")
-    if not cambios and not nuevos:
+    if not cambios and not nuevos and not anulados:
         raise DatosInvalidos("No hay cambios para guardar.")
-    if len(cambios) + len(nuevos) > MAX_FILAS_POR_LOTE:
+    if len(cambios) + len(nuevos) + len(anulados) > MAX_FILAS_POR_LOTE:
         raise DatosInvalidos(f"Son demasiadas filas de una vez (máximo {MAX_FILAS_POR_LOTE}).")
     codigos = [c["codigo"] for c in cambios]
     if len(set(codigos)) != len(codigos):
         raise DatosInvalidos("Hay un gasto repetido en los cambios.")
+    if len(set(anulados)) != len(anulados):
+        raise DatosInvalidos("Hay un gasto repetido en los anulados.")
+    if (ambos := sorted(set(codigos) & set(anulados))):
+        raise DatosInvalidos(f"El gasto {ambos[0]} está a la vez para cambiar y para anular: elegí una sola cosa.")
     try:
         for cambio in cambios:
-            viejo = session.scalar(select(GastoPeriodo).where(GastoPeriodo.codigo == cambio["codigo"]))
-            if viejo is None:
-                raise NoEncontrado(f"No existe el gasto {cambio['codigo']}.")
-            if viejo.periodo != periodo:
-                raise DatosInvalidos(f"El gasto {viejo.codigo} no es de {periodo}.")
-            if (actual := _gasto_actual_de(session, viejo)) is not viejo:
-                raise Conflicto(f"El gasto {viejo.codigo} ya fue corregido: corregí el vigente {actual.codigo}.")
+            viejo = _gasto_para_cambiar(session, cambio["codigo"], periodo)
             monto = cambio.get("monto")
             if monto is None:
                 if "monto" in cambio and viejo.monto_ars_del_mes is not None:
@@ -1912,18 +1936,29 @@ def guardar_gastos_en_lote(session: Session, periodo: str, cambios: list[dict], 
             }
             if not datos["concepto"]:
                 raise DatosInvalidos(f"{viejo.codigo}: falta el concepto.")
-            igual = all(getattr(viejo, k) == v for k, v in datos.items()) and monto == viejo.monto_ars_del_mes
-            if igual:
+            persona_id = viejo.persona_id
+            if "persona" in cambio:  # null or "" clears it
+                persona_fila = _por_codigo(session, Persona, cambio["persona"] or None, "la persona")
+                persona_id = persona_fila.id if persona_fila else None
+            nota = None
+            if "nota_fuente" in cambio:
+                nota = (cambio["nota_fuente"] or "").strip() or None
+                nota_igual = nota == ((viejo.nota_fuente or "").strip() or None)
+            else:
+                nota_igual = True
+            solo_monto = all(getattr(viejo, k) == v for k, v in datos.items()) and persona_id == viejo.persona_id and nota_igual
+            if solo_monto and monto == viejo.monto_ars_del_mes:
                 continue
-            solo_monto = all(getattr(viejo, k) == v for k, v in datos.items())
-            if viejo.monto_ars_del_mes is None and solo_monto:
+            if solo_monto and viejo.monto_ars_del_mes is None:
                 viejo.monto_ars_del_mes = monto
                 continue
             _insertar(session, GastoPeriodo(
                 codigo=f"GF-{_siguiente_numero(session, GastoPeriodo.codigo, 'GF'):04d}", periodo=periodo,
-                persona_id=viejo.persona_id, monto_ars_del_mes=monto, ficticio=viejo.ficticio,
-                nota_fuente=f"Corrige {viejo.codigo}", reemplaza_a_id=viejo.id, **datos,
+                persona_id=persona_id, monto_ars_del_mes=monto, ficticio=viejo.ficticio,
+                nota_fuente=f"Corrige {viejo.codigo}" if nota_igual else nota, reemplaza_a_id=viejo.id, **datos,
             ), f"No se pudo guardar la corrección de {viejo.codigo}: ya fue corregido o el código se repitió; intentá de nuevo.")
+        for codigo in anulados:
+            _gasto_para_cambiar(session, codigo, periodo).anulado = True
         for nuevo in nuevos:
             concepto = nuevo["concepto"].strip()
             if not concepto:
@@ -1957,7 +1992,7 @@ def copiar_mes_de_gastos(session: Session, desde: str, hasta: str, *, con_montos
     ).all()
     if not origen:
         raise DatosInvalidos(f"No hay gastos cargados en {desde} para copiar.")
-    if session.scalar(select(func.count()).select_from(GastoPeriodo).where(GastoPeriodo.periodo == hasta)):
+    if session.scalar(select(func.count()).select_from(GastoPeriodo).where(GastoPeriodo.periodo == hasta, _gastos_vigentes())):
         raise Conflicto(f"El mes {hasta} ya tiene gastos: no se copia encima.")
     for g in origen:
         _insertar(session, GastoPeriodo(
