@@ -6,6 +6,10 @@ const nextConfig: NextConfig = {
   cacheComponents: true,
   partialPrefetching: true,
   experimental: {
+    // Railway keeps the build cache between deploys; with Turbopack's persistent build cache a deploy of staging
+    // kept serving a stale compiled stylesheet (body font Lato from an old commit instead of Nunito). A clean
+    // compile every time costs a few seconds and makes the build depend only on the commit.
+    turbopackFileSystemCacheForBuild: false,
     // Supplier documents go through a server action: files are up to 10 MB each (one per
     // call) plus the form fields. The default is 1 MB. The proxy buffers bodies too (10 MB
     // by default), so it needs the same room. The backend stays the authority on size.
