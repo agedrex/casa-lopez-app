@@ -169,12 +169,14 @@ export function ModelosGrid({
       rows={rows}
       noun={{ one: "modelo", many: "modelos" }}
       warning={warning}
+      autoSave
       onSave={onSave}
       note={
-        <Notice title="Guardar quita la marca «Validado» de los modelos editados">
+        <Notice title="Editar un modelo le quita la marca «Validado»">
           Los productos que usan esos modelos se costean con los valores nuevos.
           Vacío es dato faltante; 0 significa que el modelo no lleva ese insumo.
-          Si un guardado falla, no se guarda ninguna fila.
+          Cada cambio se guarda al salir de la celda; si falla, no se guarda
+          ninguna fila.
         </Notice>
       }
     />

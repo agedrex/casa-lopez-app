@@ -12,11 +12,35 @@ import {
   decimalInputText,
   EXPENSE_CATEGORIES,
   expenseCategoryLabel,
-  formatArs,
   formatPeriod,
 } from "@/lib/format";
 import type { Gasto, Persona } from "@/lib/types";
 import { guardarGastosLote } from "./actions";
+
+export type Bloque = "personal" | "servicios" | "otros";
+
+const CATEGORIAS_PERSONAL = ["SUELDOS", "CARGAS_SOCIALES"];
+
+const TITULOS: Record<Bloque, string> = {
+  personal: "Mano de obra",
+  servicios: "Servicios básicos",
+  otros: "Gastos",
+};
+const NOUN = {
+  personal: { one: "pago", many: "pagos" },
+  servicios: { one: "servicio", many: "servicios" },
+  otros: { one: "gasto", many: "gastos" },
+};
+const NUEVO: Record<Bloque, string> = {
+  personal: "Persona nueva",
+  servicios: "Servicio nuevo",
+  otros: "Gasto nuevo",
+};
+
+const AREAS = [
+  { value: "FABRICA", label: "Fábrica" },
+  { value: "TIENDA", label: "Tienda" },
+];
 
 /**
  * The month's expenses as a sheet. Every cell of a saved row is edited in place and a row can be
@@ -27,58 +51,75 @@ export function CostosGrid({
   gastos,
   personas,
   area,
-  totales,
+  bloque = "otros",
 }: {
   periodo: string;
   gastos: Gasto[];
   personas: Persona[];
   /** Area filter in the page ("FABRICA", "TIENDA" or ""): new rows start in that area. */
   area: string;
-  totales: { fabrica: string; tienda: string; total: string };
+  /**
+   * `personal` (sueldos y cargas) y `servicios` son grillas cortas para cargar el mes rápido;
+   * `otros` es la grilla completa.
+   */
+  bloque?: Bloque;
 }) {
-  const columns = useMemo<GridColumn[]>(
-    () => [
-      {
-        key: "concepto",
-        header: "Concepto",
-        kind: "text",
-        required: true,
-        width: "min-w-64",
-        placeholder: "Alquiler de la fábrica",
-      },
-      {
-        key: "fabrica_o_tienda",
-        header: "Es de",
-        kind: "select",
-        required: true,
-        width: "min-w-32",
-        options: [
-          { value: "FABRICA", label: "Fábrica" },
-          { value: "TIENDA", label: "Tienda" },
-        ],
-      },
-      {
-        key: "categoria",
-        header: "Categoría",
-        kind: "select",
-        required: true,
-        width: "min-w-44",
-        options: EXPENSE_CATEGORIES.map((code) => ({
-          value: code,
-          label: expenseCategoryLabel(code),
-        })),
-      },
-      {
-        key: "monto",
-        header: "Monto del mes (ARS)",
-        kind: "decimal",
-        width: "min-w-40",
-        placeholder: "Pendiente",
-        validate: (value, { original, isNew }) =>
-          !isNew && original !== "" && value === ""
-            ? "Un monto cargado no se puede vaciar."
-            : null,
-      },
+  const columns = useMemo<GridColumn[]>(() => {
+    const concepto: GridColumn = {
+      key: "concepto",
+      header: bloque === "personal" ? "Persona o puesto" : "Concepto",
+      kind: "text",
+      required: true,
+      width: "min-w-64",
+      placeholder:
+        bloque === "personal"
+          ? "Sueldo de Alderete"
+          : bloque === "servicios"
+            ? "Luz de la fábrica"
+            : "Alquiler de la fábrica",
+    };
+    const lado: GridColumn = {
+      key: "fabrica_o_tienda",
+      header: "Es de",
+      kind: "select",
+      required: true,
+      width: "min-w-32",
+      options: AREAS,
+    };
+    const monto: GridColumn = {
+      key: "monto",
+      header: "Monto del mes (ARS)",
+      kind: "decimal",
+      width: "min-w-40",
+      placeholder: "Pendiente",
+      validate: (value, { original, isNew }) =>
+        !isNew && original !== "" && value === ""
+          ? "Un monto cargado no se puede vaciar."
+          : null,
+    };
+    if (bloque === "servicios") {
+      return [{ ...concepto, header: "Servicio" }, lado, monto];
+    }
+    const categoria: GridColumn = {
+      key: "categoria",
+      header: bloque === "personal" ? "Tipo" : "Categoría",
+      kind: "select",
+      required: true,
+      width: "min-w-44",
+      options: (bloque === "personal"
+        ? CATEGORIAS_PERSONAL
+        : EXPENSE_CATEGORIES.filter(
+            (code) =>
+              !CATEGORIAS_PERSONAL.includes(code) && code !== "SERVICIOS",
+          )
+      ).map((code) => ({ value: code, label: expenseCategoryLabel(code) })),
+    };
+    if (bloque === "personal") return [concepto, categoria, lado, monto];
+    return [
+      concepto,
+      lado,
+      categoria,
+      monto,
       {
         key: "persona",
         header: "Persona",
@@ -92,19 +133,21 @@ export function CostosGrid({
             : `${persona.nombre} (inactiva)`,
         })),
       },
-      {
-        key: "nota_fuente",
-        header: "Nota",
-        kind: "text",
-        width: "min-w-56",
-      },
-    ],
-    [personas],
-  );
+      { key: "nota_fuente", header: "Nota", kind: "text", width: "min-w-56" },
+    ];
+  }, [personas, bloque]);
 
   const defaults = useMemo(
-    () => ({ fabrica_o_tienda: area, categoria: "" }),
-    [area],
+    () => ({
+      fabrica_o_tienda: area,
+      categoria:
+        bloque === "personal"
+          ? "SUELDOS"
+          : bloque === "servicios"
+            ? "SERVICIOS"
+            : "",
+    }),
+    [area, bloque],
   );
 
   const rows = useMemo<GridRow[]>(
@@ -122,26 +165,29 @@ export function CostosGrid({
           persona: gasto.persona ?? "",
           nota_fuente: gasto.nota_fuente ?? "",
         },
-        extras: [
-          <span key="estado" className="flex flex-wrap gap-1.5">
-            {gasto.monto_ars_del_mes === null ? (
-              <Badge tone="warn">Pendiente de monto</Badge>
-            ) : null}
-            {gasto.ficticio ? <Badge tone="warn">Ficticio</Badge> : null}
-            {gasto.reemplaza_a ? (
-              <Badge title="Este monto reemplaza al anterior, que quedó en el historial.">
-                Corrige a {gasto.reemplaza_a}
-              </Badge>
-            ) : null}
-            {gasto.monto_ars_del_mes !== null &&
-            !gasto.ficticio &&
-            !gasto.reemplaza_a ? (
-              <span className="text-muted">—</span>
-            ) : null}
-          </span>,
-        ],
+        extras:
+          bloque !== "otros"
+            ? undefined
+            : [
+                <span key="estado" className="flex flex-wrap gap-1.5">
+                  {gasto.monto_ars_del_mes === null ? (
+                    <Badge tone="warn">Pendiente de monto</Badge>
+                  ) : null}
+                  {gasto.ficticio ? <Badge tone="warn">Ficticio</Badge> : null}
+                  {gasto.reemplaza_a ? (
+                    <Badge title="Este monto reemplaza al anterior, que quedó en el historial.">
+                      Corrige a {gasto.reemplaza_a}
+                    </Badge>
+                  ) : null}
+                  {gasto.monto_ars_del_mes !== null &&
+                  !gasto.ficticio &&
+                  !gasto.reemplaza_a ? (
+                    <span className="text-muted">—</span>
+                  ) : null}
+                </span>,
+              ],
       })),
-    [gastos],
+    [gastos, bloque],
   );
 
   function onSave(save: GridSave) {
@@ -153,48 +199,27 @@ export function CostosGrid({
           change.changed.map((key) => [key, change.cells[key] ?? ""]),
         ),
       })),
-      save.added,
+      bloque === "servicios"
+        ? save.added.map((fila) => ({ ...fila, categoria: "SERVICIOS" }))
+        : save.added,
       save.deleted,
     );
   }
 
   return (
     <EditableGrid
-      label={`Gastos de ${formatPeriod(periodo)}`}
+      label={`${TITULOS[bloque]} de ${formatPeriod(periodo)}`}
       rowHeader="Código"
       columns={columns}
-      extraHeaders={["Estado"]}
+      extraHeaders={bloque === "otros" ? ["Estado"] : []}
       rows={rows}
-      noun={{ one: "gasto", many: "gastos" }}
-      allowNew
+      noun={NOUN[bloque]}
+      allowNew={bloque !== "otros"}
       newRowDefaults={defaults}
-      newRowLabel="Gasto nuevo"
+      newRowLabel={NUEVO[bloque]}
       allowDelete
+      autoSave
       onSave={onSave}
-      footer={
-        <div className="space-y-1">
-          <dl className="flex flex-wrap gap-x-8 gap-y-1 text-sm">
-            <div className="flex gap-2">
-              <dt className="text-muted">Total fábrica</dt>
-              <dd className="font-bold tabular-nums">
-                {formatArs(totales.fabrica)}
-              </dd>
-            </div>
-            <div className="flex gap-2">
-              <dt className="text-muted">Total tienda</dt>
-              <dd className="font-bold tabular-nums">
-                {formatArs(totales.tienda)}
-              </dd>
-            </div>
-            <div className="flex gap-2">
-              <dt className="text-muted">Total del mes</dt>
-              <dd className="font-bold tabular-nums">
-                {formatArs(totales.total)}
-              </dd>
-            </div>
-          </dl>
-        </div>
-      }
     />
   );
 }

@@ -36,9 +36,11 @@ import type {
 } from "@/lib/types";
 import { CostosGrid } from "./costos-grid";
 import { CopiarMesForm } from "./forms";
+import { PeriodSelect } from "./period-select";
 
 export const metadata: Metadata = { title: "Costos fijos" };
 
+const PERSONAL = ["SUELDOS", "CARGAS_SOCIALES"];
 const PERIODO = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 /** `2026-10` -> `2026-09`, `2026-01` -> `2025-12`. Only the calendar, no money. */
@@ -121,7 +123,7 @@ export default async function CostosFijosPage({
       <PageHeader
         eyebrow="Costos"
         title="Costos fijos"
-        description="Gastos del mes de la fábrica y la tienda."
+        description="Sueldos y servicios del mes. Cargá, cambiá o quitá cada línea."
       />
       <div className="space-y-10">
         <PeriodSelector
@@ -223,7 +225,7 @@ function PeriodSelector({
           >
             Período
           </label>
-          <select
+          <PeriodSelect
             id="periodo"
             name="periodo"
             defaultValue={current}
@@ -234,12 +236,9 @@ function PeriodSelector({
                 {formatPeriod(periodo)}
               </option>
             ))}
-          </select>
+          </PeriodSelect>
         </div>
-        <button
-          type="submit"
-          className="inline-flex min-h-11 items-center justify-center sm:min-h-0 rounded-card border border-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm hover:bg-ink hover:text-white"
-        >
+        <button type="submit" className="sr-only">
           Ver período
         </button>
       </form>
@@ -336,21 +335,49 @@ function Month({
         </div>
       </section>
       {writer ? (
-        <section aria-label="Grilla de gastos del mes">
-          <SectionTitle>Gastos del mes</SectionTitle>
-          <CostosGrid
-            key={`${data.periodo}|${area}|${categoria}`}
-            periodo={data.periodo}
-            gastos={[...gastos].sort(byCategoryThenConcept)}
-            personas={people}
-            area={area}
-            totales={{
-              fabrica: data.total_fabrica,
-              tienda: data.total_tienda,
-              total: data.total,
-            }}
-          />
-        </section>
+        <>
+          {(
+            [
+              [
+                "personal",
+                "Mano de obra",
+                "Sueldos y cargas sociales del personal.",
+              ],
+              [
+                "servicios",
+                "Servicios básicos",
+                "Luz, agua, internet y demás servicios del mes.",
+              ],
+              ["otros", "Otros gastos", "Alquiler, impuestos y el resto."],
+            ] as const
+          ).map(([bloque, title, help]) => {
+            const del = gastos.filter((g) =>
+              bloque === "personal"
+                ? PERSONAL.includes(g.categoria)
+                : bloque === "servicios"
+                  ? g.categoria === "SERVICIOS"
+                  : !PERSONAL.includes(g.categoria) &&
+                    g.categoria !== "SERVICIOS",
+            );
+            // "Otros gastos" no se usa por ahora: solo aparece si el mes ya trae filas de esas
+            // categorías, para que nada que cuente en los totales quede escondido.
+            if (bloque === "otros" && del.length === 0) return null;
+            return (
+              <section key={bloque} aria-label={title}>
+                <SectionTitle>{title}</SectionTitle>
+                <p className="-mt-2 mb-4 text-sm text-muted">{help}</p>
+                <CostosGrid
+                  key={`${data.periodo}|${area}|${bloque}`}
+                  periodo={data.periodo}
+                  gastos={[...del].sort(byCategoryThenConcept)}
+                  personas={people}
+                  area={area}
+                  bloque={bloque}
+                />
+              </section>
+            );
+          })}
+        </>
       ) : data.gastos.length === 0 ? null : gastos.length === 0 ? (
         <Notice
           tone="info"

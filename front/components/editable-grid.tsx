@@ -131,6 +131,9 @@ type RowViewProps = {
   /** Present only with `allowDelete`: marks or unmarks a saved row for deletion. */
   onToggleDelete?: (id: string) => void;
   deleting?: boolean;
+  /** Present only in auto-save mode: ticks a saved row to delete it later. */
+  onToggleSelect?: (id: string) => void;
+  selected?: boolean;
   extraHeaders: string[];
 };
 
@@ -149,20 +152,37 @@ const RowView = memo(function RowView({
   onRemove,
   onToggleDelete,
   deleting = false,
+  onToggleSelect,
+  selected = false,
   extraHeaders,
 }: RowViewProps) {
   const rowTone = deleting
     ? "bg-blush/40 line-through opacity-60"
-    : row.warn
-      ? "bg-blush/25"
-      : "";
+    : selected
+      ? "bg-gold/15"
+      : row.warn
+        ? "bg-blush/25"
+        : "";
   return (
     <tr className={rowTone}>
       <th
         scope="row"
         className={`sticky left-0 z-10 border-b border-line/70 bg-surface px-3 py-2 text-left align-top font-normal sm:px-4 ${dirty ? "border-l-4 border-l-gold" : row.warn ? "border-l-4 border-l-blush-deep" : "border-l-4 border-l-transparent"}`}
       >
-        {row.label}
+        {!draft && onToggleSelect ? (
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={() => onToggleSelect(row.id)}
+              aria-label={`Seleccionar ${row.name} para borrar`}
+              className="size-4 accent-ink"
+            />
+            {row.label}
+          </label>
+        ) : (
+          row.label
+        )}
         {draft && onRemove ? (
           <button
             type="button"
@@ -307,6 +327,7 @@ export function EditableGrid({
   warning,
   note,
   footer,
+  autoSave = false,
   onSave,
 }: {
   /** Accessible name of the table. */
@@ -326,6 +347,11 @@ export function EditableGrid({
   warning?: (save: GridSave) => string | null;
   note?: ReactNode;
   footer?: ReactNode;
+  /**
+   * No save button: a changed row is saved when the cursor leaves the cell (and nothing is left
+   * to fix), and saved rows are ticked and deleted with one button. Needs `allowDelete`.
+   */
+  autoSave?: boolean;
   onSave: (save: GridSave) => Promise<FormState>;
 }) {
   const defaults = newRowDefaults ?? NO_DEFAULTS;
@@ -344,6 +370,7 @@ export function EditableGrid({
     allowNew ? [{ id: "nuevo-0", cells: { ...defaults } }] : [],
   );
   const [deleted, setDeleted] = useState<string[]>([]);
+  const [selected, setSelected] = useState<string[]>([]);
   const [attempted, setAttempted] = useState(false);
   const [result, setResult] = useState<FormState>(IDLE);
   const [pasteInfo, setPasteInfo] = useState("");
@@ -499,6 +526,15 @@ export function EditableGrid({
     );
   }, []);
 
+  const toggleSelect = useCallback((id: string) => {
+    setResult((previous) => (previous.status === "idle" ? previous : IDLE));
+    setSelected((previous) =>
+      previous.includes(id)
+        ? previous.filter((item) => item !== id)
+        : [...previous, id],
+    );
+  }, []);
+
   const removeDraft = useCallback((id: string) => {
     setDrafts((previous) => previous.filter((item) => item.id !== id));
   }, []);
@@ -555,6 +591,34 @@ export function EditableGrid({
         setResult(error("No se pudo guardar. Intente de nuevo."));
       }
     });
+  }
+
+  const selectedRows = selected.filter((id) => rowsById.has(id));
+
+  function deleteSelected() {
+    const names = selectedRows.map((id) => rowsById.get(id)?.name ?? id);
+    const shown = names.slice(0, 5).join(", ");
+    const more = names.length > 5 ? ` y ${names.length - 5} más` : "";
+    if (!window.confirm(`¿Borrar ${shown}${more}?`)) return;
+    startSaving(async () => {
+      try {
+        const outcome = await onSave({
+          changes: [],
+          added: [],
+          deleted: selectedRows,
+        });
+        setResult(outcome);
+        if (outcome.status === "ok") setSelected([]);
+      } catch {
+        setResult(error("No se pudo borrar. Intente de nuevo."));
+      }
+    });
+  }
+
+  // Auto-save: leaving a cell saves what changed, but only when nothing is left to fix.
+  function onBlurSave() {
+    if (!autoSave || saving || !dirty || analysis.errorCount > 0) return;
+    save();
   }
 
   const total = rows.length + drafts.length;
@@ -763,24 +827,52 @@ export function EditableGrid({
         <p aria-live="polite" className="text-sm font-bold">
           {summary}
         </p>
-        <div className="flex w-full flex-wrap gap-3 sm:ml-auto sm:w-auto">
-          <button
-            type="button"
-            onClick={discard}
-            disabled={!dirty || saving}
-            className="min-h-12 flex-1 rounded-card border border-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm hover:bg-ink hover:text-white disabled:opacity-40 sm:min-h-0 sm:flex-none"
-          >
-            Descartar
-          </button>
-          <button
-            type="button"
-            onClick={save}
-            disabled={!dirty || saving}
-            className="min-h-12 flex-1 rounded-card bg-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm text-white hover:bg-ink-soft disabled:opacity-40 sm:min-h-0 sm:flex-none"
-          >
-            {saving ? "Guardando…" : "Guardar cambios"}
-          </button>
-        </div>
+        {autoSave ? (
+          <div className="flex w-full flex-wrap items-center gap-3 sm:ml-auto sm:w-auto">
+            {saving ? (
+              <span className="text-sm text-muted">Guardando…</span>
+            ) : null}
+            {selectedRows.length > 0 ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setSelected([])}
+                  disabled={saving}
+                  className="min-h-12 flex-1 rounded-card border border-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm hover:bg-ink hover:text-white disabled:opacity-40 sm:min-h-0 sm:flex-none"
+                >
+                  Quitar selección
+                </button>
+                <button
+                  type="button"
+                  onClick={deleteSelected}
+                  disabled={saving}
+                  className="min-h-12 flex-1 rounded-card bg-bordeaux px-5 py-2.5 text-sm uppercase tracking-caps-sm text-white hover:opacity-90 disabled:opacity-40 sm:min-h-0 sm:flex-none"
+                >
+                  Borrar {plural(selectedRows.length, "fila", "filas")}
+                </button>
+              </>
+            ) : null}
+          </div>
+        ) : (
+          <div className="flex w-full flex-wrap gap-3 sm:ml-auto sm:w-auto">
+            <button
+              type="button"
+              onClick={discard}
+              disabled={!dirty || saving}
+              className="min-h-12 flex-1 rounded-card border border-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm hover:bg-ink hover:text-white disabled:opacity-40 sm:min-h-0 sm:flex-none"
+            >
+              Descartar
+            </button>
+            <button
+              type="button"
+              onClick={save}
+              disabled={!dirty || saving}
+              className="min-h-12 flex-1 rounded-card bg-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm text-white hover:bg-ink-soft disabled:opacity-40 sm:min-h-0 sm:flex-none"
+            >
+              {saving ? "Guardando…" : "Guardar cambios"}
+            </button>
+          </div>
+        )}
       </div>
       {warningText ? <Notice title={warningText} /> : null}
       <FormFeedback state={result} />
@@ -791,8 +883,10 @@ export function EditableGrid({
       <p id={helpId} className="text-sm text-muted sm:text-xs">
         Escriba en la celda. Tab pasa a la celda de al lado, Enter a la de abajo
         (Mayús + Enter, a la de arriba) y las flechas se mueven por la grilla.
-        También puede copiar varias celdas de Excel y pegarlas acá. Los cambios
-        se resaltan y recién se guardan con «Guardar cambios».
+        También puede copiar varias celdas de Excel y pegarlas acá.{" "}
+        {autoSave
+          ? "Cada cambio se guarda solo al salir de la celda; una fila nueva se guarda cuando tiene todo completo. Para borrar, tilde las filas y use «Borrar»."
+          : "Los cambios se resaltan y recién se guardan con «Guardar cambios»."}
       </p>
       <div className="max-h-[75vh] overflow-auto overscroll-x-contain rounded-card border border-line bg-surface">
         <table
@@ -824,7 +918,12 @@ export function EditableGrid({
               ))}
             </tr>
           </thead>
-          <tbody onKeyDown={onKeyDown} onPaste={onPaste} onFocus={onFocus}>
+          <tbody
+            onKeyDown={onKeyDown}
+            onPaste={onPaste}
+            onFocus={onFocus}
+            onBlur={onBlurSave}
+          >
             {rows.map((row, index) => (
               <RowView
                 key={row.id}
@@ -838,8 +937,14 @@ export function EditableGrid({
                 errors={analysis.errors[row.id] ?? NO_ERRORS}
                 showAllErrors={attempted}
                 onChange={handleChange}
-                onToggleDelete={allowDelete ? toggleDelete : undefined}
+                onToggleDelete={
+                  allowDelete && !autoSave ? toggleDelete : undefined
+                }
                 deleting={deleted.includes(row.id)}
+                onToggleSelect={
+                  allowDelete && autoSave ? toggleSelect : undefined
+                }
+                selected={selected.includes(row.id)}
                 extraHeaders={extraHeaders}
               />
             ))}
