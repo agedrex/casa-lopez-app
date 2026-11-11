@@ -381,6 +381,37 @@ class ValidadoIn(Entrada):
     validado: bool
 
 
+class ConsumosFilaIn(ConsumosIn):
+    codigo: str
+
+
+class ConsumosLoteIn(Entrada):
+    filas: list[ConsumosFilaIn]
+
+
+class GastoCambioIn(Entrada):
+    codigo: str
+    monto: Annotated[Decimal, Field(ge=0, max_digits=14, decimal_places=4)] | None = None
+    concepto: str | None = None
+    fabrica_o_tienda: Literal["FABRICA", "TIENDA"] | None = None
+    categoria: Literal["SUELDOS", "CARGAS_SOCIALES", "ALQUILER", "SERVICIOS", "IMPUESTOS_FIJOS", "OTROS"] | None = None
+
+
+class GastoNuevoIn(Entrada):
+    concepto: str
+    fabrica_o_tienda: Literal["FABRICA", "TIENDA"]
+    categoria: Literal["SUELDOS", "CARGAS_SOCIALES", "ALQUILER", "SERVICIOS", "IMPUESTOS_FIJOS", "OTROS"]
+    persona: str | None = None
+    monto_ars_del_mes: Annotated[Decimal, Field(ge=0, max_digits=14, decimal_places=4)] | None = None
+    nota_fuente: str | None = None
+
+
+class GastosLoteIn(Entrada):
+    periodo: Annotated[str, Field(pattern=PERIODO)]
+    cambios: list[GastoCambioIn] = []
+    nuevos: list[GastoNuevoIn] = []
+
+
 # --- Responses -------------------------------------------------------------------------------------------
 
 class ProductoResumen(Salida):
@@ -479,12 +510,12 @@ class ModeloOut(Salida):
     herrajes_usd_por_unidad: Decimal | None
     hilo_y_cemento: Decimal | None
     confeccion_estimada_ars: Decimal | None
+    horas_de_confeccion: Decimal | None
     origen_de_los_consumos: str | None
     validado: bool
 
 
 class ModeloDetalleOut(ModeloOut):
-    horas_de_confeccion: Decimal | None
     nota: str | None
     modelo_excel_viejo: str | None
     fila_excel_viejo: int | None
@@ -1355,6 +1386,14 @@ def cambiar_activo_de_taller(codigo: str, cuerpo: ActivoIn, session: Sesion):
     return servicios.cambiar_activo_taller(session, codigo, cuerpo.activo)
 
 
+@router.post("/costos-fijos/lote", dependencies=ESCRITURA, response_model=CostosFijosOut)
+def guardar_costos_fijos_en_lote(cuerpo: GastosLoteIn, session: Sesion):
+    """Grid save of one month: corrections (new rows that replace) and new rows, all or nothing."""
+    return servicios.guardar_gastos_en_lote(
+        session, cuerpo.periodo, [c.model_dump(exclude_unset=True) for c in cuerpo.cambios],
+        [n.model_dump() for n in cuerpo.nuevos])
+
+
 @router.post("/costos-fijos/{codigo}/monto", dependencies=ESCRITURA, response_model=CostosFijosOut)
 def cargar_monto_de_gasto(codigo: str, cuerpo: MontoIn, session: Sesion):
     """Only while the amount is still empty (409 otherwise): a correction goes through `/corregir`."""
@@ -1407,6 +1446,13 @@ def crear_categoria(cuerpo: CatalogoIn, session: Sesion):
 def crear_modelo(cuerpo: ModeloIn, session: Sesion):
     """The server assigns `MOD-nnnn`; a new model is never validated."""
     return servicios.crear_modelo(session, **cuerpo.model_dump())
+
+
+@router.post("/modelos/consumos/lote")
+def cambiar_consumos_en_lote(cuerpo: ConsumosLoteIn, session: Sesion, usuario: SoloAdmin):
+    """Admin only. Grid save: all rows or none; each row resets `validado` like the single-model route."""
+    return servicios.cambiar_consumos_en_lote(
+        session, [f.model_dump() for f in cuerpo.filas], quien=usuario.id)
 
 
 @router.post("/modelos/{codigo}/validado", dependencies=ESCRITURA, response_model=ModeloDetalleOut)

@@ -150,10 +150,11 @@ SIN_PERMISO = {"detail": "No tenés permiso para esta acción."}
 
 
 def test_every_write_route_is_covered_by_the_role_tests():
-    assert len(ESCRITURAS) == 20 and {r for _, r in ESCRITURAS} >= {"/modelos", "/modelos/{codigo}/validado",
+    assert len(ESCRITURAS) == 22 and {r for _, r in ESCRITURAS} >= {"/modelos", "/modelos/{codigo}/validado",
         "/productos", "/productos/{codigo}/precio-venta", "/precios", "/cueros", "/dolar", "/dolar/actualizar-bna", "/ordenes", "/talleres", "/talleres/{codigo}/activo",
         "/ordenes/{codigo}/estado", "/ordenes/{codigo}/items",
-        "/costos-fijos/{codigo}/monto", "/costos-fijos/{codigo}/corregir", "/costos-fijos/copiar"}
+        "/costos-fijos/{codigo}/monto", "/costos-fijos/{codigo}/corregir", "/costos-fijos/copiar",
+        "/costos-fijos/lote", "/modelos/consumos/lote"}
 
 
 @pytest.mark.parametrize("metodo, ruta", ESCRITURAS)

@@ -34,7 +34,8 @@ import type {
   PeriodosCostosFijos,
   Persona,
 } from "@/lib/types";
-import { CopiarMesForm, CorregirForm, GastoForm, MontoForm } from "./forms";
+import { CostosGrid } from "./costos-grid";
+import { CopiarMesForm, GastoForm } from "./forms";
 
 export const metadata: Metadata = { title: "Costos fijos" };
 
@@ -46,6 +47,19 @@ function previousPeriod(periodo: string): string | null {
   const year = Number(periodo.slice(0, 4));
   const month = Number(periodo.slice(5, 7));
   return new Date(Date.UTC(year, month - 2, 1)).toISOString().slice(0, 7);
+}
+
+/** Same order as the sections of the read-only view: known categories first, then the concept. */
+function byCategoryThenConcept(a: Gasto, b: Gasto): number {
+  const rank = (gasto: Gasto) => {
+    const index = EXPENSE_CATEGORIES.indexOf(gasto.categoria);
+    return index === -1 ? EXPENSE_CATEGORIES.length : index;
+  };
+  return (
+    rank(a) - rank(b) ||
+    a.categoria.localeCompare(b.categoria, "es-AR") ||
+    a.concepto.localeCompare(b.concepto, "es-AR")
+  );
 }
 
 type Search = Promise<{
@@ -107,7 +121,7 @@ export default async function CostosFijosPage({
       <PageHeader
         eyebrow="Costos"
         title="Costos fijos"
-        description="Gastos del mes que no dependen de cuánto se produce, separados en fábrica y tienda. Los totales los calcula la aplicación."
+        description="Gastos del mes que no dependen de cuánto se produce, separados en fábrica y tienda. Se cargan y se corrigen en una grilla, como en una planilla. Los totales los calcula la aplicación."
       />
       <div className="space-y-10">
         <PeriodSelector
@@ -117,17 +131,19 @@ export default async function CostosFijosPage({
           area={area}
         />
         <div className="space-y-3">
-          <ViewSelector
-            path="/costos-fijos"
-            view={view}
-            params={
-              new URLSearchParams({
-                ...(requested ? { periodo: requested } : {}),
-                ...(area ? { area } : {}),
-                ...(categoria ? { categoria } : {}),
-              })
-            }
-          />
+          {writer ? null : (
+            <ViewSelector
+              path="/costos-fijos"
+              view={view}
+              params={
+                new URLSearchParams({
+                  ...(requested ? { periodo: requested } : {}),
+                  ...(area ? { area } : {}),
+                  ...(categoria ? { categoria } : {}),
+                })
+              }
+            />
+          )}
           <nav aria-label="Filtrar gastos" className="flex flex-wrap gap-2">
             {(
               [
@@ -170,7 +186,7 @@ export default async function CostosFijosPage({
           <ErrorNotice message={result.message} />
         )}
         <section>
-          <SectionTitle>Cargar un gasto</SectionTitle>
+          <SectionTitle>Cargar un gasto suelto</SectionTitle>
           {writer ? (
             <Card>
               <GastoForm
@@ -342,7 +358,29 @@ function Month({
           ) : null}
         </div>
       </section>
-      {data.gastos.length === 0 ? null : gastos.length === 0 ? (
+      {writer ? (
+        <section aria-label="Grilla de gastos del mes">
+          <SectionTitle>Gastos del mes</SectionTitle>
+          {previous && data.gastos.length > 0 ? (
+            <p className="mb-4 text-sm text-muted">
+              «Copiar el mes anterior» solo está disponible en un mes sin
+              gastos, para no copiar encima de lo que ya hay.
+            </p>
+          ) : null}
+          <CostosGrid
+            key={`${data.periodo}|${area}|${categoria}`}
+            periodo={data.periodo}
+            gastos={[...gastos].sort(byCategoryThenConcept)}
+            personas={people}
+            area={area}
+            totales={{
+              fabrica: data.total_fabrica,
+              tienda: data.total_tienda,
+              total: data.total,
+            }}
+          />
+        </section>
+      ) : data.gastos.length === 0 ? null : gastos.length === 0 ? (
         <Notice
           tone="info"
           title="No hay gastos para este filtro en el período."
@@ -374,7 +412,6 @@ function Month({
                   : String(left).localeCompare(String(right), "es-AR");
               return direction === "desc" ? -result : result;
             })}
-            writer={writer}
             people={people}
             table
             total={selectedTotal}
@@ -388,7 +425,7 @@ function Month({
         groups.map((group) => (
           <section key={group.categoria}>
             <SectionTitle>{expenseCategoryLabel(group.categoria)}</SectionTitle>
-            <Expenses gastos={group.gastos} writer={writer} people={people} />
+            <Expenses gastos={group.gastos} people={people} />
           </section>
         ))
       )}
@@ -398,7 +435,6 @@ function Month({
 
 function Expenses({
   gastos,
-  writer,
   people,
   table = false,
   total,
@@ -408,7 +444,6 @@ function Expenses({
   direction,
 }: {
   gastos: Gasto[];
-  writer: boolean;
   people: Persona[];
   table?: boolean;
   total?: string;
@@ -479,26 +514,9 @@ function Expenses({
                   : "—"}
               </td>
               <td className={`${tdClass} ${numClass}`}>
-                {gasto.monto_ars_del_mes === null ? (
-                  writer ? (
-                    <MontoForm
-                      codigo={gasto.codigo}
-                      concepto={gasto.concepto}
-                    />
-                  ) : (
-                    "—"
-                  )
-                ) : (
-                  <>
-                    {formatArs(gasto.monto_ars_del_mes)}
-                    {writer ? (
-                      <CorregirForm
-                        codigo={gasto.codigo}
-                        concepto={gasto.concepto}
-                      />
-                    ) : null}
-                  </>
-                )}
+                {gasto.monto_ars_del_mes === null
+                  ? "—"
+                  : formatArs(gasto.monto_ars_del_mes)}
               </td>
               <td className={tdClass}>
                 <span className="flex flex-wrap gap-1.5">

@@ -1,3 +1,5 @@
+import type { ModeloLista } from "./types";
+
 // Fields and closed lists of the Modelos tab. The API validates every value; this only
 // decides what the forms offer and how a code is worded.
 export const SIZES = [
@@ -50,3 +52,11 @@ export const CONSUMPTION_FIELDS: ConsumptionField[] = [
   },
   { name: "horas_de_confeccion", label: "Horas de confección", unit: "horas" },
 ];
+
+/**
+ * A model with any consumption left empty (NULL = missing data; 0 = "no lleva" is complete).
+ * A field the list does not send at all (`undefined`) is not counted as missing.
+ */
+export function hasMissingConsumptions(modelo: ModeloLista): boolean {
+  return CONSUMPTION_FIELDS.some((field) => modelo[field.name] === null);
+}

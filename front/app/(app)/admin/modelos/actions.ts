@@ -6,7 +6,7 @@ import { error, type FormState, ok } from "@/lib/action-state";
 import { apiPost } from "@/lib/api";
 import { parseDecimalInput } from "@/lib/format";
 import { CONSUMPTION_FIELDS, ORIGINS, SIZES } from "@/lib/modelos";
-import type { ModeloDetalle } from "@/lib/types";
+import type { ModeloDetalle, ResultadoLoteConsumos } from "@/lib/types";
 import {
   denyUnlessAdmin,
   fromFailure,
@@ -124,4 +124,77 @@ export async function updateConsumos(
   if (!result.ok) return fromFailure(result);
   refresh();
   return ok("Consumos guardados. El modelo quedó sin validar.");
+}
+
+/** A row of the models grid as the browser sends it: every cell is the text the person typed. */
+export type FilaConsumosLote = {
+  codigo: string;
+  nombre: string;
+  cells: Record<string, string>;
+};
+
+/**
+ * Saves the rows the grid changed in one call (all or nothing). The API takes every field of
+ * every row, so an empty cell goes as null (missing data) and a 0 as "no lleva". Saving resets
+ * `validado` on each of those models, like the single-model form does.
+ */
+export async function guardarConsumosLote(
+  filas: FilaConsumosLote[],
+): Promise<FormState> {
+  const check = await denyUnlessAdmin();
+  if (check.denied) return check.denied;
+  if (!Array.isArray(filas) || filas.length === 0) {
+    return error("No hay cambios para guardar.");
+  }
+
+  const body: Record<string, string | null>[] = [];
+  for (const fila of filas) {
+    const codigo = typeof fila?.codigo === "string" ? fila.codigo.trim() : "";
+    if (!codigo)
+      return error("Falta el código de un modelo. Recargue la página.");
+    const name = `${fila.nombre || codigo} (${codigo})`;
+    const cells = fila.cells ?? {};
+    const row: Record<string, string | null> = { codigo };
+    for (const field of CONSUMPTION_FIELDS) {
+      // The list may not carry the hours: those rows are completed below, never sent as null.
+      if (!(field.name in cells)) continue;
+      const raw = String(cells[field.name] ?? "").trim();
+      if (!raw) {
+        if (field.required) {
+          return error(
+            `${name}: indique el consumo de ${field.label.toLowerCase()} (0 si no lleva).`,
+          );
+        }
+        row[field.name] = null;
+        continue;
+      }
+      const value = parseDecimalInput(raw);
+      if (value === null) {
+        return error(
+          `${name}: ${field.label.toLowerCase()} no es un número válido. Ejemplo: 0,25.`,
+        );
+      }
+      row[field.name] = value;
+    }
+    const origen = String(cells.origen_de_los_consumos ?? "").trim();
+    if (!ORIGINS.some((item) => item.value === origen)) {
+      return error(`${name}: elija el origen de los consumos.`);
+    }
+    row.origen_de_los_consumos = origen;
+    row.forro = String(cells.forro ?? "").trim() || null;
+    body.push(row);
+  }
+
+  const result = await apiPost<ResultadoLoteConsumos>(
+    "/modelos/consumos/lote",
+    {
+      filas: body,
+    },
+  );
+  if (!result.ok) return fromFailure(result);
+  refresh();
+  const count = result.data.guardados;
+  return ok(
+    `${count === 1 ? "Se guardó 1 modelo" : `Se guardaron ${count} modelos`}. Quedaron sin validar.`,
+  );
 }
