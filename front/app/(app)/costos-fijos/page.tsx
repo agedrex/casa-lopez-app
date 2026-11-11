@@ -364,14 +364,14 @@ function Month({
           </dl>
         )}
         <div className={bloque ? "space-y-3" : "mt-5 space-y-3"}>
-          {pendientes > 0 ? (
+          {!bloque && pendientes > 0 ? (
             <Notice
               title={`${pendientes} ${pendientes === 1 ? "gasto" : "gastos"} pendiente${pendientes === 1 ? "" : "s"} de monto`}
             >
               No entran en los totales hasta que se cargue su monto.
             </Notice>
           ) : null}
-          {incluyeFicticios ? (
+          {!bloque && incluyeFicticios ? (
             <Notice title="Los totales incluyen montos ficticios">
               Son valores de prueba: se reemplazan por los reales.
             </Notice>

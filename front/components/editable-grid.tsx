@@ -328,6 +328,7 @@ export function EditableGrid({
   note,
   footer,
   autoSave = false,
+  compact = false,
   onSave,
 }: {
   /** Accessible name of the table. */
@@ -352,6 +353,8 @@ export function EditableGrid({
    * to fix), and saved rows are ticked and deleted with one button. Needs `allowDelete`.
    */
   autoSave?: boolean;
+  /** Sin resumen vacío ni instrucciones: solo la grilla y lo que haya pendiente. */
+  compact?: boolean;
   onSave: (save: GridSave) => Promise<FormState>;
 }) {
   const defaults = newRowDefaults ?? NO_DEFAULTS;
@@ -811,7 +814,12 @@ export function EditableGrid({
       ? plural(deleted.length, "fila para borrar", "filas para borrar")
       : null,
   ].filter(Boolean);
-  const summary = parts.length > 0 ? parts.join(" · ") : "Sin cambios todavía.";
+  const summary =
+    parts.length > 0
+      ? parts.join(" · ")
+      : compact
+        ? null
+        : "Sin cambios todavía.";
   const warningText = dirty
     ? warning?.({
         changes: analysis.changes,
@@ -823,10 +831,14 @@ export function EditableGrid({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3 rounded-card border border-line bg-surface px-4 py-3">
-        <p aria-live="polite" className="text-sm font-bold">
-          {summary}
-        </p>
+      <div
+        className={`flex flex-wrap items-center gap-3 rounded-card border border-line bg-surface px-4 py-3 ${compact && !summary && !saving && selectedRows.length === 0 ? "hidden" : ""}`}
+      >
+        {summary ? (
+          <p aria-live="polite" className="text-sm font-bold">
+            {summary}
+          </p>
+        ) : null}
         {autoSave ? (
           <div className="flex w-full flex-wrap items-center gap-3 sm:ml-auto sm:w-auto">
             {saving ? (
@@ -880,19 +892,21 @@ export function EditableGrid({
         {pasteInfo}
       </p>
       {note}
-      <p id={helpId} className="text-sm text-muted sm:text-xs">
-        Escriba en la celda. Tab pasa a la celda de al lado, Enter a la de abajo
-        (Mayús + Enter, a la de arriba) y las flechas se mueven por la grilla.
-        También puede copiar varias celdas de Excel y pegarlas acá.{" "}
-        {autoSave
-          ? "Cada cambio se guarda solo al salir de la celda; una fila nueva se guarda cuando tiene todo completo. Para borrar, tilde las filas y use «Borrar»."
-          : "Los cambios se resaltan y recién se guardan con «Guardar cambios»."}
-      </p>
+      {compact ? null : (
+        <p id={helpId} className="text-sm text-muted sm:text-xs">
+          Escriba en la celda. Tab pasa a la celda de al lado, Enter a la de
+          abajo (Mayús + Enter, a la de arriba) y las flechas se mueven por la
+          grilla. También puede copiar varias celdas de Excel y pegarlas acá.{" "}
+          {autoSave
+            ? "Cada cambio se guarda solo al salir de la celda; una fila nueva se guarda cuando tiene todo completo. Para borrar, tilde las filas y use «Borrar»."
+            : "Los cambios se resaltan y recién se guardan con «Guardar cambios»."}
+        </p>
+      )}
       <div className="max-h-[75vh] overflow-auto overscroll-x-contain rounded-card border border-line bg-surface">
         <table
           ref={tableRef}
           aria-label={label}
-          aria-describedby={helpId}
+          aria-describedby={compact ? undefined : helpId}
           className="w-full min-w-max border-collapse text-left text-sm"
         >
           <thead>

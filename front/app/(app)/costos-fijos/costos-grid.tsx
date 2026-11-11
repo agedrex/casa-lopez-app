@@ -219,6 +219,7 @@ export function CostosGrid({
       newRowLabel={NUEVO[bloque]}
       allowDelete
       autoSave
+      compact={bloque !== "otros"}
       onSave={onSave}
     />
   );
