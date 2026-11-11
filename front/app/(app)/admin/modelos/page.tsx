@@ -1,23 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { inputClass } from "@/components/form";
-import {
-  Badge,
-  ErrorNotice,
-  Notice,
-  numClass,
-  PageHeader,
-  TableWrap,
-  tableClass,
-  tdClass,
-  thClass,
-} from "@/components/ui";
+import { ErrorNotice, Notice, PageHeader } from "@/components/ui";
 import { apiGet } from "@/lib/api";
-import { formatArs, formatQuantity } from "@/lib/format";
-import { originLabel, SIZES, sizeLabel } from "@/lib/modelos";
+import { hasMissingConsumptions, SIZES } from "@/lib/modelos";
 import { requireRole } from "@/lib/session";
-import type { Catalogos, ModeloLista } from "@/lib/types";
+import type { Catalogos, Material, ModeloLista } from "@/lib/types";
 import { BackToAdmin } from "../back-link";
+import { ModelosGrid } from "./modelos-grid";
 
 export const metadata: Metadata = { title: "Modelos" };
 
@@ -29,6 +19,7 @@ type Search = Promise<{
   categoria?: string | string[];
   validado?: string | string[];
   tamano?: string | string[];
+  incompletos?: string | string[];
 }>;
 
 function first(value: string | string[] | undefined): string {
@@ -52,17 +43,38 @@ export default async function ModelosPage({
     ? first(params.tamano)
     : "";
 
+  const incompletos = first(params.incompletos) === "1";
+
   const filter = new URLSearchParams({ limit: String(PAGE_LIMIT) });
   if (q) filter.set("q", q);
   if (categoria) filter.set("categoria", categoria);
   if (validado) filter.set("validado", validado);
   if (tamano) filter.set("tamano", tamano);
 
-  const [modelos, catalogos] = await Promise.all([
+  const [found, catalogos, materiales] = await Promise.all([
     apiGet<ModeloLista[]>(`/modelos?${filter}`),
     apiGet<Catalogos>("/catalogos"),
+    apiGet<Material[]>("/materiales"),
   ]);
-  const filtered = Boolean(q || categoria || validado || tamano);
+  // "Incompletos" is decided here: the API has no such filter, and a NULL consumption is
+  // exactly what the grid highlights.
+  const incompleteCount = found.ok
+    ? found.data.filter(hasMissingConsumptions).length
+    : 0;
+  const modelos = found.ok
+    ? {
+        ...found,
+        data: incompletos
+          ? found.data.filter(hasMissingConsumptions)
+          : found.data,
+      }
+    : found;
+  const forros = materiales.ok
+    ? materiales.data
+        .filter((m) => m.etapa === "FORRO" && m.cotizable)
+        .map((m) => ({ codigo: m.codigo, label: `${m.codigo} · ${m.nombre}` }))
+    : [];
+  const filtered = Boolean(q || categoria || validado || tamano || incompletos);
 
   return (
     <>
@@ -70,7 +82,7 @@ export default async function ModelosPage({
       <PageHeader
         eyebrow="Administración"
         title="Modelos"
-        description="Los consumos de cada modelo. Un modelo se valida cuando una persona confirma que sus números son razonables; editar los consumos le quita esa marca."
+        description="Una fila por modelo, como una planilla: edite los consumos en la celda y guarde todo junto. Un modelo se valida cuando una persona confirma que sus números son razonables; editar los consumos le quita esa marca."
         actions={
           <Link
             href="/admin/modelos/nuevo"
@@ -85,6 +97,7 @@ export default async function ModelosPage({
         categoria={categoria}
         validado={validado}
         tamano={tamano}
+        incompletos={incompletos}
         categorias={catalogos.ok ? catalogos.data.categorias : []}
       />
       {modelos.ok ? (
@@ -105,59 +118,11 @@ export default async function ModelosPage({
               {modelos.data.length >= PAGE_LIMIT
                 ? ` (se muestran los primeros ${PAGE_LIMIT}: afine el filtro)`
                 : ""}
+              {incompleteCount > 0 && !incompletos
+                ? ` · ${incompleteCount} con consumos incompletos`
+                : ""}
             </p>
-            <TableWrap>
-              <table className={tableClass}>
-                <thead>
-                  <tr>
-                    <th className={thClass}>Modelo</th>
-                    <th className={thClass}>Categoría</th>
-                    <th className={thClass}>Tamaño</th>
-                    <th className={`${thClass} ${numClass}`}>Cuero m²</th>
-                    <th className={`${thClass} ${numClass}`}>Forro m²</th>
-                    <th className={`${thClass} ${numClass}`}>Confección</th>
-                    <th className={thClass}>Origen</th>
-                    <th className={thClass}>Validado</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {modelos.data.map((modelo) => (
-                    <tr key={modelo.codigo} className="hover:bg-paper-mid/50">
-                      <td className={tdClass}>
-                        <Link
-                          href={`/admin/modelos/${encodeURIComponent(modelo.codigo)}`}
-                          className="underline decoration-gold underline-offset-4"
-                        >
-                          {modelo.nombre_del_modelo}
-                        </Link>
-                        <span className="block text-xs text-muted">
-                          {modelo.codigo}
-                        </span>
-                      </td>
-                      <td className={tdClass}>{modelo.categoria ?? "—"}</td>
-                      <td className={tdClass}>{sizeLabel(modelo.tamano)}</td>
-                      <td className={`${tdClass} ${numClass}`}>
-                        {formatQuantity(modelo.cuero_m2_por_unidad)}
-                      </td>
-                      <td className={`${tdClass} ${numClass}`}>
-                        {formatQuantity(modelo.forro_m2_por_unidad)}
-                      </td>
-                      <td className={`${tdClass} ${numClass}`}>
-                        {formatArs(modelo.confeccion_estimada_ars)}
-                      </td>
-                      <td className={tdClass}>
-                        {originLabel(modelo.origen_de_los_consumos)}
-                      </td>
-                      <td className={tdClass}>
-                        <Badge tone={modelo.validado ? "good" : "neutral"}>
-                          {modelo.validado ? "Validado" : "Sin validar"}
-                        </Badge>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </TableWrap>
+            <ModelosGrid modelos={modelos.data} forros={forros} />
           </>
         )
       ) : (
@@ -173,12 +138,14 @@ function Filters({
   categoria,
   validado,
   tamano,
+  incompletos,
   categorias,
 }: {
   q: string;
   categoria: string;
   validado: string;
   tamano: string;
+  incompletos: boolean;
   categorias: string[];
 }) {
   const label = "mb-1.5 block text-xs uppercase tracking-caps-sm text-muted";
@@ -253,6 +220,22 @@ function Filters({
             <option value="true">Validados</option>
             <option value="false">Sin validar</option>
           </select>
+        </div>
+        <div className="flex min-h-11 w-full items-center gap-3 sm:w-auto sm:min-h-0 sm:pb-2">
+          <input
+            id="filtro-incompletos"
+            name="incompletos"
+            type="checkbox"
+            value="1"
+            defaultChecked={incompletos}
+            className="size-5 accent-ink"
+          />
+          <label htmlFor="filtro-incompletos" className="text-sm">
+            Incompletos
+            <span className="block text-xs text-muted">
+              Con algún consumo vacío.
+            </span>
+          </label>
         </div>
         <button
           type="submit"

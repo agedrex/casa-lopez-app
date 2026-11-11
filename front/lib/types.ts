@@ -155,10 +155,13 @@ export type ModeloLista = Modelo & {
   confeccion_estimada_ars: string | null;
   origen_de_los_consumos: string | null;
   validado: boolean;
+  horas_de_confeccion: string | null;
 };
 
+/** Answer of `POST /modelos/consumos/lote`. */
+export type ResultadoLoteConsumos = { guardados: number; modelos: string[] };
+
 export type ModeloDetalle = ModeloLista & {
-  horas_de_confeccion: string | null;
   nota: string | null;
   modelo_excel_viejo: string | null;
   fila_excel_viejo: number | null;
