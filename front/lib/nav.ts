@@ -23,7 +23,6 @@ export const NAV_ITEMS: NavGroup[] = [
   {
     title: "1 · Datos de base",
     items: [
-      { href: "/dolar", label: "Dólar" },
       {
         href: "/materiales",
         label: "Materiales y precios",
@@ -59,7 +58,6 @@ export const NAV_ITEMS: NavGroup[] = [
       { href: "/grilla", label: "Grilla completa", shortLabel: "Grilla" },
     ],
   },
-  { title: "Control", items: [{ href: "/calidad", label: "Alertas" }] },
   {
     title: "Herramientas",
     items: [
@@ -106,7 +104,6 @@ const DESKTOP_NAV: NavGroup[] = [
     items: [
       { href: "/", label: "Panel" },
       { href: "/productos", label: "Productos" },
-      { href: "/dolar", label: "Dólar" },
       { href: "/proveedores", label: "Proveedores", adminOnly: true },
     ],
   },
@@ -145,10 +142,7 @@ const DESKTOP_NAV: NavGroup[] = [
   },
   {
     title: "Revisión",
-    items: [
-      { href: "/grilla", label: "Grilla completa" },
-      { href: "/calidad", label: "Alertas" },
-    ],
+    items: [{ href: "/grilla", label: "Grilla completa" }],
   },
   {
     title: "",
