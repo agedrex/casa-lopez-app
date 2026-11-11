@@ -23,7 +23,7 @@ def compra(fecha, unidades, costo, venta=None, id=1):
 
 
 def producto(**cambios):
-    base = {"codigo": "REV-0001", "nombre": "Lapicera", "proveedor": None, "nota": None, "activo": True}
+    base = {"codigo": "MER-0001", "nombre": "Lapicera", "proveedor": None, "nota": None, "activo": True}
     return SimpleNamespace(**{**base, **cambios})
 
 
@@ -62,7 +62,7 @@ def test_purchase_total_is_units_times_unit_cost():
 def test_invalid_purchases_are_rejected_before_touching_the_database(cambios):
     datos = {"unidades": D(1), "costo_unitario_ars": D(10), **cambios}
     with pytest.raises(servicios.DatosInvalidos):
-        reventa.registrar_compra(MagicMock(), "REV-0001", **datos)
+        reventa.registrar_compra(MagicMock(), "MER-0001", **datos)
 
 
 def test_a_product_needs_a_name():
@@ -73,7 +73,7 @@ def test_a_product_needs_a_name():
 # --- HTTP contract --------------------------------------------------------------------------------------------
 
 FICHA = {
-    "codigo": "REV-0001", "nombre": "Lapicera", "categoria": None, "proveedor": None, "nota": None, "activo": True,
+    "codigo": "MER-0001", "nombre": "Lapicera", "categoria": None, "proveedor": None, "nota": None, "activo": True,
     "costo_unitario_ars": D("600"), "precio_venta_unitario_ars": D("1000"), "margen_unitario_ars": D("400"),
     "margen_pct": D("0.4"), "ultima_compra": date(2026, 11, 1), "compras": 1, "unidades_compradas": D("10"),
     "historial": [],
@@ -104,7 +104,7 @@ def test_admin_lists_resale_products_with_money_as_strings(monkeypatch):
 def test_other_roles_cannot_read_or_write_resale(rol, monkeypatch):
     c = cliente(rol, monkeypatch)
     assert c.get("/reventa").status_code == 403
-    assert c.post("/reventa/REV-0001/compras", json={"unidades": "1", "costo_unitario_ars": "1"}).status_code == 403
+    assert c.post("/reventa/MER-0001/compras", json={"unidades": "1", "costo_unitario_ars": "1"}).status_code == 403
 
 
 @pytest.mark.parametrize("cuerpo", [
@@ -112,4 +112,12 @@ def test_other_roles_cannot_read_or_write_resale(rol, monkeypatch):
     {"unidades": "1", "costo_unitario_ars": "10", "inventado": 1},
 ])
 def test_invalid_purchase_bodies_answer_422(cuerpo, monkeypatch):
-    assert cliente("admin", monkeypatch).post("/reventa/REV-0001/compras", json=cuerpo).status_code == 422
+    assert cliente("admin", monkeypatch).post("/reventa/MER-0001/compras", json=cuerpo).status_code == 422
+
+
+def test_a_new_product_gets_a_mer_code():
+    session = MagicMock()
+    session.scalar.return_value = None  # no category, no previous code, nothing found afterwards
+    with pytest.raises(servicios.NoEncontrado):  # `detalle` reads the row back from the (mocked) database
+        reventa.crear(session, nombre="Lapicera", categoria=None, proveedor=None, nota=None)
+    assert session.add.call_args.args[0].codigo == "MER-0001"

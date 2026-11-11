@@ -8,7 +8,7 @@ import { requireSession } from "@/lib/session";
 import type { Catalogos } from "@/lib/types";
 import { ReventaForm } from "./reventa-form";
 
-export const metadata: Metadata = { title: "Nuevo producto de reventa" };
+export const metadata: Metadata = { title: "Nuevo producto de mercadería" };
 
 export default async function NuevoReventaPage() {
   const { user } = await requireSession();
@@ -22,12 +22,12 @@ export default async function NuevoReventaPage() {
           href="/reventa"
           className="text-muted underline decoration-gold underline-offset-4"
         >
-          ← Reventa
+          ← Mercadería
         </Link>
       </p>
       <PageHeader
-        eyebrow="Reventa"
-        title="Nuevo producto de reventa"
+        eyebrow="Mercadería"
+        title="Nuevo producto de mercadería"
         description="El código lo asigna la aplicación. Después de crearlo registrás la primera compra, con su costo por unidad."
       />
       {catalogos === null ? (

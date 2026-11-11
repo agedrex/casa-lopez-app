@@ -66,7 +66,7 @@ def _categoria_nombre(session: Session, categoria_id: int | None) -> str | None:
 def _por_codigo(session: Session, codigo: str) -> ProductoReventa:
     p = session.scalar(select(ProductoReventa).where(ProductoReventa.codigo == codigo))
     if p is None:
-        raise NoEncontrado(f"No existe el producto de reventa {codigo}.")
+        raise NoEncontrado(f"No existe el producto de mercadería {codigo}.")
     return p
 
 
@@ -95,10 +95,10 @@ def crear(
         if categoria_id is None:
             raise DatosInvalidos(f"No existe la categoría {categoria}.")
     fila = ProductoReventa(
-        codigo=f"REV-{_siguiente_numero(session, ProductoReventa.codigo, 'REV'):04d}", nombre=nombre,
+        codigo=f"MER-{_siguiente_numero(session, ProductoReventa.codigo, 'MER'):04d}", nombre=nombre,
         categoria_id=categoria_id, proveedor=_texto_o_nada(proveedor), nota=_texto_o_nada(nota),
     )
-    _insertar(session, fila, "Ya hay un producto de reventa con ese nombre, o no se pudo asignar el código; intentá de nuevo.")
+    _insertar(session, fila, "Ya hay un producto de mercadería con ese nombre, o no se pudo asignar el código; intentá de nuevo.")
     session.commit()
     return detalle(session, fila.codigo)
 

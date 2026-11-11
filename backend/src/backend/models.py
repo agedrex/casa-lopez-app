@@ -335,7 +335,7 @@ class PrecioVenta(IdentityAndCreatedAt, Base):
 # --- Resale products: bought ready-made at a price and resold, no materials involved ---------------------------
 
 class ProductoReventa(BusinessKey, Base):
-    """A product Casa López buys and resells as is. Nothing is deleted: archiving is `activo = false`. `codigo` is `REV-NNNN`."""
+    """A product Casa López buys and resells as is. Nothing is deleted: archiving is `activo = false`. `codigo` is `MER-NNNN`."""
     __tablename__ = "producto_reventa"
     nombre: Mapped[str] = mapped_column(Text)
     categoria_id: Mapped[int | None] = mapped_column(ForeignKey("costos.categoria.id"))

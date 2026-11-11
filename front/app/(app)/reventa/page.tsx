@@ -28,7 +28,7 @@ export default async function ReventaPage() {
     <>
       <PageHeader
         eyebrow="Productos y costos"
-        title="Reventa"
+        title="Mercadería"
         description="Productos que se compran hechos y se venden tal cual. El costo es lo que pagaste por unidad en la última compra. Cada compra nueva queda en el historial."
         actions={
           canWrite(user.role) ? (
@@ -36,7 +36,7 @@ export default async function ReventaPage() {
               href="/reventa/nuevo"
               className="inline-flex min-h-11 items-center justify-center sm:min-h-0 rounded-card bg-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm text-white hover:bg-ink-soft"
             >
-              Nuevo producto de reventa
+              Nuevo producto de mercadería
             </Link>
           ) : undefined
         }
@@ -45,7 +45,7 @@ export default async function ReventaPage() {
         result.data.length === 0 ? (
           <Notice
             tone="info"
-            title="Todavía no hay productos de reventa cargados."
+            title="Todavía no hay productos de mercadería cargados."
           />
         ) : (
           <TableWrap>

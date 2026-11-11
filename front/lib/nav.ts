@@ -33,7 +33,7 @@ export const NAV_ITEMS: NavGroup[] = [
     title: "2 · Productos y costos",
     items: [
       { href: "/productos", label: "Productos" },
-      { href: "/reventa", label: "Reventa", adminOnly: true },
+      { href: "/reventa", label: "Mercadería", adminOnly: true },
     ],
   },
   {
@@ -100,7 +100,7 @@ const DESKTOP_NAV: NavGroup[] = [
     items: [
       { href: "/", label: "Panel del negocio" },
       { href: "/productos", label: "Productos" },
-      { href: "/reventa", label: "Reventa", adminOnly: true },
+      { href: "/reventa", label: "Mercadería", adminOnly: true },
     ],
   },
   {

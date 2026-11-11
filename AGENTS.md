@@ -261,7 +261,7 @@ Son las reglas que el Excel aplica sin decirlo: de fórmula, de criterio o de fo
 | `0005_gasto_reemplaza_a` | `gasto_periodo.reemplaza_a_id`: una corrección es una fila nueva que apunta a la que reemplaza. |
 | `0006_precio_venta` | Tabla `precio_venta`. |
 | `0007_proveedores_documentos` | Tablas `proveedor` y `documento_proveedor`. |
-| `0008_reventa` | Tablas `producto_reventa` y `compra_reventa`: productos que se compran hechos y se revenden (costo = último costo unitario de compra; ver `backend/src/backend/reventa.py`). |
+| `0008_reventa` | Tablas `producto_reventa` y `compra_reventa`: productos que se compran hechos y se revenden (en la app se llama "Mercadería", código `MER-`) (costo = último costo unitario de compra; ver `backend/src/backend/reventa.py`). |
 
 Todas tienen `downgrade`, pero bajar de 0007, 0006 o 0005 borra datos (ver `docs/produccion.md`, sección 5).
 
@@ -274,7 +274,7 @@ Todas tienen `downgrade`, pero bajar de 0007, 0006 o 0005 borra datos (ver `docs
 | Cotización | `cotizacion` | Foto calculada e inmutable (regla de oro 4). La escribe el motor, nadie la edita. |
 | Fabricación | `orden_fabricacion` (el "lote"), `orden_item`, `orden_estado`, `registro_tarea` | `orden_item` separa el precio pedido del pagado por unidad. `orden_estado` es el historial de estados (`PLANIFICADA` a `CERRADA`). El precio del taller se edita en el lugar, sin historial [V: `odd/tasks/app-casa-lopez-v3.md`, L14]. |
 | Inventario de cuero | `pieza_cuero`, `movimiento_cuero`, `conteo_inventario` | Un movimiento `CORTE` tiene que apuntar a su `orden_item`. |
-| Reventa | `producto_reventa`, `compra_reventa` | Productos comprados hechos y revendidos, fuera del motor de costeo. El costo es el costo unitario de la compra más nueva; cada compra nueva es una fila (solo se agregan). Solo ARS y sin stock (SUPUESTO: validar). Solo `admin`. |
+| Mercadería (tablas `*_reventa`) | `producto_reventa`, `compra_reventa` | Productos comprados hechos y revendidos, fuera del motor de costeo. El costo es el costo unitario de la compra más nueva; cada compra nueva es una fila (solo se agregan). Solo ARS y sin stock (SUPUESTO: validar). Solo `admin`. |
 | Proveedores | `proveedor`, `documento_proveedor` | Las facturas e imágenes se guardan en la base (`bytea`, sin object storage). El OCR solo sugiere: **no crea precios**. `precio_material.proveedor` es texto y **no** está vinculado a `proveedor` [V: docstring de la migración 0007]. |
 
 Reglas transversales:

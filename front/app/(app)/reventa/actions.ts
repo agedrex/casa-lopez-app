@@ -35,7 +35,7 @@ export async function createReventa(
   });
   if (!result.ok) {
     return fromFailure(result, {
-      409: "Ya hay un producto de reventa con ese nombre.",
+      409: "Ya hay un producto de mercadería con ese nombre.",
     });
   }
   redirect(`/reventa/${encodeURIComponent(result.data.codigo)}`);
