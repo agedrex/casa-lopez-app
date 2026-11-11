@@ -93,7 +93,11 @@ def test_the_panel_has_units_a_variable_cost_and_the_price_blocks(api):
     assert panel["actual"]["costo_variable_por_unidad"] is not None
     assert panel["precios_que_subieron"]
     assert panel["precios_viejos"]["cantidad"] >= 1
-    assert panel["dolar"] is not None and not panel["dolar_viejo"]
+    # The example dollar is dated the 3rd of the month, so "old" depends on the real day the suite runs: assert the
+    # rule (more than DOLAR_VIEJO_DIAS days old) instead of assuming the quote is always fresh.
+    assert panel["dolar"] is not None
+    dias = (HOY - date.fromisoformat(panel["dolar"]["fecha"])).days
+    assert panel["dolar_viejo"] == (dias > servicios.DOLAR_VIEJO_DIAS)
     codigos = {a["codigo"] for a in panel["avisos"]}
     assert "PRODUCTOS_SIN_COSTO" not in codigos and "SIN_UNIDADES" not in codigos
 
