@@ -41,6 +41,25 @@ import { PeriodSelect } from "./period-select";
 export const metadata: Metadata = { title: "Costos fijos" };
 
 const PERSONAL = ["SUELDOS", "CARGAS_SOCIALES"];
+type Bloque = "personal" | "servicios";
+
+/** Un bloque del menú: solo sus gastos, con su propio título. */
+const BLOQUES: Record<Bloque, { title: string; help: string }> = {
+  personal: {
+    title: "Mano de obra",
+    help: "Sueldos y cargas sociales del personal.",
+  },
+  servicios: {
+    title: "Servicios básicos",
+    help: "Luz, agua, internet y demás servicios del mes.",
+  },
+};
+
+function enBloque(gasto: Gasto, bloque: Bloque): boolean {
+  return bloque === "personal"
+    ? PERSONAL.includes(gasto.categoria)
+    : gasto.categoria === "SERVICIOS";
+}
 const PERIODO = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 /** `2026-10` -> `2026-09`, `2026-01` -> `2025-12`. Only the calendar, no money. */
@@ -69,6 +88,7 @@ type Search = Promise<{
   vista?: string | string[];
   area?: string | string[];
   categoria?: string | string[];
+  bloque?: string | string[];
   orden?: string | string[];
   dir?: string | string[];
 }>;
@@ -94,6 +114,13 @@ export default async function CostosFijosPage({
   const categoria = EXPENSE_CATEGORIES.includes(selectedCategory ?? "")
     ? (selectedCategory ?? "")
     : "";
+  const selectedBloque = Array.isArray(params.bloque)
+    ? params.bloque[0]
+    : params.bloque;
+  const bloque: Bloque | "" =
+    selectedBloque === "personal" || selectedBloque === "servicios"
+      ? selectedBloque
+      : "";
   const selectedOrder = Array.isArray(params.orden)
     ? params.orden[0]
     : params.orden;
@@ -122,8 +149,12 @@ export default async function CostosFijosPage({
     <>
       <PageHeader
         eyebrow="Costos"
-        title="Costos fijos"
-        description="Sueldos y servicios del mes. Cargá, cambiá o quitá cada línea."
+        title={bloque ? BLOQUES[bloque].title : "Costos fijos"}
+        description={
+          bloque
+            ? `${BLOQUES[bloque].help} Cargá, cambiá o quitá cada línea.`
+            : "Sueldos y servicios del mes. Cargá, cambiá o quitá cada línea."
+        }
       />
       <div className="space-y-10">
         <PeriodSelector
@@ -131,6 +162,7 @@ export default async function CostosFijosPage({
           periodos={periodos.ok ? periodos.data.periodos : []}
           view={view}
           area={area}
+          bloque={bloque}
         />
         <div className="space-y-3">
           {writer ? null : (
@@ -142,6 +174,7 @@ export default async function CostosFijosPage({
                   ...(requested ? { periodo: requested } : {}),
                   ...(area ? { area } : {}),
                   ...(categoria ? { categoria } : {}),
+                  ...(bloque ? { bloque } : {}),
                 })
               }
             />
@@ -160,6 +193,7 @@ export default async function CostosFijosPage({
               });
               if (value) query.set("area", value);
               if (categoria) query.set("categoria", categoria);
+              if (bloque) query.set("bloque", bloque);
               return (
                 <Link
                   key={label}
@@ -181,6 +215,7 @@ export default async function CostosFijosPage({
             view={view}
             area={area}
             categoria={categoria}
+            bloque={bloque}
             order={order}
             direction={direction}
           />
@@ -198,11 +233,13 @@ function PeriodSelector({
   periodos,
   view,
   area,
+  bloque,
 }: {
   current: string;
   periodos: string[];
   view: View;
   area: string;
+  bloque: Bloque | "";
 }) {
   const options = periodos.includes(current)
     ? periodos
@@ -218,6 +255,7 @@ function PeriodSelector({
           <input type="hidden" name="vista" value="tabla" />
         ) : null}
         {area ? <input type="hidden" name="area" value={area} /> : null}
+        {bloque ? <input type="hidden" name="bloque" value={bloque} /> : null}
         <div className="w-full sm:w-auto sm:min-w-48">
           <label
             htmlFor="periodo"
@@ -253,6 +291,7 @@ function Month({
   view,
   area,
   categoria,
+  bloque,
   order,
   direction,
 }: {
@@ -262,10 +301,12 @@ function Month({
   view: View;
   area: string;
   categoria: string;
+  bloque: Bloque | "";
   order: string;
   direction: "asc" | "desc";
 }) {
   const gastos = data.gastos
+    .filter((g) => !bloque || enBloque(g, bloque))
     .filter((g) => !area || g.fabrica_o_tienda === area)
     .filter((g) => !categoria || g.categoria === categoria);
   // The API only totals by area: a category filter shows no total rather than one computed here.
@@ -314,12 +355,15 @@ function Month({
         </section>
       ) : null}
       <section aria-label={`Totales de ${formatPeriod(data.periodo)}`}>
-        <dl className="grid gap-5 sm:grid-cols-3">
-          <Metric label="Fábrica" value={formatArs(data.total_fabrica)} />
-          <Metric label="Tienda" value={formatArs(data.total_tienda)} />
-          <Metric label="Total del mes" value={formatArs(data.total)} />
-        </dl>
-        <div className="mt-5 space-y-3">
+        {/* El API solo totaliza el mes entero: en una pestaña de un bloque no se repite. */}
+        {bloque ? null : (
+          <dl className="grid gap-5 sm:grid-cols-3">
+            <Metric label="Fábrica" value={formatArs(data.total_fabrica)} />
+            <Metric label="Tienda" value={formatArs(data.total_tienda)} />
+            <Metric label="Total del mes" value={formatArs(data.total)} />
+          </dl>
+        )}
+        <div className={bloque ? "space-y-3" : "mt-5 space-y-3"}>
           {pendientes > 0 ? (
             <Notice
               title={`${pendientes} ${pendientes === 1 ? "gasto" : "gastos"} pendiente${pendientes === 1 ? "" : "s"} de monto`}
@@ -335,49 +379,45 @@ function Month({
         </div>
       </section>
       {writer ? (
-        <>
-          {(
-            [
-              [
-                "personal",
-                "Mano de obra",
-                "Sueldos y cargas sociales del personal.",
-              ],
-              [
-                "servicios",
-                "Servicios básicos",
-                "Luz, agua, internet y demás servicios del mes.",
-              ],
-              ["otros", "Otros gastos", "Alquiler, impuestos y el resto."],
-            ] as const
-          ).map(([bloque, title, help]) => {
-            const del = gastos.filter((g) =>
-              bloque === "personal"
-                ? PERSONAL.includes(g.categoria)
-                : bloque === "servicios"
-                  ? g.categoria === "SERVICIOS"
-                  : !PERSONAL.includes(g.categoria) &&
-                    g.categoria !== "SERVICIOS",
-            );
-            // "Otros gastos" no se usa por ahora: solo aparece si el mes ya trae filas de esas
-            // categorías, para que nada que cuente en los totales quede escondido.
-            if (bloque === "otros" && del.length === 0) return null;
-            return (
-              <section key={bloque} aria-label={title}>
-                <SectionTitle>{title}</SectionTitle>
-                <p className="-mt-2 mb-4 text-sm text-muted">{help}</p>
-                <CostosGrid
-                  key={`${data.periodo}|${area}|${bloque}`}
-                  periodo={data.periodo}
-                  gastos={[...del].sort(byCategoryThenConcept)}
-                  personas={people}
-                  area={area}
-                  bloque={bloque}
-                />
-              </section>
-            );
-          })}
-        </>
+        (
+          [
+            ["personal", ...Object.values(BLOQUES.personal)],
+            ["servicios", ...Object.values(BLOQUES.servicios)],
+            ["otros", "Otros gastos", "Alquiler, impuestos y el resto."],
+          ] as const
+        ).map(([id, title, help]) => {
+          if (bloque && id !== bloque) return null;
+          const del = gastos.filter((g) =>
+            id === "personal"
+              ? PERSONAL.includes(g.categoria)
+              : id === "servicios"
+                ? g.categoria === "SERVICIOS"
+                : !PERSONAL.includes(g.categoria) &&
+                  g.categoria !== "SERVICIOS",
+          );
+          // "Otros gastos" no se usa por ahora: solo aparece si el mes ya trae filas de esas
+          // categorías, para que nada que cuente en los totales quede escondido.
+          if (id === "otros" && del.length === 0) return null;
+          return (
+            <section key={id} aria-label={title}>
+              {/* Con un bloque elegido, el título de la página ya lo dice. */}
+              {bloque ? null : (
+                <>
+                  <SectionTitle>{title}</SectionTitle>
+                  <p className="-mt-2 mb-4 text-sm text-muted">{help}</p>
+                </>
+              )}
+              <CostosGrid
+                key={`${data.periodo}|${area}|${id}`}
+                periodo={data.periodo}
+                gastos={[...del].sort(byCategoryThenConcept)}
+                personas={people}
+                area={area}
+                bloque={id}
+              />
+            </section>
+          );
+        })
       ) : data.gastos.length === 0 ? null : gastos.length === 0 ? (
         <Notice
           tone="info"

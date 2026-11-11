@@ -115,12 +115,12 @@ const DESKTOP_NAV: NavGroup[] = [
     items: [
       // TODO: Mano de Obra and Servicios Básicos are filters of /costos-fijos until they get their own screens.
       {
-        href: "/costos-fijos?categoria=SUELDOS",
+        href: "/costos-fijos?bloque=personal",
         label: "Mano de obra",
         icon: "sueldos",
       },
       {
-        href: "/costos-fijos?categoria=SERVICIOS",
+        href: "/costos-fijos?bloque=servicios",
         label: "Servicios básicos",
         icon: "servicios",
       },
