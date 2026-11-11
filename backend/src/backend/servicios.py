@@ -1851,8 +1851,14 @@ def _gasto_actual_de(session: Session, gasto: GastoPeriodo) -> GastoPeriodo:
 
 
 def _gasto_para_cambiar(session: Session, codigo: str, periodo: str | None = None) -> GastoPeriodo:
-    """The saved row `codigo` if it is still the current, not annulled row of its chain; otherwise the matching error."""
-    viejo = session.scalar(select(GastoPeriodo).where(GastoPeriodo.codigo == codigo))
+    """The saved row `codigo` if it is still the current, not annulled row of its chain; otherwise the matching error.
+
+    The row is locked (FOR UPDATE) until the transaction ends, so an annul and a correction of the same expense
+    cannot both pass the checks: the second one waits, then sees the first one's result.
+    """
+    viejo = session.scalar(
+        select(GastoPeriodo).where(GastoPeriodo.codigo == codigo).with_for_update()
+        .execution_options(populate_existing=True))
     if viejo is None:
         raise NoEncontrado(f"No existe el gasto {codigo}.")
     if periodo is not None and viejo.periodo != periodo:
