@@ -16,7 +16,7 @@ export const NAV_ITEMS: NavGroup[] = [
   {
     title: "Resumen",
     items: [
-      { href: "/", label: "Panel del negocio", shortLabel: "Panel" },
+      { href: "/", label: "Panel" },
       { href: "/escenarios", label: "Escenarios", adminOnly: true },
     ],
   },
@@ -104,7 +104,7 @@ const DESKTOP_NAV: NavGroup[] = [
   {
     title: "",
     items: [
-      { href: "/", label: "Panel del negocio" },
+      { href: "/", label: "Panel" },
       { href: "/productos", label: "Productos" },
       { href: "/dolar", label: "Dólar" },
       { href: "/proveedores", label: "Proveedores", adminOnly: true },
