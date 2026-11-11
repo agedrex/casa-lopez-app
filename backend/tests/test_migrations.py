@@ -67,7 +67,7 @@ class RecordedOperations:
 
 
 # Tables created by revisions after 0003, so 0003 neither creates nor drops them.
-ADDED_AFTER_DER_V3 = {"precio_venta", "proveedor", "documento_proveedor"}
+ADDED_AFTER_DER_V3 = {"precio_venta", "proveedor", "documento_proveedor", "producto_reventa", "compra_reventa"}
 
 
 def load_revision(monkeypatch, filename):
@@ -79,14 +79,15 @@ def load_revision(monkeypatch, filename):
 def test_revision_chain_replaces_v1_with_v3_then_seeds(monkeypatch):
     chain = {}
     for filename in ("0001_esquema_costos.py", "0002_semillas.py", "0003_der_v3.py", "0004_semillas_v3.py",
-                     "0005_gasto_reemplaza_a.py", "0006_precio_venta.py", "0007_proveedores_documentos.py"):
+                     "0005_gasto_reemplaza_a.py", "0006_precio_venta.py", "0007_proveedores_documentos.py",
+                     "0008_reventa.py"):
         _, revision = load_revision(monkeypatch, filename)
         chain[revision["revision"]] = revision["down_revision"]
     assert chain == {
         "0001_esquema_costos": None, "0002_semillas": "0001_esquema_costos",
         "0003_der_v3": "0002_semillas", "0004_semillas_v3": "0003_der_v3",
         "0005_gasto_reemplaza_a": "0004_semillas_v3", "0006_precio_venta": "0005_gasto_reemplaza_a",
-        "0007_proveedores_documentos": "0006_precio_venta",
+        "0007_proveedores_documentos": "0006_precio_venta", "0008_reventa": "0007_proveedores_documentos",
     }
 
 
@@ -98,6 +99,7 @@ def test_der_v3_revision_matches_orm_and_reverses_dependencies(monkeypatch):
     runpy.run_path(str(VERSIONS / "0005_gasto_reemplaza_a.py"))["upgrade"]()
     runpy.run_path(str(VERSIONS / "0006_precio_venta.py"))["upgrade"]()
     runpy.run_path(str(VERSIONS / "0007_proveedores_documentos.py"))["upgrade"]()
+    runpy.run_path(str(VERSIONS / "0008_reventa.py"))["upgrade"]()
     assert set(operations.metadata.tables) == set(Base.metadata.tables)
     dialect = postgresql.dialect()
     for key, declared in operations.metadata.tables.items():
@@ -284,3 +286,18 @@ def test_proveedores_documentos_revision_creates_both_tables_parent_first_and_dr
     revision["downgrade"]()
     assert operations.dropped[-2:] == ["documento_proveedor", "proveedor"]
     assert "files" in revision["__doc__"] or "documents" in revision["__doc__"]  # the downgrade warns about data loss
+
+
+def test_reventa_revision_creates_both_tables_parent_first_and_drops_them_child_first(monkeypatch):
+    operations, base = load_revision(monkeypatch, "0003_der_v3.py")
+    base["upgrade"]()
+    revision = runpy.run_path(str(VERSIONS / "0008_reventa.py"))
+    assert revision["revision"] == "0008_reventa" and revision["down_revision"] == "0007_proveedores_documentos"
+    revision["upgrade"]()
+    created = list(operations.metadata.tables)
+    assert created.index("costos.producto_reventa") < created.index("costos.compra_reventa")
+    compra = operations.metadata.tables["costos.compra_reventa"]
+    assert {fk.target_fullname for fk in compra.foreign_keys} == {"costos.producto_reventa.id"}
+    revision["downgrade"]()
+    assert operations.dropped[-2:] == ["compra_reventa", "producto_reventa"]
+    assert "lost" in revision["__doc__"]  # the downgrade warns about data loss

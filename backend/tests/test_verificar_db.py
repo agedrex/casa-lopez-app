@@ -43,7 +43,7 @@ def test_expected_seed_counts_cover_the_seeded_tables():
     assert verificar_db.SEED_COUNTS["etapa"] == 8 and verificar_db.SEED_COUNTS["material"] == 13
     assert verificar_db.SEED_COUNTS["modelo"] == 325
     assert set(verificar_db.SEED_COUNTS) <= verificar_db.DOMAIN_TABLES
-    assert len(verificar_db.DOMAIN_TABLES) == 28
+    assert len(verificar_db.DOMAIN_TABLES) == 30
     assert {"proveedor", "documento_proveedor"} <= verificar_db.DOMAIN_TABLES
 
 

@@ -332,6 +332,45 @@ class PrecioVenta(IdentityAndCreatedAt, Base):
     nota: Mapped[str | None] = mapped_column(Text)
 
 
+# --- Resale products: bought ready-made at a price and resold, no materials involved ---------------------------
+
+class ProductoReventa(BusinessKey, Base):
+    """A product Casa López buys and resells as is. Nothing is deleted: archiving is `activo = false`. `codigo` is `REV-NNNN`."""
+    __tablename__ = "producto_reventa"
+    nombre: Mapped[str] = mapped_column(Text)
+    categoria_id: Mapped[int | None] = mapped_column(ForeignKey("costos.categoria.id"))
+    # Free text, like precio_material.proveedor: it is not linked to the `proveedor` table.
+    proveedor: Mapped[str | None] = mapped_column(Text)
+    nota: Mapped[str | None] = mapped_column(Text)
+    activo: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+
+
+Index("producto_reventa_nombre_uq", func.lower(ProductoReventa.nombre), unique=True)
+
+
+class CompraReventa(IdentityAndCreatedAt, Base):
+    """One purchase of a resale product: units, what each cost and (optionally) the price it will be resold at.
+
+    Only appended: the cost of the product is the unit cost of its latest purchase (latest `fecha`, then latest id).
+    """
+    __tablename__ = "compra_reventa"
+    __table_args__ = (
+        CheckConstraint("unidades > 0", name="unidades_positivas"),
+        CheckConstraint("costo_unitario_ars > 0", name="costo_positivo"),
+        CheckConstraint("precio_venta_unitario_ars IS NULL OR precio_venta_unitario_ars > 0", name="precio_venta_positivo"),
+        Index("compra_reventa_producto_fecha", "producto_reventa_id", "fecha"),
+    )
+    producto_reventa_id: Mapped[int] = mapped_column(ForeignKey("costos.producto_reventa.id"))
+    fecha: Mapped[date] = mapped_column(Date)
+    unidades: Mapped[Decimal] = mapped_column(quantity())
+    costo_unitario_ars: Mapped[Decimal] = mapped_column(money())
+    precio_venta_unitario_ars: Mapped[Decimal | None] = mapped_column(money())
+    proveedor: Mapped[str | None] = mapped_column(Text)
+    nota: Mapped[str | None] = mapped_column(Text)
+    # The auth user id as text, like precio_venta.creado_por (no FK: Better Auth lives in `public`).
+    creado_por: Mapped[str | None] = mapped_column(Text)
+
+
 # --- Suppliers and their documents (invoices, images) ---------------------------------------------------------
 
 class Proveedor(BusinessKey, Base):

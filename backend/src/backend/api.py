@@ -22,7 +22,7 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.orm import Session
 
-from backend import cueros, ocr_llm, proveedores, servicios, sheets_client, voz, voz_llm
+from backend import cueros, ocr_llm, proveedores, reventa, servicios, sheets_client, voz, voz_llm
 from backend.auth import CORTE, CUALQUIER_ROL, PRODUCTOS, SOLO_ADMIN, Usuario, require_user
 from backend.database import get_session
 from backend.models import ARS_USD, DOCUMENT_TYPES, LOT_STATES, UNITS, WHERE_MADE
@@ -207,6 +207,22 @@ class PrecioIn(Entrada):
     iva_incluido: bool = False
     vigente_desde: date
     nota_fuente: str | None = None
+
+
+class ProductoReventaIn(Entrada):
+    nombre: Annotated[str, Field(min_length=1, max_length=200)]
+    categoria: str | None = None
+    proveedor: Annotated[str, Field(max_length=200)] | None = None
+    nota: Annotated[str, Field(max_length=2000)] | None = None
+
+
+class CompraReventaIn(Entrada):
+    unidades: Annotated[Decimal, Field(gt=0, max_digits=12, decimal_places=6)]
+    costo_unitario_ars: Annotated[Decimal, Field(gt=0, max_digits=14, decimal_places=4)]
+    precio_venta_unitario_ars: Annotated[Decimal, Field(gt=0, max_digits=14, decimal_places=4)] | None = None
+    fecha: date | None = None
+    proveedor: Annotated[str, Field(max_length=200)] | None = None
+    nota: Annotated[str, Field(max_length=2000)] | None = None
 
 
 class PrecioVentaIn(Entrada):
@@ -685,6 +701,40 @@ class PanelCostosOut(Salida):
     dolar: PanelDolarOut | None
     dolar_viejo: bool
     avisos: list[PanelAvisoOut]
+
+
+class CompraReventaOut(Salida):
+    fecha: date
+    unidades: Decimal
+    costo_unitario_ars: Decimal
+    costo_total_ars: Decimal
+    precio_venta_unitario_ars: Decimal | None
+    margen_unitario_ars: Decimal | None
+    margen_pct: Decimal | None
+    proveedor: str | None
+    nota: str | None
+    creado_por: str | None
+    creado_en: datetime | None
+
+
+class ProductoReventaOut(Salida):
+    codigo: str
+    nombre: str
+    categoria: str | None
+    proveedor: str | None
+    nota: str | None
+    activo: bool
+    costo_unitario_ars: Decimal | None
+    precio_venta_unitario_ars: Decimal | None
+    margen_unitario_ars: Decimal | None
+    margen_pct: Decimal | None
+    ultima_compra: date | None
+    compras: int
+    unidades_compradas: Decimal
+
+
+class ProductoReventaDetalleOut(ProductoReventaOut):
+    historial: list[CompraReventaOut]
 
 
 class PrecioVentaOut(Salida):
@@ -1637,6 +1687,34 @@ class DocumentoProveedorOut(Salida):
 def get_ocr_llm() -> ocr_llm.OcrLLM | None:
     """The real reader while `ANTHROPIC_API_KEY` is set (building it makes no network call), else None."""
     return ocr_llm.create_client()
+
+
+@router.get("/reventa", dependencies=LECTURA_ADMIN, response_model=list[ProductoReventaOut])
+def listar_reventa(session: Sesion):
+    return reventa.listar(session)
+
+
+@router.post("/reventa", dependencies=ESCRITURA, response_model=ProductoReventaDetalleOut, status_code=201)
+def crear_producto_de_reventa(cuerpo: ProductoReventaIn, session: Sesion):
+    return reventa.crear(
+        session, nombre=cuerpo.nombre, categoria=cuerpo.categoria, proveedor=cuerpo.proveedor, nota=cuerpo.nota,
+    )
+
+
+@router.get("/reventa/{codigo}", dependencies=LECTURA_ADMIN, response_model=ProductoReventaDetalleOut)
+def detalle_de_reventa(codigo: str, session: Sesion):
+    return reventa.detalle(session, codigo)
+
+
+@router.post("/reventa/{codigo}/activo", dependencies=ESCRITURA, response_model=ProductoReventaDetalleOut)
+def cambiar_activo_de_reventa(codigo: str, cuerpo: ActivoIn, session: Sesion):
+    return reventa.cambiar_activo(session, codigo, cuerpo.activo)
+
+
+@router.post("/reventa/{codigo}/compras", dependencies=ESCRITURA, response_model=ProductoReventaDetalleOut, status_code=201)
+def registrar_compra_de_reventa(codigo: str, cuerpo: CompraReventaIn, session: Sesion, usuario: Escritor):
+    """Appends a purchase (units and unit cost); history is never edited or deleted."""
+    return reventa.registrar_compra(session, codigo, **cuerpo.model_dump(), quien=usuario.id)
 
 
 @router.get("/proveedores", dependencies=LECTURA_ADMIN, response_model=list[ProveedorOut])

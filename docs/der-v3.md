@@ -38,6 +38,17 @@ Conventions: schema `costos`; `id` (identity) and `created_at` everywhere; `codi
 | `conteo_inventario` | Conteo_Inventario | Monthly leather count (start / close) by material and color. |
 | `cotizacion` | Cotizaciones | Calculated snapshot per product, type (INICIAL / RECOTIZACION / FINAL) and date: dollar, one amount per stage, subtotal, kit components, purchase VAT, repairs, totals in ARS and USD. |
 
+## Resale products (revision 0008)
+
+Two tables for products Casa López buys ready-made and resells. They are outside the costing engine: no materials, stages or quotes.
+
+| Table | What it holds |
+|---|---|
+| `producto_reventa` | The product: `codigo` (`REV-nnnn`), name (unique ignoring case), optional `categoria_id`, free-text `proveedor`, `activo`. Archiving is `activo = false`. |
+| `compra_reventa` | One purchase: date, `unidades` (> 0), `costo_unitario_ars` (> 0) and an optional `precio_venta_unitario_ars` (> 0). Only appended. |
+
+The cost of a product is the unit cost of its **latest** purchase (latest `fecha`, then latest id); the sale price is the one typed in the latest purchase that has one; the cost of a purchase is `unidades × costo_unitario_ars`. The margin is computed in `backend/reventa.py` (profit over the sale price), never by the front. Admin only (read and write). SUPUESTO: validar con Casa López: ARS only (no dollar conversion), no stock (units sold are not tracked, there are no sales yet), and the `REV-` prefix is ours.
+
 ## Open assumptions (`SUPUESTO: validar`)
 
 - Units of consumption and price are a closed `CHECK` list (`m2`, `cm`, `juego`, `unidad`, `USD`) although the sheet shows it as open.

@@ -252,7 +252,7 @@ Son las reglas que el Excel aplica sin decirlo: de fórmula, de criterio o de fo
 
 **La fuente de verdad es el código:** `backend/src/backend/models.py` y las migraciones, explicados en `docs/der-v3.md`. Su origen es la pestaña `Diccionario` de `Plantilla Costos Casa Lopez v4.1 (trabajo).xlsx`, que el 2026-10-27 reemplazó al DER v1 y a las reglas del Excel viejo [V: `odd/tasks/app-casa-lopez-v3.md`, S1 y L1]. Si este archivo y el código no coinciden, **gana el código** y se corrige este. `docs/der-v3.md` está algo atrasado: no lista `precio_venta`, `proveedor` ni `documento_proveedor` (migraciones 0006 y 0007) y dice consumos `NUMERIC(10,4)` cuando son `(12,6)` [V: `models.py`]. `docs/der.md`, `der-borrador.sql`, `wo1-modelo-conceptual.md`, `wo2-decisiones.md` y `wo2-staging.md` hablan del DER v1 (11 tablas, `cotizacion_linea`, GG): son **históricos**, no se implementan.
 
-### Migraciones (7, cabeza `0007_proveedores_documentos`) [V: `backend/migrations/versions`]
+### Migraciones (8, cabeza `0008_reventa`) [V: `backend/migrations/versions`]
 | Revisión | Qué hace |
 |---|---|
 | `0001_esquema_costos`, `0002_semillas` | DER v1 y sus semillas. Históricas. |
@@ -261,10 +261,11 @@ Son las reglas que el Excel aplica sin decirlo: de fórmula, de criterio o de fo
 | `0005_gasto_reemplaza_a` | `gasto_periodo.reemplaza_a_id`: una corrección es una fila nueva que apunta a la que reemplaza. |
 | `0006_precio_venta` | Tabla `precio_venta`. |
 | `0007_proveedores_documentos` | Tablas `proveedor` y `documento_proveedor`. |
+| `0008_reventa` | Tablas `producto_reventa` y `compra_reventa`: productos que se compran hechos y se revenden (costo = último costo unitario de compra; ver `backend/src/backend/reventa.py`). |
 
 Todas tienen `downgrade`, pero bajar de 0007, 0006 o 0005 borra datos (ver `docs/produccion.md`, sección 5).
 
-### Tablas (28 en el schema `costos`) [V: `models.py`, `docs/der-v3.md`]
+### Tablas (30 en el schema `costos`) [V: `models.py`, `docs/der-v3.md`]
 | Grupo | Tablas | Lo que no hay que romper |
 |---|---|---|
 | Catálogo | `modelo`, `producto`, `receta_linea`, `kit_componente`, `molde`, `modelo_molde` | `modelo` es qué se fabrica y trae los consumos por unidad (cuero, forro, flex, goma EVA, herrajes en USD, hilo y cemento) y la confección estimada. `producto` es un modelo en un cuero y un color (`modelo_id` puede ser NULL en un kit). `receta_linea` guarda **solo** las líneas `EXTRA` (un segundo cuero, un herraje puntual); las del modelo se calculan. En `modelo`, NULL = dato faltante y 0 = "no lleva". `nombre_del_modelo` es único. |
@@ -273,6 +274,7 @@ Todas tienen `downgrade`, pero bajar de 0007, 0006 o 0005 borra datos (ver `docs
 | Cotización | `cotizacion` | Foto calculada e inmutable (regla de oro 4). La escribe el motor, nadie la edita. |
 | Fabricación | `orden_fabricacion` (el "lote"), `orden_item`, `orden_estado`, `registro_tarea` | `orden_item` separa el precio pedido del pagado por unidad. `orden_estado` es el historial de estados (`PLANIFICADA` a `CERRADA`). El precio del taller se edita en el lugar, sin historial [V: `odd/tasks/app-casa-lopez-v3.md`, L14]. |
 | Inventario de cuero | `pieza_cuero`, `movimiento_cuero`, `conteo_inventario` | Un movimiento `CORTE` tiene que apuntar a su `orden_item`. |
+| Reventa | `producto_reventa`, `compra_reventa` | Productos comprados hechos y revendidos, fuera del motor de costeo. El costo es el costo unitario de la compra más nueva; cada compra nueva es una fila (solo se agregan). Solo ARS y sin stock (SUPUESTO: validar). Solo `admin`. |
 | Proveedores | `proveedor`, `documento_proveedor` | Las facturas e imágenes se guardan en la base (`bytea`, sin object storage). El OCR solo sugiere: **no crea precios**. `precio_material.proveedor` es texto y **no** está vinculado a `proveedor` [V: docstring de la migración 0007]. |
 
 Reglas transversales:
