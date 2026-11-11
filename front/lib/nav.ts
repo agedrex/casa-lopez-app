@@ -15,7 +15,10 @@ export type NavGroup = { title: string; items: NavItem[] };
 export const NAV_ITEMS: NavGroup[] = [
   {
     title: "Resumen",
-    items: [{ href: "/", label: "Panel del negocio", shortLabel: "Panel" }],
+    items: [
+      { href: "/", label: "Panel del negocio", shortLabel: "Panel" },
+      { href: "/escenarios", label: "Escenarios", adminOnly: true },
+    ],
   },
   {
     title: "1 · Datos de base",
@@ -102,6 +105,7 @@ const DESKTOP_NAV: NavGroup[] = [
     title: "",
     items: [
       { href: "/", label: "Panel del negocio" },
+      { href: "/escenarios", label: "Escenarios", adminOnly: true },
       { href: "/productos", label: "Productos" },
       { href: "/dolar", label: "Dólar" },
       { href: "/proveedores", label: "Proveedores", adminOnly: true },

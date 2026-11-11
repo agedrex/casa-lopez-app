@@ -1,38 +1,44 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { PageHeader } from "@/components/ui";
 import { apiGet } from "@/lib/api";
-import type { PanelCostos, ProductoResumen } from "@/lib/types";
-import { EscenarioDeVentas } from "./cvu/escenario";
+import type { PanelCostos, TendenciaCostos } from "@/lib/types";
 import { BloqueConError, PanelCvu } from "./panel-cvu";
+import { TendenciaDeCostos } from "./tendencia-costos";
 
 export const metadata: Metadata = { title: "Panel del negocio" };
 
 export default async function PanelPage() {
-  // SUPUESTO: 500 is the API's page maximum; it only feeds the product suggestions of the scenario.
-  const [panel, productos] = await Promise.all([
+  const [panel, tendencia] = await Promise.all([
     apiGet<PanelCostos>("/panel/costos"),
-    apiGet<ProductoResumen[]>("/productos?limit=500"),
+    apiGet<TendenciaCostos>("/panel/tendencia"),
   ]);
 
   return (
     <>
       <PageHeader
+        eyebrow="Resumen mensual"
         title="Panel del negocio"
-        description="Los números del mes y un simulador de ventas."
+        description="Los números del mes comparados con el anterior."
+        actions={
+          <Link
+            href="/escenarios"
+            className="rounded-card border border-line bg-surface px-4 py-2 text-sm text-ink-soft hover:bg-parchment"
+          >
+            Simular escenarios →
+          </Link>
+        }
       />
-      <div className="space-y-5">
-        {panel.ok ? (
-          <>
-            <PanelCvu panel={panel.data} />
-            <EscenarioDeVentas
-              productos={productos.ok ? productos.data : []}
-              periodo={panel.data.periodo}
-            />
-          </>
-        ) : (
-          <BloqueConError message={panel.message} />
-        )}
-      </div>
+      {panel.ok ? (
+        <div className="space-y-6">
+          <PanelCvu panel={panel.data} />
+          {tendencia.ok && tendencia.data.meses.length > 0 ? (
+            <TendenciaDeCostos tendencia={tendencia.data} />
+          ) : null}
+        </div>
+      ) : (
+        <BloqueConError message={panel.message} />
+      )}
     </>
   );
 }

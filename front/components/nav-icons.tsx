@@ -1,5 +1,6 @@
 export const ICONS: Record<string, string> = {
   "/": "M4 13h6V4H4v9zm0 7h6v-5H4v5zm8 0h8V11h-8v9zm0-16v5h8V4h-8z",
+  "/escenarios": "M3 17l6-6 4 4 8-8M15 7h6v6",
   "/productos": "M4 7l8-4 8 4-8 4-8-4zm0 4l8 4 8-4M4 15l8 4 8-4",
   "/materiales":
     "M12 3v18M16.5 7.5C16.5 6 14.5 5 12 5S7.5 6 7.5 8s2 2.5 4.5 3 4.5 1 4.5 3-2 3-4.5 3-4.5-1-4.5-2.5",
