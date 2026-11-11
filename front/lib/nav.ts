@@ -5,6 +5,8 @@ export type NavItem = {
   label: string;
   /** Shorter label for the mobile tab bar. */
   shortLabel?: string;
+  /** Key in ICONS when it differs from the href (filters of one page share it). */
+  icon?: string;
   adminOnly?: boolean;
 };
 
@@ -111,11 +113,13 @@ const DESKTOP_NAV: NavGroup[] = [
       // TODO: Mano de Obra and Servicios Básicos are filters of /costos-fijos until they get their own screens.
       {
         href: "/costos-fijos?categoria=SUELDOS",
-        label: "Mano de obra (sueldos)",
+        label: "Mano de obra",
+        icon: "sueldos",
       },
       {
         href: "/costos-fijos?categoria=SERVICIOS",
-        label: "Servicios básicos (fábrica / tienda)",
+        label: "Servicios básicos",
+        icon: "servicios",
       },
     ],
   },

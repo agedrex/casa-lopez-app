@@ -21,6 +21,10 @@ export const ICONS: Record<string, string> = {
   "/costos-fijos": "M5 3h14v18H5zM9 8h6M9 12h6M9 16h3",
   "/admin": "M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z",
   "/admin/modelos": "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z",
+  "/reventa": "M4 7l8-4 8 4-8 4-8-4zm0 0v10l8 4 8-4V7M12 11v10",
+  sueldos:
+    "M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 5.5a3 3 0 0 1 0 5.5M18 14.5c1.8.8 3 2.6 3 5.5",
+  servicios: "M13 3 5 13h6l-1 8 8-10h-6l1-8z",
   box: "M4 7l8-4 8 4-8 4-8-4zm0 0v10l8 4 8-4V7M12 11v10",
 };
 
