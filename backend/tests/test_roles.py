@@ -121,7 +121,7 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
         "/costos-fijos/copiar", "/ordenes", "/ordenes/{codigo}/estado", "/ordenes/{codigo}/items",
         "/talleres", "/talleres/{codigo}/activo", "/parametros/{codigo}",
         "/personas", "/personas/{codigo}/activo", "/colores", "/categorias", "/modelos", "/modelos/{codigo}/validado",
-        "/modelos/{codigo}/consumos", "/sync/sheets")},
+        "/modelos/{codigo}/consumos", "/sync/sheets", "/costos-fijos/lote", "/modelos/consumos/lote")},
     # Suppliers and their invoices / images: admin only, reads and writes alike.
     ("GET", "/reventa"): ADMIN, ("GET", "/reventa/{codigo}"): ADMIN,
     ("GET", "/proveedores"): ADMIN, ("GET", "/proveedores/{codigo}"): ADMIN,

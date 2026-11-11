@@ -1872,6 +1872,76 @@ def corregir_gasto(
     return costos_fijos(session, viejo.periodo)
 
 
+def guardar_gastos_en_lote(session: Session, periodo: str, cambios: list[dict], nuevos: list[dict]) -> dict:
+    """Grid save of a month, ONE transaction (all or nothing).
+
+    `cambios`: {codigo, monto?, concepto?, fabrica_o_tienda?, categoria?}. A pending row (monto NULL) with only an
+    amount is filled in place, like `cargar_monto_de_gasto`; anything else is a NEW row that replaces the old one, like
+    `corregir_gasto` (S5). `nuevos`: rows for `periodo`, as in `crear_gasto`.
+    """
+    if not PERIODO_AAAA_MM.fullmatch(periodo):
+        raise DatosInvalidos(f"El período {periodo} no es válido: usá AAAA-MM.")
+    if not cambios and not nuevos:
+        raise DatosInvalidos("No hay cambios para guardar.")
+    if len(cambios) + len(nuevos) > MAX_FILAS_POR_LOTE:
+        raise DatosInvalidos(f"Son demasiadas filas de una vez (máximo {MAX_FILAS_POR_LOTE}).")
+    codigos = [c["codigo"] for c in cambios]
+    if len(set(codigos)) != len(codigos):
+        raise DatosInvalidos("Hay un gasto repetido en los cambios.")
+    try:
+        for cambio in cambios:
+            viejo = session.scalar(select(GastoPeriodo).where(GastoPeriodo.codigo == cambio["codigo"]))
+            if viejo is None:
+                raise NoEncontrado(f"No existe el gasto {cambio['codigo']}.")
+            if viejo.periodo != periodo:
+                raise DatosInvalidos(f"El gasto {viejo.codigo} no es de {periodo}.")
+            if (actual := _gasto_actual_de(session, viejo)) is not viejo:
+                raise Conflicto(f"El gasto {viejo.codigo} ya fue corregido: corregí el vigente {actual.codigo}.")
+            monto = cambio.get("monto")
+            if monto is None:
+                if "monto" in cambio and viejo.monto_ars_del_mes is not None:
+                    raise DatosInvalidos(f"{viejo.codigo}: no se puede dejar sin monto un gasto que ya lo tiene.")
+                monto = viejo.monto_ars_del_mes
+            elif monto < 0:
+                raise DatosInvalidos(f"{viejo.codigo}: el monto no puede ser negativo.")
+            concepto = cambio.get("concepto")
+            datos = {
+                "concepto": (viejo.concepto if concepto is None else concepto).strip(),
+                "fabrica_o_tienda": cambio.get("fabrica_o_tienda") or viejo.fabrica_o_tienda,
+                "categoria": cambio.get("categoria") or viejo.categoria,
+            }
+            if not datos["concepto"]:
+                raise DatosInvalidos(f"{viejo.codigo}: falta el concepto.")
+            igual = all(getattr(viejo, k) == v for k, v in datos.items()) and monto == viejo.monto_ars_del_mes
+            if igual:
+                continue
+            solo_monto = all(getattr(viejo, k) == v for k, v in datos.items())
+            if viejo.monto_ars_del_mes is None and solo_monto:
+                viejo.monto_ars_del_mes = monto
+                continue
+            _insertar(session, GastoPeriodo(
+                codigo=f"GF-{_siguiente_numero(session, GastoPeriodo.codigo, 'GF'):04d}", periodo=periodo,
+                persona_id=viejo.persona_id, monto_ars_del_mes=monto, ficticio=viejo.ficticio,
+                nota_fuente=f"Corrige {viejo.codigo}", reemplaza_a_id=viejo.id, **datos,
+            ), f"No se pudo guardar la corrección de {viejo.codigo}: ya fue corregido o el código se repitió; intentá de nuevo.")
+        for nuevo in nuevos:
+            concepto = nuevo["concepto"].strip()
+            if not concepto:
+                raise DatosInvalidos("Una fila nueva no tiene concepto.")
+            persona_fila = _por_codigo(session, Persona, nuevo.get("persona"), "la persona")
+            _insertar(session, GastoPeriodo(
+                codigo=f"GF-{_siguiente_numero(session, GastoPeriodo.codigo, 'GF'):04d}", periodo=periodo,
+                concepto=concepto, fabrica_o_tienda=nuevo["fabrica_o_tienda"], categoria=nuevo["categoria"],
+                persona_id=persona_fila.id if persona_fila else None, monto_ars_del_mes=nuevo.get("monto_ars_del_mes"),
+                ficticio=False, nota_fuente=nuevo.get("nota_fuente"),
+            ), "No se pudo asignar el código del gasto; intentá de nuevo.")
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    return costos_fijos(session, periodo)
+
+
 def copiar_mes_de_gastos(session: Session, desde: str, hasta: str, *, con_montos: bool = True) -> dict:
     """Create the rows of month `hasta` from the current rows of month `desde` (S2).
 
@@ -2137,10 +2207,8 @@ def cambiar_validado(session: Session, codigo: str, validado: bool) -> dict:
     return detalle_modelo(session, codigo)
 
 
-def cambiar_consumos(session: Session, codigo: str, *, forro: str | None, quien: str, **consumos) -> dict:
-    """Overwrite the consumptions of a model and reset `validado`. SUPUESTO: validar. No table may be added, so the
-    previous values are not stored; they are logged (who, old, new). Saved quotes are snapshots and keep their
-    numbers; every product of the model is costed with the new ones from now on."""
+def _aplicar_consumos(session: Session, codigo: str, forro: str | None, consumos: dict) -> dict:
+    """Overwrite the consumptions of a model and reset `validado`, WITHOUT committing. Returns what changed."""
     modelo = _modelo_por_codigo(session, codigo)
     forro_fila = _forro_del_modelo(session, forro, consumos["forro_m2_por_unidad"])
     anterior_forro = session.scalar(select(Material.codigo).where(Material.id == modelo.forro_id)) if modelo.forro_id else None
@@ -2153,9 +2221,48 @@ def cambiar_consumos(session: Session, codigo: str, *, forro: str | None, quien:
         cambios["forro"] = f"{anterior_forro} -> {forro}"
     modelo.forro_id = forro_fila.id if forro_fila else None
     modelo.validado = False
+    return cambios
+
+
+def cambiar_consumos(session: Session, codigo: str, *, forro: str | None, quien: str, **consumos) -> dict:
+    """Overwrite the consumptions of a model and reset `validado`. SUPUESTO: validar. No table may be added, so the
+    previous values are not stored; they are logged (who, old, new). Saved quotes are snapshots and keep their
+    numbers; every product of the model is costed with the new ones from now on."""
+    cambios = _aplicar_consumos(session, codigo, forro, consumos)
     session.commit()
     logger.info("Model %s consumptions changed by %s: %s", codigo, quien, cambios or "no value changed")
     return detalle_modelo(session, codigo)
+
+
+MAX_FILAS_POR_LOTE = 500
+
+
+def cambiar_consumos_en_lote(session: Session, filas: list[dict], *, quien: str) -> dict:
+    """Grid save: apply the consumptions of many models in ONE transaction (all or nothing). Same rules as
+    `cambiar_consumos` for each row (resets `validado`, logs who/old/new); a refused row names its model and nothing
+    is saved."""
+    if not filas:
+        raise DatosInvalidos("No hay cambios para guardar.")
+    if len(filas) > MAX_FILAS_POR_LOTE:
+        raise DatosInvalidos(f"Son demasiados modelos de una vez (máximo {MAX_FILAS_POR_LOTE}).")
+    codigos = [f["codigo"] for f in filas]
+    if len(set(codigos)) != len(codigos):
+        raise DatosInvalidos("Hay un modelo repetido en los cambios.")
+    registro = {}
+    try:
+        for fila in filas:
+            consumos = {k: v for k, v in fila.items() if k not in ("codigo", "forro")}
+            try:
+                registro[fila["codigo"]] = _aplicar_consumos(session, fila["codigo"], fila["forro"], consumos)
+            except (DatosInvalidos, NoEncontrado) as error:
+                raise type(error)(f"{fila['codigo']}: {error}") from error
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    for codigo, cambios in registro.items():
+        logger.info("Model %s consumptions changed by %s (grid): %s", codigo, quien, cambios or "no value changed")
+    return {"guardados": len(registro), "modelos": list(registro)}
 
 
 # --- Data quality ------------------------------------------------------------------------------------------------
