@@ -1925,6 +1925,11 @@ def guardar_gastos_en_lote(
     if (ambos := sorted(set(codigos) & set(anulados))):
         raise DatosInvalidos(f"El gasto {ambos[0]} está a la vez para cambiar y para anular: elegí una sola cosa.")
     try:
+        # Lock every saved row of the batch at once, in code order: two batches over the same rows then queue up
+        # instead of each holding one row and waiting for the other (deadlock). Unknown codes fail below.
+        if (a_bloquear := sorted(set(codigos) | set(anulados))):
+            session.execute(select(GastoPeriodo.id).where(GastoPeriodo.codigo.in_(a_bloquear))
+                            .order_by(GastoPeriodo.codigo).with_for_update())
         for cambio in cambios:
             viejo = _gasto_para_cambiar(session, cambio["codigo"], periodo)
             monto = cambio.get("monto")

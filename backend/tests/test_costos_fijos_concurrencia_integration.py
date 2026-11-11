@@ -64,3 +64,43 @@ def test_an_annul_waiting_on_a_correction_gets_a_conflict_and_never_flags_a_repl
     with Session(engine) as lectura:
         original = lectura.scalar(select(GastoPeriodo).where(GastoPeriodo.codigo == codigo))
         assert original.anulado is False  # a replaced row is never flagged
+
+
+def test_two_batches_touching_the_same_rows_in_opposite_order_do_not_deadlock(engine, monkeypatch):
+    with Session(engine) as preparar:
+        for concepto in ("Luz", "Gas"):
+            servicios.crear_gasto(preparar, periodo=PERIODO, concepto=concepto, fabrica_o_tienda="TIENDA",
+                                  categoria="OTROS", persona=None, monto_ars_del_mes=D("10"), ficticio=False,
+                                  nota_fuente=None)
+        r1, r2 = preparar.scalars(select(GastoPeriodo.codigo).where(GastoPeriodo.periodo == PERIODO).order_by(GastoPeriodo.id))
+
+    original = servicios._gasto_para_cambiar
+
+    def lento(session, codigo, periodo=None):
+        fila = original(session, codigo, periodo)
+        time.sleep(0.3)  # widens the window in which each batch holds one row and wants the other
+        return fila
+
+    monkeypatch.setattr(servicios, "_gasto_para_cambiar", lento)
+    resultado: dict = {}
+
+    def guardar(nombre, orden, monto):
+        try:
+            with Session(engine) as sesion:
+                servicios.guardar_gastos_en_lote(sesion, PERIODO, [{"codigo": c, "monto": D(monto)} for c in orden], [])
+            resultado[nombre] = "ok"
+        except Exception as problema:
+            resultado[nombre] = problema
+
+    hilos = [threading.Thread(target=guardar, args=("A", [r1, r2], "111")),
+             threading.Thread(target=guardar, args=("B", [r2, r1], "222"))]
+    for hilo in hilos:
+        hilo.start()
+    for hilo in hilos:
+        hilo.join(timeout=15)
+    assert not any(hilo.is_alive() for hilo in hilos)
+    # One batch wins; the other waits and then gets a clean conflict, never a database deadlock.
+    assert sorted(type(v).__name__ if v != "ok" else "ok" for v in resultado.values()) == ["Conflicto", "ok"], resultado
+    with Session(engine) as lectura:
+        vigentes = servicios.costos_fijos(lectura, PERIODO)["gastos"]
+        assert len(vigentes) == 2 and len({g["monto_ars_del_mes"] for g in vigentes}) == 1
