@@ -821,3 +821,17 @@ export type ProductoReventaDetalle = ProductoReventa & {
   // Newest first.
   historial: CompraReventa[];
 };
+
+export type UnidadProducto = {
+  producto: string;
+  producto_nombre: string;
+  categoria: string | null;
+  unidades: string;
+  lotes: number;
+};
+
+export type UnidadesProducidas = {
+  periodo: string | null;
+  productos: UnidadProducto[];
+  total_unidades: string;
+};

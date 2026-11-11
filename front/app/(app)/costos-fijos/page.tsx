@@ -52,6 +52,7 @@ type Search = Promise<{
   periodo?: string | string[];
   vista?: string | string[];
   area?: string | string[];
+  categoria?: string | string[];
   orden?: string | string[];
   dir?: string | string[];
 }>;
@@ -71,6 +72,12 @@ export default async function CostosFijosPage({
     : params.area;
   const area =
     selectedArea === "FABRICA" || selectedArea === "TIENDA" ? selectedArea : "";
+  const selectedCategory = Array.isArray(params.categoria)
+    ? params.categoria[0]
+    : params.categoria;
+  const categoria = EXPENSE_CATEGORIES.includes(selectedCategory ?? "")
+    ? (selectedCategory ?? "")
+    : "";
   const selectedOrder = Array.isArray(params.orden)
     ? params.orden[0]
     : params.orden;
@@ -117,6 +124,7 @@ export default async function CostosFijosPage({
               new URLSearchParams({
                 ...(requested ? { periodo: requested } : {}),
                 ...(area ? { area } : {}),
+                ...(categoria ? { categoria } : {}),
               })
             }
           />
@@ -133,6 +141,7 @@ export default async function CostosFijosPage({
                 ...(view === "tabla" ? { vista: "tabla" } : {}),
               });
               if (value) query.set("area", value);
+              if (categoria) query.set("categoria", categoria);
               return (
                 <Link
                   key={label}
@@ -153,6 +162,7 @@ export default async function CostosFijosPage({
             people={people}
             view={view}
             area={area}
+            categoria={categoria}
             order={order}
             direction={direction}
           />
@@ -246,6 +256,7 @@ function Month({
   people,
   view,
   area,
+  categoria,
   order,
   direction,
 }: {
@@ -254,14 +265,17 @@ function Month({
   people: Persona[];
   view: View;
   area: string;
+  categoria: string;
   order: string;
   direction: "asc" | "desc";
 }) {
-  const gastos = area
-    ? data.gastos.filter((g) => g.fabrica_o_tienda === area)
-    : data.gastos;
-  const selectedTotal =
-    area === "FABRICA"
+  const gastos = data.gastos
+    .filter((g) => !area || g.fabrica_o_tienda === area)
+    .filter((g) => !categoria || g.categoria === categoria);
+  // The API only totals by area: a category filter shows no total rather than one computed here.
+  const selectedTotal = categoria
+    ? undefined
+    : area === "FABRICA"
       ? data.total_fabrica
       : area === "TIENDA"
         ? data.total_tienda

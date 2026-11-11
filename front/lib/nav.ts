@@ -34,6 +34,7 @@ export const NAV_ITEMS: NavGroup[] = [
     items: [
       { href: "/productos", label: "Productos" },
       { href: "/reventa", label: "Mercadería", adminOnly: true },
+      { href: "/unidades", label: "Unidades producidas", adminOnly: true },
     ],
   },
   {
@@ -100,25 +101,39 @@ const DESKTOP_NAV: NavGroup[] = [
     items: [
       { href: "/", label: "Panel del negocio" },
       { href: "/productos", label: "Productos" },
-      { href: "/reventa", label: "Mercadería", adminOnly: true },
+      { href: "/dolar", label: "Dólar" },
+      { href: "/proveedores", label: "Proveedores", adminOnly: true },
     ],
   },
   {
-    title: "Costos",
+    title: "Costos fijos",
     items: [
+      // TODO: Mano de Obra and Servicios Básicos are filters of /costos-fijos until they get their own screens.
+      {
+        href: "/costos-fijos?categoria=SUELDOS",
+        label: "Mano de obra (sueldos)",
+      },
+      {
+        href: "/costos-fijos?categoria=SERVICIOS",
+        label: "Servicios básicos (fábrica / tienda)",
+      },
+    ],
+  },
+  {
+    title: "Costos variables",
+    items: [
+      { href: "/unidades", label: "Unidades producidas" },
       { href: "/materiales", label: "Materiales y precios" },
-      { href: "/cueros", label: "Cueros" },
-      { href: "/dolar", label: "Dólar" },
-      { href: "/proveedores", label: "Proveedores", adminOnly: true },
-      { href: "/admin/modelos", label: "Modelos", adminOnly: true },
+      { href: "/reventa", label: "Mercadería", adminOnly: true },
     ],
   },
   {
     title: "Producción",
     items: [
+      { href: "/cueros", label: "Inventario de cuero" },
+      { href: "/admin/modelos", label: "Modelos", adminOnly: true },
       { href: "/fabricacion", label: "Lotes" },
       { href: "/talleres", label: "Talleres" },
-      { href: "/costos-fijos", label: "Costos fijos" },
     ],
   },
   {

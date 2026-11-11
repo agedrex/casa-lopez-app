@@ -96,6 +96,7 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
     ("GET", "/colores"): CORTE,
     ("GET", "/ordenes"): CORTE,
     ("GET", "/ordenes/{codigo}"): CORTE,
+    ("GET", "/ordenes/unidades-por-producto"): ADMIN,
     ("GET", "/voz/estado"): CORTE,
     # Admin only reads.
     ("GET", "/db/estado"): ADMIN,

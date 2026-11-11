@@ -1313,6 +1313,34 @@ def listar_ordenes(
     return _armar_lotes(session, estado=estado, donde=donde, taller=taller)
 
 
+def unidades_por_producto(session: Session, periodo: str | None = None) -> dict:
+    """Units sent to production per product, from the lots' items.
+
+    SUPUESTO: validar. A planned lot (PLANIFICADA) has not started, so it does not count as produced.
+    With `periodo` (AAAA-MM) only the lots sent that month count; a lot with no send date is left out then.
+    """
+    consulta = (
+        select(Producto.codigo, func.sum(OrdenItem.cantidad), func.count(func.distinct(OrdenFabricacion.id)))
+        .join(OrdenItem, OrdenItem.producto_id == Producto.id)
+        .join(OrdenFabricacion, OrdenFabricacion.id == OrdenItem.orden_fabricacion_id)
+        .where(OrdenFabricacion.estado != "PLANIFICADA")
+        .group_by(Producto.codigo)
+    )
+    if periodo:
+        consulta = consulta.where(func.to_char(OrdenFabricacion.fecha_de_envio, "YYYY-MM") == periodo)
+    filas = session.execute(consulta).all()
+    info = _info_productos(session, {codigo for codigo, _, _ in filas}, con_costo=False)
+    productos = sorted(
+        ({
+            "producto": codigo, "producto_nombre": info[codigo].nombre if codigo in info else codigo,
+            "categoria": info[codigo].categoria if codigo in info else None,
+            "unidades": unidades, "lotes": lotes,
+        } for codigo, unidades, lotes in filas),
+        key=lambda fila: (-fila["unidades"], fila["producto_nombre"]),
+    )
+    return {"periodo": periodo, "productos": productos, "total_unidades": sum((f["unidades"] for f in productos), ZERO)}
+
+
 def detalle_orden(session: Session, codigo: str) -> dict:
     armados = _armar_lotes(session, codigo=codigo)
     if not armados:

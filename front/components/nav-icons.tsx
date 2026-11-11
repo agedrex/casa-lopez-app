@@ -5,6 +5,7 @@ export const ICONS: Record<string, string> = {
     "M12 3v18M16.5 7.5C16.5 6 14.5 5 12 5S7.5 6 7.5 8s2 2.5 4.5 3 4.5 1 4.5 3-2 3-4.5 3-4.5-1-4.5-2.5",
   "/fabricacion": "M3 20h18M5 20V9l5 3V9l5 3V5h4v15",
   "/corte": "M4 4l16 16M20 4L4 20M8 8l2-2M14 18l2-2",
+  "/unidades": "M4 20V10m6 10V4m6 16v-7m4 7H2",
   "/cueros": "M4 7l8-4 8 4v10l-8 4-8-4V7zm0 0l8 4 8-4M12 11v10",
   "/grilla": "M3 4h18v16H3zM3 10h18M3 15h18M9 4v16M15 4v16",
   "/calidad": "M12 3 2 21h20L12 3zm0 6v5m0 3h.01",

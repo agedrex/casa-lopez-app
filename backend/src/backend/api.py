@@ -873,6 +873,20 @@ class OrdenResumenOut(Salida):
     avisos: list[str]
 
 
+class UnidadProductoOut(Salida):
+    producto: str
+    producto_nombre: str
+    categoria: str | None
+    unidades: Decimal
+    lotes: int
+
+
+class UnidadesProducidasOut(Salida):
+    periodo: str | None
+    productos: list[UnidadProductoOut]
+    total_unidades: Decimal
+
+
 class RenglonOut(Salida):
     codigo: str
     producto: str
@@ -1217,6 +1231,11 @@ def ordenes(
     taller: str | None = None,
 ):
     return servicios.listar_ordenes(session, estado, donde, taller)
+
+
+@router.get("/ordenes/unidades-por-producto", dependencies=LECTURA_ADMIN, response_model=UnidadesProducidasOut)
+def unidades_por_producto(session: Sesion, periodo: str | None = Query(None, pattern=PERIODO)):
+    return servicios.unidades_por_producto(session, periodo)
 
 
 @router.get("/ordenes/{codigo}", dependencies=LECTURA_CORTE, response_model=OrdenDetalleOut)
