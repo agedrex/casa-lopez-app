@@ -91,14 +91,7 @@ export function PanelCvu({ panel }: { panel: PanelCostos }) {
             </Badge>
           ) : null}
         </div>
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <Cifra
-            destacada
-            titulo="Costo total por unidad"
-            valor={formatArs(actual.total_por_unidad)}
-            variacion={variacion.total_por_unidad}
-            detalle="Variable más fijo, por unidad producida"
-          />
+        <div className="grid gap-4 sm:grid-cols-3">
           <Cifra
             titulo="Costos fijos del mes"
             valor={fijos ? formatArs(actual.fijos_fabrica) : "—"}

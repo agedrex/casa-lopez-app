@@ -105,7 +105,6 @@ const DESKTOP_NAV: NavGroup[] = [
     title: "",
     items: [
       { href: "/", label: "Panel del negocio" },
-      { href: "/escenarios", label: "Escenarios", adminOnly: true },
       { href: "/productos", label: "Productos" },
       { href: "/dolar", label: "Dólar" },
       { href: "/proveedores", label: "Proveedores", adminOnly: true },
