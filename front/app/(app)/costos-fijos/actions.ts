@@ -226,7 +226,7 @@ export async function guardarGastosLote(
     periodo,
     cambios: cambiosBody,
     nuevos: nuevosBody,
-    anulados,
+    anulados: anulados.map((codigo) => codigo.trim()),
   });
   if (!result.ok) {
     return fromFailure(result, {
