@@ -29,7 +29,7 @@ def test_postgresql_constraints_and_seeds(local_postgres, number):
 def test_head_has_exactly_the_v3_tables_and_seed_counts(local_postgres):
     with local_postgres.connect() as connection:
         result = inspect_database(connection)
-        assert result["revision"] == "0007_proveedores_documentos"
+        assert result["revision"] == "0008_reventa"
         assert {name.removeprefix("costos.") for name in Base.metadata.tables} == set(result["tables"]) - {"alembic_version"}
         assert result["counts"] == SEED_COUNTS
         assert connection.execute(text("SELECT count(*) FROM costos.producto")).scalar_one() == 0
