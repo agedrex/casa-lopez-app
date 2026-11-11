@@ -14,52 +14,6 @@ import {
 
 const PERIODO = /^\d{4}-(0[1-9]|1[0-2])$/;
 
-export async function createGasto(
-  _previous: FormState,
-  formData: FormData,
-): Promise<FormState> {
-  const denied = await denyUnlessWriter();
-  if (denied) return denied;
-
-  const periodo = text(formData, "periodo");
-  const concepto = text(formData, "concepto");
-  const lado = text(formData, "fabrica_o_tienda");
-  const categoria = text(formData, "categoria");
-  const rawMonto = text(formData, "monto");
-  const monto = rawMonto ? parseDecimalInput(rawMonto) : null;
-  if (!PERIODO.test(periodo)) return error("Indique el período como AAAA-MM.");
-  if (!concepto) return error("Indique el concepto del gasto.");
-  if (!["FABRICA", "TIENDA"].includes(lado)) {
-    return error("Indique si es de la fábrica o de la tienda.");
-  }
-  if (!EXPENSE_CATEGORIES.includes(categoria)) {
-    return error("Elija la categoría del gasto.");
-  }
-  if (rawMonto && monto === null) {
-    return error(
-      "El monto no es un número válido. Ejemplo: 250000 o 250000,50.",
-    );
-  }
-
-  const result = await apiPost<CostosFijos>("/costos-fijos", {
-    periodo,
-    concepto,
-    fabrica_o_tienda: lado,
-    categoria,
-    persona: optional(formData, "persona"),
-    monto_ars_del_mes: monto,
-    ficticio: formData.get("ficticio") === "on",
-    nota_fuente: optional(formData, "nota_fuente"),
-  });
-  if (!result.ok) return fromFailure(result);
-  refresh();
-  return ok(
-    monto === null
-      ? "Gasto cargado sin monto: queda pendiente."
-      : "Gasto cargado.",
-  );
-}
-
 /** Fills the amount of a pending row. A row that already has one is corrected with a new row, never updated. */
 export async function setMonto(
   codigo: string,
@@ -178,6 +132,7 @@ export async function guardarGastosLote(
   periodo: string,
   cambios: CambioGastoLote[],
   nuevos: Record<string, string>[],
+  anulados: string[] = [],
 ): Promise<FormState> {
   const denied = await denyUnlessWriter();
   if (denied) return denied;
@@ -187,7 +142,13 @@ export async function guardarGastosLote(
   if (!Array.isArray(cambios) || !Array.isArray(nuevos)) {
     return error("No se pudieron leer los cambios. Recargue la página.");
   }
-  if (cambios.length + nuevos.length === 0) {
+  if (
+    !Array.isArray(anulados) ||
+    anulados.some((codigo) => typeof codigo !== "string" || !codigo.trim())
+  ) {
+    return error("No se pudieron leer los cambios. Recargue la página.");
+  }
+  if (cambios.length + nuevos.length + anulados.length === 0) {
     return error("No hay cambios para guardar.");
   }
 
@@ -226,6 +187,12 @@ export async function guardarGastosLote(
       if (monto === null) return error(`${codigo}: ${montoError}`);
       body.monto = monto;
     }
+    // An empty person or note clears it; the API treats "" as "no value".
+    if ("persona" in valores)
+      body.persona = String(valores.persona ?? "").trim();
+    if ("nota_fuente" in valores) {
+      body.nota_fuente = String(valores.nota_fuente ?? "").trim();
+    }
     cambiosBody.push(body);
   }
 
@@ -259,11 +226,12 @@ export async function guardarGastosLote(
     periodo,
     cambios: cambiosBody,
     nuevos: nuevosBody,
+    anulados: anulados.map((codigo) => codigo.trim()),
   });
   if (!result.ok) {
     return fromFailure(result, {
       404: "No encontramos alguno de los gastos. Recargue la página e intente de nuevo.",
-      409: "Alguno de los gastos ya fue corregido. Recargue la página para ver los montos vigentes.",
+      409: "Alguno de los gastos ya fue corregido o borrado. Recargue la página para ver lo vigente.",
     });
   }
   refresh();
@@ -274,8 +242,9 @@ export async function guardarGastosLote(
     nuevosBody.length > 0
       ? `${nuevosBody.length} ${nuevosBody.length === 1 ? "gasto nuevo" : "gastos nuevos"}`
       : null,
+    anulados.length > 0
+      ? `${anulados.length} ${anulados.length === 1 ? "gasto borrado" : "gastos borrados"}`
+      : null,
   ].filter(Boolean);
-  return ok(
-    `Listo: ${partes.join(" y ")}. Si cambió un monto ya cargado, queda como corrección y el anterior sigue en el historial.`,
-  );
+  return ok(`Listo: ${partes.join(", ")}.`);
 }

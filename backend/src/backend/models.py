@@ -504,6 +504,8 @@ class GastoPeriodo(BusinessKey, Base):
     nota_fuente: Mapped[str | None] = mapped_column(Text)
     # A correction is a NEW row that points to the row it replaces; the old row is kept and stops counting.
     reemplaza_a_id: Mapped[int | None] = mapped_column(ForeignKey("costos.gasto_periodo.id"))
+    # Soft delete: an annulled row is kept but no longer counts anywhere. The only flag edited in place on this table.
+    anulado: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
 
 
 # A row can be replaced by at most one row, so the correction chain never forks (NULL = not a correction).

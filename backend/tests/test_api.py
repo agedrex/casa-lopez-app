@@ -150,10 +150,10 @@ SIN_PERMISO = {"detail": "No tenés permiso para esta acción."}
 
 
 def test_every_write_route_is_covered_by_the_role_tests():
-    assert len(ESCRITURAS) == 22 and {r for _, r in ESCRITURAS} >= {"/modelos", "/modelos/{codigo}/validado",
+    assert len(ESCRITURAS) == 23 and {r for _, r in ESCRITURAS} >= {"/modelos", "/modelos/{codigo}/validado",
         "/productos", "/productos/{codigo}/precio-venta", "/precios", "/cueros", "/dolar", "/dolar/actualizar-bna", "/ordenes", "/talleres", "/talleres/{codigo}/activo",
         "/ordenes/{codigo}/estado", "/ordenes/{codigo}/items",
-        "/costos-fijos/{codigo}/monto", "/costos-fijos/{codigo}/corregir", "/costos-fijos/copiar",
+        "/costos-fijos/{codigo}/monto", "/costos-fijos/{codigo}/corregir", "/costos-fijos/{codigo}/anular", "/costos-fijos/copiar",
         "/costos-fijos/lote", "/modelos/consumos/lote"}
 
 
@@ -179,6 +179,14 @@ def test_admin_passes_the_role_gate_on_every_post(monkeypatch, metodo, ruta, rol
         monkeypatch.setattr(servicios, "actualizar_dolar_bna", sin_fuente)
         response = client.request(metodo, ruta, json={})
         assert response.status_code == 502  # past the gate: the service ran and its failure is mapped
+        return
+    if ruta == "/costos-fijos/{codigo}/anular":
+        # Bodyless route: stub the service so the mocked session never walks a correction chain.
+        def sin_gasto(*a, **k):
+            raise servicios.NoEncontrado("sin gasto en la prueba")
+        monkeypatch.setattr(servicios, "anular_gasto", sin_gasto)
+        response = client.request(metodo, ruta.replace("{codigo}", "GF-0001"), json={})
+        assert response.status_code == 404  # past the gate: the service ran and its failure is mapped
         return
     response = client.request(metodo, ruta.replace("{codigo}", "PRD-0001"), json={})
     assert response.status_code == 422  # past the gate: the empty body is what is refused

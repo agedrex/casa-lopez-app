@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { inputClass, ReadOnlyNote } from "@/components/form";
+import { inputClass } from "@/components/form";
 import {
   Badge,
   Card,
@@ -35,7 +35,7 @@ import type {
   Persona,
 } from "@/lib/types";
 import { CostosGrid } from "./costos-grid";
-import { CopiarMesForm, GastoForm } from "./forms";
+import { CopiarMesForm } from "./forms";
 
 export const metadata: Metadata = { title: "Costos fijos" };
 
@@ -121,7 +121,7 @@ export default async function CostosFijosPage({
       <PageHeader
         eyebrow="Costos"
         title="Costos fijos"
-        description="Gastos del mes que no dependen de cuánto se produce, separados en fábrica y tienda. Se cargan y se corrigen en una grilla, como en una planilla. Los totales los calcula la aplicación."
+        description="Gastos del mes de la fábrica y la tienda."
       />
       <div className="space-y-10">
         <PeriodSelector
@@ -185,25 +185,6 @@ export default async function CostosFijosPage({
         ) : (
           <ErrorNotice message={result.message} />
         )}
-        <section>
-          <SectionTitle>Cargar un gasto suelto</SectionTitle>
-          {writer ? (
-            <Card>
-              <GastoForm
-                periodo={
-                  result.ok
-                    ? result.data.periodo
-                    : ((periodos.ok ? periodos.data.vigente : null) ?? "")
-                }
-                personas={people
-                  .filter((p) => p.activo)
-                  .map((p) => ({ codigo: p.codigo, label: p.nombre }))}
-              />
-            </Card>
-          ) : (
-            <ReadOnlyNote />
-          )}
-        </section>
       </div>
     </>
   );
@@ -323,10 +304,6 @@ function Month({
             </SectionTitle>
             {writer && previous ? (
               <div className="space-y-4">
-                <p className="text-sm text-muted">
-                  Para no cargarlos de cero, puede copiar los gastos del mes
-                  anterior.
-                </p>
                 <CopiarMesForm desde={previous} hasta={data.periodo} />
               </div>
             ) : (
@@ -361,12 +338,6 @@ function Month({
       {writer ? (
         <section aria-label="Grilla de gastos del mes">
           <SectionTitle>Gastos del mes</SectionTitle>
-          {previous && data.gastos.length > 0 ? (
-            <p className="mb-4 text-sm text-muted">
-              «Copiar el mes anterior» solo está disponible en un mes sin
-              gastos, para no copiar encima de lo que ya hay.
-            </p>
-          ) : null}
           <CostosGrid
             key={`${data.periodo}|${area}|${categoria}`}
             periodo={data.periodo}

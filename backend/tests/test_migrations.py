@@ -80,7 +80,7 @@ def test_revision_chain_replaces_v1_with_v3_then_seeds(monkeypatch):
     chain = {}
     for filename in ("0001_esquema_costos.py", "0002_semillas.py", "0003_der_v3.py", "0004_semillas_v3.py",
                      "0005_gasto_reemplaza_a.py", "0006_precio_venta.py", "0007_proveedores_documentos.py",
-                     "0008_reventa.py"):
+                     "0008_reventa.py", "0009_gasto_anulado.py"):
         _, revision = load_revision(monkeypatch, filename)
         chain[revision["revision"]] = revision["down_revision"]
     assert chain == {
@@ -88,18 +88,20 @@ def test_revision_chain_replaces_v1_with_v3_then_seeds(monkeypatch):
         "0003_der_v3": "0002_semillas", "0004_semillas_v3": "0003_der_v3",
         "0005_gasto_reemplaza_a": "0004_semillas_v3", "0006_precio_venta": "0005_gasto_reemplaza_a",
         "0007_proveedores_documentos": "0006_precio_venta", "0008_reventa": "0007_proveedores_documentos",
+        "0009_gasto_anulado": "0008_reventa",
     }
 
 
 def test_der_v3_revision_matches_orm_and_reverses_dependencies(monkeypatch):
     operations, revision = load_revision(monkeypatch, "0003_der_v3.py")
     revision["upgrade"]()
-    # The ORM also carries what 0005, 0006 and 0007 add on top of DER v3 (gasto_periodo.reemplaza_a_id, precio_venta,
-    # proveedor and documento_proveedor).
+    # The ORM also carries what 0005 to 0009 add on top of DER v3 (gasto_periodo.reemplaza_a_id, precio_venta,
+    # proveedor, documento_proveedor, the resale tables and gasto_periodo.anulado).
     runpy.run_path(str(VERSIONS / "0005_gasto_reemplaza_a.py"))["upgrade"]()
     runpy.run_path(str(VERSIONS / "0006_precio_venta.py"))["upgrade"]()
     runpy.run_path(str(VERSIONS / "0007_proveedores_documentos.py"))["upgrade"]()
     runpy.run_path(str(VERSIONS / "0008_reventa.py"))["upgrade"]()
+    runpy.run_path(str(VERSIONS / "0009_gasto_anulado.py"))["upgrade"]()
     assert set(operations.metadata.tables) == set(Base.metadata.tables)
     dialect = postgresql.dialect()
     for key, declared in operations.metadata.tables.items():
@@ -301,3 +303,17 @@ def test_reventa_revision_creates_both_tables_parent_first_and_drops_them_child_
     revision["downgrade"]()
     assert operations.dropped[-2:] == ["compra_reventa", "producto_reventa"]
     assert "lost" in revision["__doc__"]  # the downgrade warns about data loss
+
+
+def test_gasto_anulado_revision_adds_a_not_null_flag_defaulting_to_false_and_reverses_it(monkeypatch):
+    operations, base = load_revision(monkeypatch, "0003_der_v3.py")
+    base["upgrade"]()
+    revision = runpy.run_path(str(VERSIONS / "0009_gasto_anulado.py"))
+    assert revision["revision"] == "0009_gasto_anulado" and revision["down_revision"] == "0008_reventa"
+    revision["upgrade"]()
+    column = operations.metadata.tables["costos.gasto_periodo"].c.anulado
+    assert column.nullable is False and str(column.type.compile(dialect=postgresql.dialect())) == "BOOLEAN"
+    assert str(column.server_default.arg) == "false"
+    revision["downgrade"]()
+    assert operations.dropped_columns == [("costos", "gasto_periodo", "anulado")]
+    assert "annul" in revision["__doc__"]  # the downgrade warns that annulled rows count again

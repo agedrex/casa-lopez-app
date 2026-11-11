@@ -66,6 +66,8 @@ export type GridChange = {
 export type GridSave = {
   changes: GridChange[];
   added: Record<string, string>[];
+  /** Ids of the saved rows marked for deletion (only with `allowDelete`). */
+  deleted: string[];
 };
 
 type Values = Record<string, string>;
@@ -126,6 +128,9 @@ type RowViewProps = {
   showAllErrors: boolean;
   onChange: (id: string, key: string, value: string, draft: boolean) => void;
   onRemove?: (id: string) => void;
+  /** Present only with `allowDelete`: marks or unmarks a saved row for deletion. */
+  onToggleDelete?: (id: string) => void;
+  deleting?: boolean;
   extraHeaders: string[];
 };
 
@@ -142,9 +147,15 @@ const RowView = memo(function RowView({
   showAllErrors,
   onChange,
   onRemove,
+  onToggleDelete,
+  deleting = false,
   extraHeaders,
 }: RowViewProps) {
-  const rowTone = row.warn ? "bg-blush/25" : "";
+  const rowTone = deleting
+    ? "bg-blush/40 line-through opacity-60"
+    : row.warn
+      ? "bg-blush/25"
+      : "";
   return (
     <tr className={rowTone}>
       <th
@@ -162,12 +173,22 @@ const RowView = memo(function RowView({
             Quitar
           </button>
         ) : null}
+        {!draft && onToggleDelete ? (
+          <button
+            type="button"
+            onClick={() => onToggleDelete(row.id)}
+            aria-label={`${deleting ? "Deshacer el borrado de" : "Borrar"} ${row.name}`}
+            className="mt-1 block text-sm text-muted underline decoration-gold underline-offset-4 sm:text-xs"
+          >
+            {deleting ? "Deshacer" : "Borrar"}
+          </button>
+        ) : null}
       </th>
       {columns.map((column, columnIndex) => {
         const base = original[column.key] ?? "";
         const value = edit?.[column.key] ?? base;
         const cellClass = `border-b border-line/70 px-1.5 py-1.5 align-top ${column.width ?? ""}`;
-        if (column.newOnly && !draft) {
+        if ((column.newOnly && !draft) || (deleting && !draft)) {
           const shown =
             column.kind === "select"
               ? (column.options?.find((option) => option.value === value)
@@ -280,6 +301,7 @@ export function EditableGrid({
   rows,
   noun,
   allowNew = false,
+  allowDelete = false,
   newRowDefaults,
   newRowLabel = "Fila nueva",
   warning,
@@ -296,6 +318,8 @@ export function EditableGrid({
   /** What a row is, for the counters: `{ one: "modelo", many: "modelos" }`. */
   noun: { one: string; many: string };
   allowNew?: boolean;
+  /** Lets a saved row be marked for deletion; the parent decides what deleting means. */
+  allowDelete?: boolean;
   newRowDefaults?: Record<string, string>;
   newRowLabel?: string;
   /** A notice shown while there are changes (for example, what saving will undo). */
@@ -319,6 +343,7 @@ export function EditableGrid({
   const [drafts, setDrafts] = useState<Draft[]>(() =>
     allowNew ? [{ id: "nuevo-0", cells: { ...defaults } }] : [],
   );
+  const [deleted, setDeleted] = useState<string[]>([]);
   const [attempted, setAttempted] = useState(false);
   const [result, setResult] = useState<FormState>(IDLE);
   const [pasteInfo, setPasteInfo] = useState("");
@@ -365,7 +390,7 @@ export function EditableGrid({
 
     for (const id of Object.keys(edits)) {
       const row = rowsById.get(id);
-      if (!row) continue;
+      if (!row || deleted.includes(id)) continue;
       const edit = edits[id];
       const changed = columns
         .filter(
@@ -419,9 +444,10 @@ export function EditableGrid({
       touchedDrafts,
       changedCells,
     };
-  }, [edits, drafts, rowsById, columns, defaults, newRowLabel]);
+  }, [edits, drafts, deleted, rowsById, columns, defaults, newRowLabel]);
 
-  const dirty = analysis.changes.length + analysis.added.length > 0;
+  const dirty =
+    analysis.changes.length + analysis.added.length + deleted.length > 0;
 
   useEffect(() => {
     if (!dirty) return;
@@ -464,6 +490,15 @@ export function EditableGrid({
     [],
   );
 
+  const toggleDelete = useCallback((id: string) => {
+    setResult((previous) => (previous.status === "idle" ? previous : IDLE));
+    setDeleted((previous) =>
+      previous.includes(id)
+        ? previous.filter((item) => item !== id)
+        : [...previous, id],
+    );
+  }, []);
+
   const removeDraft = useCallback((id: string) => {
     setDrafts((previous) => previous.filter((item) => item.id !== id));
   }, []);
@@ -478,6 +513,7 @@ export function EditableGrid({
 
   function discard() {
     setEdits({});
+    setDeleted([]);
     setDrafts(allowNew ? [makeDraft()] : []);
     setAttempted(false);
     setResult(IDLE);
@@ -506,10 +542,12 @@ export function EditableGrid({
         const outcome = await onSave({
           changes: analysis.changes,
           added: analysis.added,
+          deleted,
         });
         setResult(outcome);
         if (outcome.status === "ok") {
           setEdits({});
+          setDeleted([]);
           setDrafts(allowNew ? [makeDraft()] : []);
           setAttempted(false);
         }
@@ -705,10 +743,17 @@ export function EditableGrid({
     analysis.added.length > 0
       ? plural(analysis.added.length, "fila nueva", "filas nuevas")
       : null,
+    deleted.length > 0
+      ? plural(deleted.length, "fila para borrar", "filas para borrar")
+      : null,
   ].filter(Boolean);
   const summary = parts.length > 0 ? parts.join(" · ") : "Sin cambios todavía.";
   const warningText = dirty
-    ? warning?.({ changes: analysis.changes, added: analysis.added })
+    ? warning?.({
+        changes: analysis.changes,
+        added: analysis.added,
+        deleted,
+      })
     : null;
   const helpId = "grid-help";
 
@@ -793,6 +838,8 @@ export function EditableGrid({
                 errors={analysis.errors[row.id] ?? NO_ERRORS}
                 showAllErrors={attempted}
                 onChange={handleChange}
+                onToggleDelete={allowDelete ? toggleDelete : undefined}
+                deleting={deleted.includes(row.id)}
                 extraHeaders={extraHeaders}
               />
             ))}
