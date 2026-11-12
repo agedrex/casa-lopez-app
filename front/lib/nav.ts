@@ -172,6 +172,10 @@ const DESKTOP_NAV: NavGroup[] = [
     ],
   },
   {
+    title: "Simulador",
+    items: [{ href: "/escenarios", label: "Escenarios", adminOnly: true }],
+  },
+  {
     title: "Costos variables",
     items: [
       { href: "/unidades", label: "Unidades producidas" },
