@@ -75,6 +75,10 @@ class RecordedOperations:
 ADDED_AFTER_DER_V3 = {"precio_venta", "proveedor", "documento_proveedor", "producto_reventa", "compra_reventa"}
 
 
+# 0011 links the existing precio_material to proveedor (created by 0007), so that FK comes after both tables exist.
+LINK_ADDED_LATER = ("costos.precio_material", "costos.proveedor.id")
+
+
 def load_revision(monkeypatch, filename):
     operations = RecordedOperations()
     monkeypatch.setitem(sys.modules, "alembic", SimpleNamespace(op=operations))
@@ -85,7 +89,8 @@ def test_revision_chain_replaces_v1_with_v3_then_seeds(monkeypatch):
     chain = {}
     for filename in ("0001_esquema_costos.py", "0002_semillas.py", "0003_der_v3.py", "0004_semillas_v3.py",
                      "0005_gasto_reemplaza_a.py", "0006_precio_venta.py", "0007_proveedores_documentos.py",
-                     "0008_reventa.py", "0009_gasto_anulado.py", "0010_compra_sin_unidades.py"):
+                     "0008_reventa.py", "0009_gasto_anulado.py", "0010_compra_sin_unidades.py",
+                     "0011_precio_material_proveedor.py"):
         _, revision = load_revision(monkeypatch, filename)
         chain[revision["revision"]] = revision["down_revision"]
     assert chain == {
@@ -94,6 +99,7 @@ def test_revision_chain_replaces_v1_with_v3_then_seeds(monkeypatch):
         "0005_gasto_reemplaza_a": "0004_semillas_v3", "0006_precio_venta": "0005_gasto_reemplaza_a",
         "0007_proveedores_documentos": "0006_precio_venta", "0008_reventa": "0007_proveedores_documentos",
         "0009_gasto_anulado": "0008_reventa", "0010_compra_sin_unidades": "0009_gasto_anulado",
+        "0011_precio_material_proveedor": "0010_compra_sin_unidades",
     }
 
 
@@ -101,13 +107,14 @@ def test_der_v3_revision_matches_orm_and_reverses_dependencies(monkeypatch):
     operations, revision = load_revision(monkeypatch, "0003_der_v3.py")
     revision["upgrade"]()
     # The ORM also carries what 0005 to 0010 add on top of DER v3 (gasto_periodo.reemplaza_a_id, precio_venta,
-    # proveedor, documento_proveedor, the resale tables and gasto_periodo.anulado).
+    # proveedor, documento_proveedor, the resale tables, gasto_periodo.anulado and precio_material.proveedor_id).
     runpy.run_path(str(VERSIONS / "0005_gasto_reemplaza_a.py"))["upgrade"]()
     runpy.run_path(str(VERSIONS / "0006_precio_venta.py"))["upgrade"]()
     runpy.run_path(str(VERSIONS / "0007_proveedores_documentos.py"))["upgrade"]()
     runpy.run_path(str(VERSIONS / "0008_reventa.py"))["upgrade"]()
     runpy.run_path(str(VERSIONS / "0009_gasto_anulado.py"))["upgrade"]()
     runpy.run_path(str(VERSIONS / "0010_compra_sin_unidades.py"))["upgrade"]()
+    runpy.run_path(str(VERSIONS / "0011_precio_material_proveedor.py"))["upgrade"]()
     assert set(operations.metadata.tables) == set(Base.metadata.tables)
     dialect = postgresql.dialect()
     for key, declared in operations.metadata.tables.items():
@@ -132,7 +139,7 @@ def test_der_v3_revision_matches_orm_and_reverses_dependencies(monkeypatch):
     created = list(operations.metadata.tables)
     for key, declared in operations.metadata.tables.items():
         for fk in declared.foreign_keys:
-            if fk.target_fullname.rsplit(".", 1)[0] != key:
+            if fk.target_fullname.rsplit(".", 1)[0] != key and (key, fk.target_fullname) != LINK_ADDED_LATER:
                 assert created.index(fk.target_fullname.rsplit(".", 1)[0]) < created.index(key)
     revision["downgrade"]()
     assert sorted(operations.dropped) == sorted(
@@ -160,7 +167,7 @@ def test_der_v3_downgrade_drops_children_before_parents_and_documents_v1_is_gone
             continue
         for fk in table.foreign_keys:
             parent = fk.target_fullname.split(".")[1]
-            if parent != table.name:
+            if parent != table.name and parent not in ADDED_AFTER_DER_V3:  # precio_material -> proveedor is 0011's
                 assert position[table.name] < position[parent]
     assert "not supported" in revision["__doc__"] or "not recreated" in revision["__doc__"]
 
@@ -336,3 +343,26 @@ def test_compra_sin_unidades_revision_makes_units_nullable_and_reverses_it(monke
     revision["downgrade"]()
     assert operations.altered_columns[-1] == ("costos", "compra_reventa", "unidades", False)
     assert "fails" in revision["__doc__"]  # the downgrade warns that price-only rows block it
+
+
+def test_precio_material_proveedor_revision_adds_a_nullable_link_keeps_the_text_and_reverses_it(monkeypatch):
+    operations, base = load_revision(monkeypatch, "0003_der_v3.py")
+    base["upgrade"]()
+    runpy.run_path(str(VERSIONS / "0007_proveedores_documentos.py"))["upgrade"]()
+    revision = runpy.run_path(str(VERSIONS / "0011_precio_material_proveedor.py"))
+    assert revision["revision"] == "0011_precio_material_proveedor"
+    assert revision["down_revision"] == "0010_compra_sin_unidades"
+    revision["upgrade"]()
+    precio = operations.metadata.tables["costos.precio_material"]
+    assert precio.c.proveedor_id.nullable and "proveedor" in precio.c  # the text column is untouched
+    assert {fk.target_fullname for fk in precio.c.proveedor_id.foreign_keys} == {"costos.proveedor.id"}
+    assert any(i.name == "ix_precio_material_proveedor_id" for i in precio.indexes)
+    # The backfill links only an exact supplier code and never overwrites an existing link.
+    (backfill,) = [s for s in operations.executed if "UPDATE costos.precio_material" in s]
+    assert "pm.proveedor = p.codigo" in backfill and "pm.proveedor_id IS NULL" in backfill
+    assert "DELETE" not in backfill and "nombre" not in backfill
+    revision["downgrade"]()
+    assert operations.dropped_indexes == ["ix_precio_material_proveedor_id"]
+    assert operations.dropped_constraints == ["fk_precio_material_proveedor_id_proveedor"]
+    assert operations.dropped_columns == [("costos", "precio_material", "proveedor_id")]
+    assert "links" in revision["__doc__"]  # the downgrade warns that the links are lost

@@ -284,8 +284,10 @@ class PrecioMaterial(BusinessKey, Base):
     )
     material_id: Mapped[int] = mapped_column(ForeignKey("costos.material.id"))
     color_id: Mapped[int | None] = mapped_column(ForeignKey("costos.color.id"))
-    # The supplier lives in an external file (PRV-0001...), so it is kept as its code.
+    # The supplier as it was typed (a PRV-NNNN code or free text); kept as is, never rewritten.
     proveedor: Mapped[str | None] = mapped_column(Text)
+    # The real link to `proveedor`, set when the price is loaded for a supplier (or its text is a supplier code).
+    proveedor_id: Mapped[int | None] = mapped_column(ForeignKey("costos.proveedor.id"), index=True)
     precio: Mapped[Decimal] = mapped_column(money())
     moneda: Mapped[str] = mapped_column(CHAR(3))
     unidad_del_precio: Mapped[str] = mapped_column(Text)
