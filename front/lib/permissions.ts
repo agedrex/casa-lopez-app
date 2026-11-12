@@ -101,8 +101,13 @@ const ROLE_ACCESS: Record<
   Role,
   { home: string; paths: readonly string[] | null; exact?: readonly string[] }
 > = {
-  admin: { home: "/", paths: null },
-  gerente: { home: "/productos", paths: ["/productos"] },
+  admin: { home: "/admin/panel", paths: null },
+  // The Panel is the only page of /admin a gerente opens (exact: the other admin pages stay closed).
+  gerente: {
+    home: "/productos",
+    paths: ["/productos"],
+    exact: ["/admin/panel"],
+  },
   taller: {
     home: "/corte",
     paths: ["/corte", "/cueros", "/voz"],

@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { PageHeader } from "@/components/ui";
 import { apiGet } from "@/lib/api";
 import type { PanelCostos, ProductoResumen } from "@/lib/types";
+import { BloqueConError } from "../admin/panel/panel-cvu";
 import { EscenarioDeVentas } from "../cvu/escenario";
-import { BloqueConError } from "../panel-cvu";
 
 export const metadata: Metadata = { title: "Escenarios" };
 

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { ErrorNotice, PageHeader } from "@/components/ui";
 import { apiGet } from "@/lib/api";
+import { canWrite } from "@/lib/permissions";
 import { requireSession } from "@/lib/session";
 import type { Calidad, PanelCostos } from "@/lib/types";
 import { Alertas, type AlertasSearch, alertasFilters } from "./alertas-panel";
@@ -14,7 +15,7 @@ export default async function PanelPage({
 }: {
   searchParams: Promise<AlertasSearch>;
 }) {
-  await requireSession();
+  const { user } = await requireSession();
   const filters = alertasFilters(await searchParams);
   const [panel, calidad] = await Promise.all([
     apiGet<PanelCostos>("/panel/costos"),
@@ -34,7 +35,7 @@ export default async function PanelPage({
         <BloqueConError message={panel.message} />
       )}
       <div className="mt-6 space-y-6">
-        <DolarPanel />
+        <DolarPanel canWrite={canWrite(user.role)} />
         <section
           id="alertas"
           aria-labelledby="alertas-titulo"

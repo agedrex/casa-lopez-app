@@ -2,7 +2,7 @@ import { Card, ErrorNotice } from "@/components/ui";
 import { apiGet } from "@/lib/api";
 import { formatDate, formatRate, todayIso } from "@/lib/format";
 import type { Dolar } from "@/lib/types";
-import { DolarAlDia } from "./dolar/dolar-al-dia";
+import { DolarAlDia } from "../../dolar/dolar-al-dia";
 
 const TIPO_LABELS: Record<string, string> = {
   VENDEDOR: "vendedor",
@@ -16,7 +16,7 @@ function origen(rate: Dolar): string {
 }
 
 /** One card with the newest stored rate; the page tops it up on its own when it is out of date. */
-export async function DolarPanel() {
+export async function DolarPanel({ canWrite }: { canWrite: boolean }) {
   const result = await apiGet<Dolar[]>("/dolar");
   const today = todayIso();
   const latest = result.ok ? result.data[0] : undefined;
@@ -45,7 +45,9 @@ export async function DolarPanel() {
               Todavía no hay cotización cargada.
             </p>
           )}
-          <DolarAlDia today={today} stale={!latest || latest.fecha < today} />
+          {canWrite ? (
+            <DolarAlDia today={today} stale={!latest || latest.fecha < today} />
+          ) : null}
         </Card>
       ) : (
         <ErrorNotice message={result.message} />

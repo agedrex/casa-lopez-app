@@ -67,7 +67,7 @@ export function MobileNav({
         aria-current={active ? "page" : undefined}
         className={tabClass(active)}
       >
-        <Icon path={ICONS[item.href] ?? ICONS.more} />
+        <Icon path={ICONS[item.icon ?? item.href] ?? ICONS.more} />
         <span>{item.shortLabel ?? item.label}</span>
       </Link>
     );

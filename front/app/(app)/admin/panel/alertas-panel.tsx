@@ -48,7 +48,7 @@ function href(filter: { severidad?: string; grupo?: string; todas?: boolean }) {
   if (filter.grupo) query.set("grupo", filter.grupo);
   if (filter.todas) query.set("todas", "1");
   const text = query.toString();
-  return text ? `/?${text}#alertas` : "/#alertas";
+  return text ? `/admin/panel?${text}#alertas` : "/admin/panel#alertas";
 }
 
 type Fila = { tema: string; hallazgo: Hallazgo };
@@ -98,7 +98,7 @@ export function Alertas({
       <search>
         <form
           method="get"
-          action="/#alertas"
+          action="/admin/panel#alertas"
           className="mb-4 flex flex-wrap items-end gap-3"
         >
           <div className="w-full sm:w-auto sm:min-w-40">

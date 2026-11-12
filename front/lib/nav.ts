@@ -7,7 +7,7 @@ export type NavItem = {
   shortLabel?: string;
   /** Key in ICONS when it differs from the href (filters of one page share it). */
   icon?: string;
-  /** Path prefix that keeps this item highlighted when it differs from the href (Administración lands on /admin/usuarios). */
+  /** Path prefix that keeps this item highlighted when it differs from the href (Administración lands on /admin/panel). */
   activePrefix?: string;
   adminOnly?: boolean;
 };
@@ -19,8 +19,9 @@ export const NAV_ITEMS: NavGroup[] = [
     title: "Configuración",
     items: [
       {
-        href: "/admin/usuarios",
+        href: "/admin/panel",
         label: "Administración",
+        shortLabel: "Admin",
         icon: "/admin",
         activePrefix: "/admin",
         adminOnly: true,
@@ -29,10 +30,7 @@ export const NAV_ITEMS: NavGroup[] = [
   },
   {
     title: "Resumen",
-    items: [
-      { href: "/", label: "Panel" },
-      { href: "/escenarios", label: "Escenarios", adminOnly: true },
-    ],
+    items: [{ href: "/escenarios", label: "Escenarios", adminOnly: true }],
   },
   {
     title: "1 · Datos de base",
@@ -74,7 +72,7 @@ export const NAV_ITEMS: NavGroup[] = [
 ];
 
 const MOBILE_TAB_HREFS: Record<Role, readonly string[]> = {
-  admin: ["/", "/productos", "/materiales", "/fabricacion"],
+  admin: ["/admin/panel", "/productos", "/materiales", "/fabricacion"],
   gerente: ["/productos"],
   // Three tabs around the "+" button; Voz stays one tap away in that button's quick actions.
   taller: ["/corte", "/cueros", "/productos"],
@@ -84,7 +82,10 @@ const MOBILE_TAB_HREFS: Record<Role, readonly string[]> = {
 const GERENTE_NAV: NavGroup[] = [
   {
     title: "Consultas",
-    items: [{ href: "/productos", label: "Productos" }],
+    items: [
+      { href: "/admin/panel", label: "Panel", icon: "/" },
+      { href: "/productos", label: "Productos" },
+    ],
   },
 ];
 
@@ -106,8 +107,9 @@ const DESKTOP_NAV: NavGroup[] = [
     title: "",
     items: [
       {
-        href: "/admin/usuarios",
+        href: "/admin/panel",
         label: "Administración",
+        shortLabel: "Admin",
         icon: "/admin",
         activePrefix: "/admin",
         adminOnly: true,
@@ -115,13 +117,20 @@ const DESKTOP_NAV: NavGroup[] = [
     ],
   },
   {
-    title: "",
+    title: "Producción",
     items: [
-      { href: "/", label: "Panel" },
       { href: "/productos", label: "Productos" },
       { href: "/productos/modelos", label: "Modelos", adminOnly: true },
       { href: "/productos/catalogos", label: "Catálogos", adminOnly: true },
+      { href: "/fabricacion", label: "Lotes" },
+      { href: "/cueros", label: "Inventario de cuero" },
+    ],
+  },
+  {
+    title: "Abastecimiento",
+    items: [
       { href: "/proveedores", label: "Proveedores", adminOnly: true },
+      { href: "/talleres", label: "Talleres" },
     ],
   },
   {
@@ -146,14 +155,6 @@ const DESKTOP_NAV: NavGroup[] = [
       { href: "/unidades", label: "Unidades producidas" },
       { href: "/materiales", label: "Materiales y precios" },
       { href: "/reventa", label: "Mercadería", adminOnly: true },
-    ],
-  },
-  {
-    title: "Producción",
-    items: [
-      { href: "/cueros", label: "Inventario de cuero" },
-      { href: "/fabricacion", label: "Lotes" },
-      { href: "/talleres", label: "Talleres" },
     ],
   },
 ];

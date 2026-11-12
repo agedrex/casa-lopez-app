@@ -58,7 +58,7 @@ def test_a_legacy_role_passes_the_gates_of_its_new_name(leido, rutas):
 
 
 def test_legacy_consulta_and_corte_keep_no_more_than_their_new_role():
-    assert _estado(_cliente("consulta"), "GET", "/panel/costos") == 403
+    assert _estado(_cliente("consulta"), "GET", "/costos-fijos") == 403
     assert _estado(_cliente("consulta"), "GET", "/cueros") == 403
     assert _estado(_cliente("corte"), "GET", "/costos-fijos") == 403
     assert _estado(_cliente("corte"), "POST", "/productos") == 403
@@ -103,12 +103,12 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
     ("GET", "/productos/{codigo}/precios-talleres"): ADMIN,
     ("GET", "/modelos"): ADMIN, ("GET", "/modelos/{codigo}"): ADMIN,
     ("GET", "/precios"): ADMIN, ("GET", "/precios/chequeo"): ADMIN,
-    ("GET", "/categorias"): ADMIN, ("GET", "/impuestos"): ADMIN, ("GET", "/dolar"): ADMIN, ("GET", "/parametros"): ADMIN,
+    ("GET", "/categorias"): ADMIN, ("GET", "/impuestos"): ADMIN, ("GET", "/dolar"): PRODUCTOS, ("GET", "/parametros"): ADMIN,
     ("GET", "/talleres"): ADMIN, ("GET", "/talleres/{codigo}"): ADMIN, ("GET", "/personas"): ADMIN,
     ("GET", "/talleres/{codigo}/historial"): ADMIN,
     ("GET", "/costos-fijos"): ADMIN, ("GET", "/costos-fijos/periodos"): ADMIN,
-    ("GET", "/panel/costos"): ADMIN, ("GET", "/panel/tendencia"): ADMIN,
-    ("GET", "/fabricacion/casa-vs-taller"): ADMIN, ("GET", "/calidad"): ADMIN,
+    ("GET", "/panel/costos"): PRODUCTOS, ("GET", "/panel/tendencia"): ADMIN,
+    ("GET", "/fabricacion/casa-vs-taller"): ADMIN, ("GET", "/calidad"): PRODUCTOS,
     ("GET", "/sync/sheets/estado"): ADMIN, ("GET", "/sync/sheets/vista/{pestana}"): ADMIN,
     # Writes: admin only, except cutting and the voice interpreter.
     ("POST", "/cueros/{codigo}/cortes"): CORTE, ("POST", "/cueros/{codigo}/sobrante"): CORTE,
@@ -210,7 +210,8 @@ def test_admin_only_routes_refuse_everyone_else_without_calling_the_service(monk
 @pytest.mark.parametrize("role, rutas", [
     ("gerente", [("GET", "/productos"), ("GET", "/productos/conteo"), ("GET", "/productos/X-1"),
                  ("GET", "/productos/X-1/rentabilidad"), ("GET", "/productos/X-1/precio-venta"), ("GET", "/grilla"),
-                 ("GET", "/catalogos"), ("GET", "/materiales")]),
+                 ("GET", "/catalogos"), ("GET", "/materiales"),
+                 ("GET", "/panel/costos"), ("GET", "/calidad"), ("GET", "/dolar")]),
     ("taller", [("GET", "/productos"), ("GET", "/productos/conteo"), ("GET", "/materiales"), ("GET", "/cueros"), ("GET", "/cueros/PZC-1"),
                 ("GET", "/cueros/alcanza?producto=P&cantidad=1"), ("GET", "/colores"), ("GET", "/ordenes"),
                 ("GET", "/ordenes/LOT-1"), ("GET", "/voz/estado"),
@@ -226,8 +227,15 @@ def test_each_role_passes_the_gate_of_its_allowed_set(role, rutas):
         assert _estado(cliente, metodo, ruta) not in (401, 403), (role, metodo, ruta)
 
 
+def test_taller_is_still_refused_on_the_panel_reads_that_gerente_now_has():
+    cliente = _cliente("taller")
+    for ruta in ("/panel/costos", "/calidad", "/dolar"):
+        respuesta = cliente.get(ruta)
+        assert respuesta.status_code == 403 and respuesta.json() == SIN_PERMISO, ruta
+
+
 @pytest.mark.parametrize("metodo, ruta", [
-    ("GET", "/panel/costos"), ("GET", "/costos-fijos"), ("POST", "/cvu/escenario"), ("GET", "/ordenes"),
+    ("GET", "/panel/tendencia"), ("GET", "/costos-fijos"), ("POST", "/cvu/escenario"), ("GET", "/ordenes"),
     ("POST", "/productos"),
 ])
 @pytest.mark.parametrize("role", ["gerente", "taller"])

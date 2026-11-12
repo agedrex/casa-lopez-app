@@ -44,7 +44,7 @@ CORTES = [Depends(CORTE)]
 # The admin area (the front also hides it, and re-checks the role in every server action).
 ADMINISTRACION = [Depends(SOLO_ADMIN)]
 LECTURA_ADMIN = [Depends(SOLO_ADMIN)]  # costs, prices, fixed costs, orders' money, quality, sync: admin only
-LECTURA_PRODUCTOS = [Depends(PRODUCTOS)]  # admin + gerente
+LECTURA_PRODUCTOS = [Depends(PRODUCTOS)]  # admin + gerente (also the Panel reads: costs, quality, dollar)
 LECTURA_CORTE = [Depends(CORTE)]  # admin + taller
 LECTURA_GENERAL = [Depends(CUALQUIER_ROL)]  # any of the three roles
 SoloAdmin = Annotated[Usuario, Depends(SOLO_ADMIN)]
@@ -1284,7 +1284,7 @@ def impuestos(session: Sesion):
     return servicios.listar_impuestos(session)
 
 
-@router.get("/dolar", dependencies=LECTURA_ADMIN, response_model=list[DolarOut])
+@router.get("/dolar", dependencies=LECTURA_PRODUCTOS, response_model=list[DolarOut])
 def dolar(session: Sesion):
     return servicios.listar_dolar(session)
 
@@ -1320,7 +1320,7 @@ def costos_fijos(session: Sesion, periodo: Annotated[str | None, Query(pattern=P
     return servicios.costos_fijos(session, periodo)
 
 
-@router.get("/panel/costos", dependencies=LECTURA_ADMIN, response_model=PanelCostosOut)
+@router.get("/panel/costos", dependencies=LECTURA_PRODUCTOS, response_model=PanelCostosOut)
 def panel_de_costos(
     session: Sesion, periodo: Annotated[str | None, Query(pattern=PERIODO)] = None,
     precio: Annotated[Decimal | None, Query(gt=0, max_digits=14, decimal_places=4)] = None,
@@ -1387,7 +1387,7 @@ def precios_de_talleres(codigo: str, session: Sesion, mismo_tamano: bool = True)
     return servicios.precios_de_talleres(session, codigo, date.today(), mismo_tamano)
 
 
-@router.get("/calidad", dependencies=LECTURA_ADMIN, response_model=CalidadOut)
+@router.get("/calidad", dependencies=LECTURA_PRODUCTOS, response_model=CalidadOut)
 def calidad(session: Sesion):
     return servicios.calidad_de_datos(session)
 
