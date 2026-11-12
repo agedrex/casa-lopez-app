@@ -252,7 +252,7 @@ Son las reglas que el Excel aplica sin decirlo: de fórmula, de criterio o de fo
 
 **La fuente de verdad es el código:** `backend/src/backend/models.py` y las migraciones, explicados en `docs/der-v3.md`. Su origen es la pestaña `Diccionario` de `Plantilla Costos Casa Lopez v4.1 (trabajo).xlsx`, que el 2026-10-27 reemplazó al DER v1 y a las reglas del Excel viejo [V: `odd/tasks/app-casa-lopez-v3.md`, S1 y L1]. Si este archivo y el código no coinciden, **gana el código** y se corrige este. `docs/der-v3.md` está algo atrasado: no lista `precio_venta`, `proveedor` ni `documento_proveedor` (migraciones 0006 y 0007) y dice consumos `NUMERIC(10,4)` cuando son `(12,6)` [V: `models.py`]. `docs/der.md`, `der-borrador.sql`, `wo1-modelo-conceptual.md`, `wo2-decisiones.md` y `wo2-staging.md` hablan del DER v1 (11 tablas, `cotizacion_linea`, GG): son **históricos**, no se implementan.
 
-### Migraciones (10, cabeza `0010_compra_sin_unidades`) [V: `backend/migrations/versions`]
+### Migraciones (11, cabeza `0011_precio_material_proveedor`) [V: `backend/migrations/versions`]
 | Revisión | Qué hace |
 |---|---|
 | `0001_esquema_costos`, `0002_semillas` | DER v1 y sus semillas. Históricas. |
@@ -264,8 +264,9 @@ Son las reglas que el Excel aplica sin decirlo: de fórmula, de criterio o de fo
 | `0008_reventa` | Tablas `producto_reventa` y `compra_reventa`: productos que se compran hechos y se revenden (en la app se llama "Mercadería", código `MER-`) (costo = último costo unitario de compra; ver `backend/src/backend/reventa.py`). |
 | `0009_gasto_anulado` | `gasto_periodo.anulado` (boolean, por defecto false): borrar un costo fijo solo marca la fila como anulada; deja de contar en totales, listas, copiar mes y exportación, pero se conserva. |
 | `0010_compra_sin_unidades` | `compra_reventa.unidades` pasa a admitir NULL: un cambio de costo o de precio de venta hecho en la grilla de Mercadería es una fila nueva **sin unidades** (actualización de precio, no compra). |
+| `0011_precio_material_proveedor` | `precio_material.proveedor_id` (FK nullable a `proveedor`); el texto `proveedor` queda. Backfill solo cuando el texto es exactamente el código de un proveedor. |
 
-Todas tienen `downgrade`, pero bajar de 0010 (falla si hay filas sin unidades), 0009, 0007, 0006 o 0005 borra datos o cambia totales (0009: las filas anuladas vuelven a contar) (ver `docs/produccion.md`, sección 5).
+Todas tienen `downgrade`, pero bajar de 0011 (pierde el vínculo al proveedor), 0010 (falla si hay filas sin unidades), 0009, 0007, 0006 o 0005 borra datos o cambia totales (0009: las filas anuladas vuelven a contar) (ver `docs/produccion.md`, sección 5).
 
 ### Tablas (30 en el schema `costos`) [V: `models.py`, `docs/der-v3.md`]
 | Grupo | Tablas | Lo que no hay que romper |
@@ -299,7 +300,7 @@ Reglas transversales:
 
 ## 5.1 Pantallas y roles
 
-Menú del admin, en el orden del trabajo [V: `front/lib/nav.ts`]: **Panel del negocio** (costo-volumen) · **1 · Datos de base** (Dólar, Materiales y precios, Cueros, Proveedores, Modelos) · **2 · Productos y costos** (Productos: lista y ficha con cotizaciones y precio de venta) · **3 · Producción** (Lotes, Talleres) · **4 · Fin de mes** (Costos fijos) · **Consultas** (Grilla completa) · **Control** (Alertas) · **Herramientas** (Voz, Administración: usuarios, parámetros, modelos, catálogos, personas e impuestos). Además hay una pantalla **Corte** para el rol taller. Principio de UI: resumen primero (una línea por producto), detalle a demanda; no replicar el ir y venir del Excel.
+Menú del admin [V: `front/lib/nav.ts`, revisión 2026-11-12]: **Administración** (hub tipo SaaS, arriba de todo; incluye el catálogo de Modelos) · **Panel** (costo-volumen, dólar del día automático y alertas en una sola sección) · Productos (la ficha trae el bloque Modelo) · Proveedores y Talleres (con historial de precios y de lo pagado) · Costos fijos (Mano de obra, Servicios básicos) · Costos variables · Producción · Voz (botón de micrófono en el header de desktop). Ya no existen Grilla completa ni el menú de Modelos. Versión anterior: **Panel del negocio** (costo-volumen) · **1 · Datos de base** (Dólar, Materiales y precios, Cueros, Proveedores, Modelos) · **2 · Productos y costos** (Productos: lista y ficha con cotizaciones y precio de venta) · **3 · Producción** (Lotes, Talleres) · **4 · Fin de mes** (Costos fijos) · **Consultas** (Grilla completa) · **Control** (Alertas) · **Herramientas** (Voz, Administración: usuarios, parámetros, modelos, catálogos, personas e impuestos). Además hay una pantalla **Corte** para el rol taller. Principio de UI: resumen primero (una línea por producto), detalle a demanda; no replicar el ir y venir del Excel.
 
 Roles de la app (`user.role` de Better Auth) [V: `backend/src/backend/auth.py`, `front/lib/permissions.ts`, `odd/tasks/roles-admin-gerente-taller.md`]. Los endpoints niegan por defecto:
 
