@@ -14,8 +14,9 @@ import { apiGet } from "@/lib/api";
 import { formatArs, formatDate, formatQuantity } from "@/lib/format";
 import { canWrite } from "@/lib/permissions";
 import { requireSession } from "@/lib/session";
-import type { TallerDetalle } from "@/lib/types";
+import type { HistorialDeTaller, TallerDetalle } from "@/lib/types";
 import { ActivoForm } from "./activo-form";
+import { HistorialDelTaller } from "./historial-del-taller";
 
 export const metadata: Metadata = { title: "Taller" };
 
@@ -55,9 +56,11 @@ export default async function TallerPage({
       </>
     );
   }
-  const result = await apiGet<TallerDetalle>(
-    `/talleres/${encodeURIComponent(code)}`,
-  );
+  const path = `/talleres/${encodeURIComponent(code)}`;
+  const [result, historial] = await Promise.all([
+    apiGet<TallerDetalle>(path),
+    apiGet<HistorialDeTaller>(`${path}/historial`),
+  ]);
   if (!result.ok) {
     return (
       <>
@@ -110,6 +113,13 @@ export default async function TallerPage({
             </dl>
           </Card>
         </section>
+        {historial.ok ? (
+          historial.data.lotes.length === 0 ? null : (
+            <HistorialDelTaller historial={historial.data} />
+          )
+        ) : (
+          <ErrorNotice message={historial.message} />
+        )}
         <section>
           <SectionTitle>Lotes</SectionTitle>
           {taller.ordenes.length === 0 ? (
