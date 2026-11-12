@@ -2,7 +2,7 @@
 
 Source of truth: sheet `Diccionario` of `Plantilla Costos Casa Lopez v4.1 (trabajo).xlsx`.
 It supersedes [`der.md`](der.md) (DER v1) and the old Excel rules (GG 11 % is gone; CORTE is fixed; CONFECCION and HILO_CEMENTO are separate stages).
-The models are in `backend/src/backend/models.py`; Alembic revision `0003_der_v3` drops the v1 tables and creates these ones, and `0004_semillas_v3` loads the reference data `0005_gasto_reemplaza_a` adds `gasto_periodo.reemplaza_a_id` `0009_gasto_anulado` adds `gasto_periodo.anulado` `0010_compra_sin_unidades` makes `compra_reventa.unidades` nullable and `0012_impuesto_activo` adds `impuesto.activo` and `0013_impuestos_vacios` removes the three seeded taxes (the tax grid starts empty) and `0014_gastos_venta_pct` adds the parameter `GASTOS_VENTA_PCT`.
+The models are in `backend/src/backend/models.py`; Alembic revision `0003_der_v3` drops the v1 tables and creates these ones, and `0004_semillas_v3` loads the reference data `0005_gasto_reemplaza_a` adds `gasto_periodo.reemplaza_a_id` `0009_gasto_anulado` adds `gasto_periodo.anulado` `0010_compra_sin_unidades` makes `compra_reventa.unidades` nullable and `0012_impuesto_activo` adds `impuesto.activo` and `0013_impuestos_vacios` removes the three seeded taxes (the tax grid starts empty) and `0014_gastos_venta_pct` adds the parameter `GASTOS_VENTA_PCT` and `0015_precio_venta_margen` adds `precio_venta.margen` and `0016_formulario_consumo` adds `formulario_consumo` and `formulario_consumo_linea`.
 
 Only columns marked `carga` / `clave` in the dictionary are persisted. Columns marked `calculada (la app recalcula)` are computed by the backend, except in `cotizacion`, which stores a calculated snapshot. Sheets marked `vista` are not tables.
 
@@ -37,6 +37,8 @@ Conventions: schema `costos`; `id` (identity) and `created_at` everywhere; `codi
 | `movimiento_cuero` | Movimientos_Cuero | Cuts, waste, adjustments and entries of a hide; a CORTE must point to the lot item. |
 | `conteo_inventario` | Conteo_Inventario | Monthly leather count (start / close) by material and color. |
 | `cotizacion` | Cotizaciones | Calculated snapshot per product, type (INICIAL / RECOTIZACION / FINAL) and date: dollar, one amount per stage, subtotal, kit components, purchase VAT, repairs, totals in ARS and USD. |
+| `formulario_consumo` | (no sheet) | The digital "consumos y herrajes" sheet of one new article (revision 0016): see the section below. |
+| `formulario_consumo_linea` | (no sheet) | The rows of that sheet. |
 
 ## Resale products, shown as "Mercadería" in the app (revision 0008)
 
@@ -104,3 +106,39 @@ A loaded amount is never edited. A correction is a **new** `gasto_periodo` row (
 A fixed cost is never physically deleted. `POST /costos-fijos/{codigo}/anular` (or `anulados` in `POST /costos-fijos/lote`) sets `anulado = true` on the **current** row of its chain; this flag is the only in-place change allowed on a saved `gasto_periodo` row. An annulled row keeps its amount and history but is left out of every list, total, month copy, panel figure and export, because all of them read through the shared current-rows condition (not replaced by another row **and** not annulled). A row that was already corrected or already annulled cannot be annulled (409), and an annulled row cannot be corrected or filled in. Editing the person or the note of a saved row is a correction (a new row), like any other field except the amount of a pending row. Downgrading drops the column, so annulled rows would count again.
 
 The endpoints that read and load these tables are listed in [`backend/README.md`](../backend/README.md#costing-api-t3b).
+
+## Sale price and its margin (`precio_venta`, revision 0015)
+
+`precio_venta` is only appended: one row is the price a person set for a product on a date (`vigente_desde`); the current one is the latest date, then the latest id.
+
+| Column | What it holds |
+|---|---|
+| `producto_id`, `vigente_desde` | The product and the date the price starts. |
+| `precio_ars` | The price without taxes, `NUMERIC(14,4)`, > 0. |
+| `margen` | Revision 0015. The margin the person used to reach the price, a fraction of the price `NUMERIC(6,3)` (0.30 = 30 %). NULL = the price was typed by hand with no margin behind it (every row saved before 0015 is NULL). Check `margen IS NULL OR (margen >= 0 AND margen < 1)`. |
+| `creado_por`, `nota`, `created_at` | Who saved it (auth user id as text), an optional note and when. |
+
+`POST /productos/{codigo}/precio-venta` takes an optional `margen` (fraction, 0 to below 1, up to 3 decimals) and both it and `GET .../precio-venta` return it. The front sends it only when the price is the one suggested for the typed margin; editing the price by hand drops it. Downgrade of 0015 drops the check and the column: the saved margins are lost (the prices stay).
+
+## Consumption form of a new article (`formulario_consumo`, `formulario_consumo_linea`, revision 0016)
+
+The digital version of the paper sheet "consumos y herrajes": one form per article, filled in by the workshop and validated by the admin. It **does not cost or calculate anything** (no totals, no USD) and does not touch `modelo` or `receta_linea`. Forms are never deleted.
+
+`formulario_consumo`:
+
+| Column | What it holds |
+|---|---|
+| `codigo` | `FCO-nnnn`, the unique and immutable business key. |
+| `articulo` | The article's name or code, as typed (text, required). |
+| `producto_id`, `taller_id` | Optional FKs to `producto` and `taller`. SUPUESTO: validar. The sheet is per article, not per `modelo`, and the `taller` role is not tied to one workshop, so `taller_id` is informative. |
+| `estado` | `BORRADOR`, `ENVIADO`, `COMPLETADO` or `VALIDADO` (check). |
+| `comentario_revision` | The admin's comment when a completed form is sent back to the workshop; kept afterwards. |
+| `nota` | Free text of the admin. |
+| `creado_por`, `completado_por`, `validado_por` | Auth user ids as text (no FK: Better Auth lives in `public`). |
+| `enviado_en`, `completado_en`, `validado_en` | `timestamptz` of each step. A return to `ENVIADO` keeps the last completion's data. |
+
+`formulario_consumo_linea`: `formulario_id` (FK), `seccion` (`CONSUMO` or `HERRAJE`, check), `orden` (position inside the section, from 1; unique with `formulario_id` and `seccion`), `nombre` (free text, required), `cantidad` (`NUMERIC(12,6)`, NULL = not filled in, check `>= 0`: m² for a consumption, units for a hardware item) and `comentario`. The rows of a form are replaced as a whole on every save.
+
+The preloaded rows (14 CONSUMOS and 16 HERRAJES, in the order of the paper sheet) are the constant `LINEAS_PRECARGADAS` in `backend/src/backend/formulario.py`; creating a form copies them with empty quantity and comment.
+
+State machine: `BORRADOR` -> `ENVIADO` (admin sends) -> `COMPLETADO` (taller or admin completes) -> `VALIDADO` (admin validates), or `COMPLETADO` -> `ENVIADO` with a comment. `VALIDADO` is immutable (409); duplicating it creates a new `BORRADOR` with the same rows. A `taller` user edits only the rows, only while `ENVIADO`, and only sees `ENVIADO` and `COMPLETADO` forms. The endpoints (`/formularios...`) are documented in the module docstring of `formulario.py`. Downgrade of 0016 drops both tables: the forms and every quantity loaded are lost.

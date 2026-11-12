@@ -1,0 +1,319 @@
+"""Consumption form of a new article ("formulario de consumos y herrajes"): the digital version of the paper sheet.
+
+One form per article. The admin creates it with the preloaded rows (empty quantities), sends it to the workshop, the
+workshop fills it in and completes it, and the admin validates it or sends it back with a review comment. This module
+does NOT cost, calculate or convert anything (no USD, no totals): quantities are exactly what a person typed, and
+nothing here touches `modelo`, `receta_linea` or the cost engine. Forms are never deleted.
+
+State machine (`ACCIONES`):
+    enviar     admin    BORRADOR | ENVIADO -> ENVIADO       (sets enviado_en; sending again re-sends it)
+    completar  taller / admin    ENVIADO -> COMPLETADO      (sets completado_por / completado_en)
+    devolver   admin    COMPLETADO -> ENVIADO               (needs a comment, stored in comentario_revision)
+    validar    admin    COMPLETADO -> VALIDADO              (sets validado_por / validado_en)
+    VALIDADO is immutable: any change is a 409 and the way to change it is `duplicar`.
+
+Who edits what (`comprobar_edicion`): the admin edits articulo, nota and the rows while BORRADOR / ENVIADO / COMPLETADO.
+A `taller` user edits ONLY the rows (add, remove, rename, quantities, comments) and ONLY while ENVIADO. Who sees what
+(`es_visible`): admin and gerente see every form (gerente read only); `taller` sees only ENVIADO and COMPLETADO.
+SUPUESTO: validar. The `taller` role is not tied to one specific workshop, so any taller user sees every ENVIADO /
+COMPLETADO form; `formulario_consumo.taller_id` is informative only.
+
+HTTP (routes in api.py; errors are `{"detail": <Spanish message>}`: 403 not allowed, 404 missing or not visible,
+409 invalid transition or immutable form, 422 invalid data):
+    POST /formularios                       admin   {articulo, taller?, producto?, nota?} -> BORRADOR with the preloaded rows
+    GET  /formularios?q=&estado=&producto=  admin, gerente, taller (taller: only ENVIADO / COMPLETADO); producto = PRD-NNNN
+    GET  /formularios/{codigo}              same visibility; 404 otherwise
+    PUT  /formularios/{codigo}              admin or taller; {articulo, nota?, lineas: [{seccion, nombre, cantidad?, comentario?}]}
+                                            replaces articulo / nota and the FULL set of rows (list order = row order
+                                            inside each section). A taller must send articulo / nota unchanged.
+    POST /formularios/{codigo}/enviar       admin
+    POST /formularios/{codigo}/completar    admin or taller
+    POST /formularios/{codigo}/devolver     admin   {comentario}
+    POST /formularios/{codigo}/validar      admin
+    POST /formularios/{codigo}/duplicar     admin   {articulo} -> new BORRADOR copying the rows (names, quantities, comments)
+"""
+
+from datetime import datetime, timezone
+from decimal import Decimal
+
+from sqlalchemy import delete, or_, select
+from sqlalchemy.orm import Session
+
+from backend.auth import ADMIN, GERENTE, TALLER
+from backend.models import FORM_SECTIONS, FORM_STATES, FormularioConsumo, FormularioConsumoLinea, Producto, Taller
+from backend.servicios import (
+    Conflicto, DatosInvalidos, NoEncontrado, _insertar, _patron, _por_codigo, _siguiente_numero, _texto_o_nada,
+)
+
+BORRADOR, ENVIADO, COMPLETADO, VALIDADO = FORM_STATES
+CONSUMO, HERRAJE = FORM_SECTIONS
+
+# The ONLY place with the preloaded rows of the paper sheet: names and order of the CONSUMOS table and the HERRAJES table.
+LINEAS_PRECARGADAS: dict[str, tuple[str, ...]] = {
+    CONSUMO: (
+        "CUERO", "FORRO / TELA", "FORRO / POTRO", "GOMA EVA", "FRISELINA", "CARTÓN FIBRA", "FLEX", "CARTULINA", "MOIRE",
+        "HS. DE TRABAJO", "Y/O MANO DE OBRA TALLER", "DESPERDICIO 30%", "CORTE MANO DE OBRA", "EMPAQUE",
+    ),
+    HERRAJE: (
+        "CIERRE N5", "CIERRE N3", "DESLIZADOR N5", "DESLIZADOR N3", "HEBILLA", "MOSQUETÓN", "MEDIA LUNA", "ARGOLLA 10MM",
+        "IMÁN", "TORNIQUETE", "CADENA", "REMACHES", "SPAGUETTI", "TRENCILLA", "MANGUERA", "OJALILLO",
+    ),
+}
+
+# action -> (states it can start from, state it leaves the form in, roles that may do it)
+ACCIONES: dict[str, tuple[frozenset[str], str, frozenset[str]]] = {
+    "enviar": (frozenset({BORRADOR, ENVIADO}), ENVIADO, frozenset({ADMIN})),
+    "completar": (frozenset({ENVIADO}), COMPLETADO, frozenset({ADMIN, TALLER})),
+    "devolver": (frozenset({COMPLETADO}), ENVIADO, frozenset({ADMIN})),
+    "validar": (frozenset({COMPLETADO}), VALIDADO, frozenset({ADMIN})),
+}
+_QUE_SE_PUEDE = {
+    "enviar": "Solo se puede enviar al taller un formulario en borrador o ya enviado",
+    "completar": "Solo se puede completar un formulario enviado al taller",
+    "devolver": "Solo se puede devolver a revisión un formulario completado",
+    "validar": "Solo se puede validar un formulario completado",
+}
+MENSAJE_VALIDADO = "El formulario ya está validado y no se puede modificar: duplicalo para hacer cambios."
+ESTADOS_VISIBLES_PARA_TALLER = frozenset({ENVIADO, COMPLETADO})
+MAX_LINEAS = 200  # per form; far above the 30 rows of the sheet, only a guard against absurd bodies
+
+
+class SinPermiso(Exception):
+    """The caller's role cannot do this on this form (HTTP 403)."""
+
+
+# --- Pure rules (no database, no clock) -------------------------------------------------------------------------------
+
+def lineas_precargadas() -> list[dict]:
+    """The rows of a new form: the two tables of the sheet in order, quantities and comments empty."""
+    return [
+        {"seccion": seccion, "orden": orden, "nombre": nombre, "cantidad": None, "comentario": None}
+        for seccion, nombres in LINEAS_PRECARGADAS.items() for orden, nombre in enumerate(nombres, start=1)
+    ]
+
+
+def es_visible(estado: str, roles: frozenset[str]) -> bool:
+    """Admin and gerente see every form; taller only the ones sent to it (ENVIADO) or completed (COMPLETADO)."""
+    if roles & {ADMIN, GERENTE}:
+        return True
+    return TALLER in roles and estado in ESTADOS_VISIBLES_PARA_TALLER
+
+
+def comprobar_edicion(estado: str, roles: frozenset[str]) -> bool:
+    """Raise unless `roles` may edit a form in `estado`; return True when only the rows may change (taller)."""
+    if estado == VALIDADO:
+        raise Conflicto(MENSAJE_VALIDADO)
+    if ADMIN in roles:
+        return False
+    if TALLER in roles:
+        if estado == BORRADOR:
+            raise Conflicto("El formulario todavía no fue enviado al taller.")
+        if estado == COMPLETADO:
+            raise Conflicto("El formulario ya fue completado: esperá a que lo revise el administrador.")
+        return True
+    raise SinPermiso("No tenés permiso para modificar este formulario.")
+
+
+def siguiente_estado(accion: str, estado: str, roles: frozenset[str]) -> str:
+    """The state `accion` leaves a form in `estado`, or an error: SinPermiso (role) / Conflicto (invalid transition)."""
+    desde, hasta, quienes = ACCIONES[accion]
+    if not roles & quienes:
+        raise SinPermiso("No tenés permiso para esta acción.")
+    if estado == VALIDADO:
+        raise Conflicto(MENSAJE_VALIDADO)
+    if estado not in desde:
+        raise Conflicto(f"{_QUE_SE_PUEDE[accion]}; este formulario está {estado.lower()}.")
+    return hasta
+
+
+def armar_lineas(lineas: list[dict]) -> list[dict]:
+    """Validate the full set of rows and number them: `orden` is the position inside each section, starting at 1.
+
+    A name is required (trimmed); the quantity is None or a decimal >= 0; an empty comment is stored as None.
+    """
+    if len(lineas) > MAX_LINEAS:
+        raise DatosInvalidos(f"El formulario admite hasta {MAX_LINEAS} filas.")
+    cuenta = {seccion: 0 for seccion in FORM_SECTIONS}
+    armadas = []
+    for linea in lineas:
+        seccion = linea.get("seccion")
+        if seccion not in cuenta:
+            raise DatosInvalidos("La sección de cada fila tiene que ser CONSUMO o HERRAJE.")
+        nombre = (linea.get("nombre") or "").strip()
+        if not nombre:
+            raise DatosInvalidos("Cada fila tiene que tener un nombre.")
+        cantidad = linea.get("cantidad")
+        if cantidad is not None and (not isinstance(cantidad, Decimal) or not cantidad.is_finite() or cantidad < 0):
+            raise DatosInvalidos(f"La cantidad de {nombre} tiene que ser un número mayor o igual a cero.")
+        cuenta[seccion] += 1
+        armadas.append({
+            "seccion": seccion, "orden": cuenta[seccion], "nombre": nombre, "cantidad": cantidad,
+            "comentario": _texto_o_nada(linea.get("comentario")),
+        })
+    return sorted(armadas, key=lambda l: (FORM_SECTIONS.index(l["seccion"]), l["orden"]))
+
+
+def _articulo(valor: str | None) -> str:
+    articulo = (valor or "").strip()
+    if not articulo:
+        raise DatosInvalidos("Falta el artículo (nombre o código).")
+    return articulo
+
+
+# --- Reads ------------------------------------------------------------------------------------------------------------
+
+def _resumen(fila: FormularioConsumo, producto: str | None, taller: str | None) -> dict:
+    return {
+        "codigo": fila.codigo, "articulo": fila.articulo, "estado": fila.estado, "producto": producto, "taller": taller,
+        "creado_por": fila.creado_por, "created_at": fila.created_at, "enviado_en": fila.enviado_en,
+        "completado_en": fila.completado_en, "validado_en": fila.validado_en,
+    }
+
+
+def _detalle(session: Session, fila: FormularioConsumo, producto: str | None, taller: str | None) -> dict:
+    lineas = session.scalars(
+        select(FormularioConsumoLinea).where(FormularioConsumoLinea.formulario_id == fila.id)
+        .order_by(FormularioConsumoLinea.seccion, FormularioConsumoLinea.orden)  # CONSUMO sorts before HERRAJE
+    ).all()
+    return {
+        **_resumen(fila, producto, taller),
+        "nota": fila.nota, "comentario_revision": fila.comentario_revision,
+        "completado_por": fila.completado_por, "validado_por": fila.validado_por,
+        "lineas": [{"seccion": l.seccion, "orden": l.orden, "nombre": l.nombre, "cantidad": l.cantidad,
+                    "comentario": l.comentario} for l in lineas],
+    }
+
+
+def _consulta_base():
+    return (
+        select(FormularioConsumo, Producto.codigo, Taller.codigo)
+        .outerjoin(Producto, Producto.id == FormularioConsumo.producto_id)
+        .outerjoin(Taller, Taller.id == FormularioConsumo.taller_id)
+    )
+
+
+def _cargar(session: Session, codigo: str, roles: frozenset[str], *, bloquear: bool = False):
+    """The form and its product / workshop codes; 404 when it does not exist OR the caller may not see it."""
+    consulta = _consulta_base().where(FormularioConsumo.codigo == codigo)
+    if bloquear:
+        consulta = consulta.with_for_update(of=FormularioConsumo)  # two saves / transitions of one form do not interleave
+    encontrado = session.execute(consulta).one_or_none()
+    if encontrado is None or not es_visible(encontrado[0].estado, roles):
+        raise NoEncontrado(f"No existe el formulario {codigo}.")
+    return encontrado
+
+
+def listar_formularios(
+    session: Session, *, q: str | None, estado: str | None, roles: frozenset[str], producto: str | None = None,
+) -> list[dict]:
+    """Newest first. Every word of `q` must appear in the code, the article, the product code or the workshop name.
+
+    `producto` (a PRD-NNNN code) keeps only the forms linked to that product: the product sheet uses it to show its validated form.
+    """
+    if estado is not None and estado not in FORM_STATES:
+        raise DatosInvalidos(f"El estado tiene que ser uno de: {', '.join(FORM_STATES)}.")
+    consulta = _consulta_base().order_by(FormularioConsumo.id.desc())
+    if not roles & {ADMIN, GERENTE}:
+        consulta = consulta.where(FormularioConsumo.estado.in_(sorted(ESTADOS_VISIBLES_PARA_TALLER)))
+    if estado:
+        consulta = consulta.where(FormularioConsumo.estado == estado)
+    if producto:
+        consulta = consulta.where(Producto.codigo == producto)
+    for palabra in (q or "").split():
+        patron = _patron(palabra)
+        consulta = consulta.where(or_(*(columna.ilike(patron, escape="\\") for columna in (
+            FormularioConsumo.codigo, FormularioConsumo.articulo, Producto.codigo, Taller.nombre))))
+    return [_resumen(*fila) for fila in session.execute(consulta).all()]
+
+
+def obtener_formulario(session: Session, codigo: str, roles: frozenset[str]) -> dict:
+    return _detalle(session, *_cargar(session, codigo, roles))
+
+
+# --- Writes -----------------------------------------------------------------------------------------------------------
+
+def _nuevo(session: Session, *, articulo: str, producto_id, taller_id, nota: str | None, quien: str, lineas: list[dict]) -> FormularioConsumo:
+    fila = FormularioConsumo(
+        codigo=f"FCO-{_siguiente_numero(session, FormularioConsumo.codigo, 'FCO'):04d}", articulo=articulo,
+        producto_id=producto_id, taller_id=taller_id, estado=BORRADOR, nota=_texto_o_nada(nota), creado_por=quien)
+    _insertar(session, fila, "Ya existe un formulario con ese código: probá de nuevo.")
+    session.add_all(FormularioConsumoLinea(formulario_id=fila.id, **linea) for linea in lineas)
+    session.flush()
+    return fila
+
+
+def crear_formulario(
+    session: Session, *, articulo: str, taller: str | None, producto: str | None, nota: str | None, quien: str,
+) -> dict:
+    """A BORRADOR with the preloaded rows (empty quantities and comments)."""
+    articulo = _articulo(articulo)
+    fila_producto = _por_codigo(session, Producto, producto, "el producto")
+    fila_taller = _por_codigo(session, Taller, taller, "el taller")
+    fila = _nuevo(
+        session, articulo=articulo, producto_id=fila_producto.id if fila_producto else None,
+        taller_id=fila_taller.id if fila_taller else None,
+        nota=nota, quien=quien, lineas=lineas_precargadas())
+    session.commit()
+    return _detalle(session, fila, producto, taller)
+
+
+def guardar_formulario(
+    session: Session, codigo: str, *, articulo: str, nota: str | None, lineas: list[dict], roles: frozenset[str],
+) -> dict:
+    """Replace articulo / nota and the FULL set of rows. A taller user may change only the rows (it sends articulo / nota as they are)."""
+    fila, producto, taller = _cargar(session, codigo, roles, bloquear=True)
+    solo_lineas = comprobar_edicion(fila.estado, roles)
+    nuevas = armar_lineas(lineas)
+    articulo = _articulo(articulo)
+    if solo_lineas:
+        if articulo != fila.articulo or _texto_o_nada(nota) != fila.nota:
+            raise SinPermiso("El taller solo puede completar las filas del formulario: el artículo y la nota los cambia el administrador.")
+    else:
+        fila.articulo, fila.nota = articulo, _texto_o_nada(nota)
+    # Explicit DELETE first: the unit of work would insert the new rows before removing the old ones and trip the unique key.
+    session.execute(delete(FormularioConsumoLinea).where(FormularioConsumoLinea.formulario_id == fila.id))
+    session.add_all(FormularioConsumoLinea(formulario_id=fila.id, **linea) for linea in nuevas)
+    session.commit()  # get_session rolls back whatever is not committed
+    return _detalle(session, fila, producto, taller)
+
+
+def cambiar_estado(
+    session: Session, codigo: str, accion: str, *, roles: frozenset[str], quien: str, comentario: str | None = None,
+    ahora: datetime | None = None,
+) -> dict:
+    """Apply one action of `ACCIONES` and stamp who / when. `devolver` needs a non-empty comment."""
+    ahora = ahora or datetime.now(timezone.utc)
+    fila, producto, taller = _cargar(session, codigo, roles, bloquear=True)
+    nuevo = siguiente_estado(accion, fila.estado, roles)
+    if accion == "devolver":
+        comentario = _texto_o_nada(comentario)
+        if comentario is None:
+            raise DatosInvalidos("Escribí el comentario de revisión para devolver el formulario al taller.")
+        fila.comentario_revision = comentario
+    elif accion == "enviar":
+        fila.enviado_en = ahora
+    elif accion == "completar":
+        fila.completado_por, fila.completado_en = quien, ahora
+    elif accion == "validar":
+        fila.validado_por, fila.validado_en = quien, ahora
+    fila.estado = nuevo
+    session.commit()  # get_session rolls back whatever is not committed
+    return _detalle(session, fila, producto, taller)
+
+
+def duplicar_formulario(session: Session, codigo: str, *, articulo: str, quien: str, roles: frozenset[str]) -> dict:
+    """A new BORRADOR for another article with a copy of the rows (names, quantities, comments) of a form in any state.
+
+    The product, workshop and note are not copied: the new article is its own sheet.
+    """
+    if ADMIN not in roles:
+        raise SinPermiso("No tenés permiso para esta acción.")
+    articulo = _articulo(articulo)
+    origen, _, _ = _cargar(session, codigo, roles)
+    copiadas = [
+        {"seccion": l.seccion, "orden": l.orden, "nombre": l.nombre, "cantidad": l.cantidad, "comentario": l.comentario}
+        for l in session.scalars(select(FormularioConsumoLinea).where(FormularioConsumoLinea.formulario_id == origen.id))
+    ]
+    fila = _nuevo(session, articulo=articulo, producto_id=None, taller_id=None, nota=None, quien=quien, lineas=copiadas)
+    session.commit()
+    return _detalle(session, fila, None, None)

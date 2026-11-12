@@ -30,7 +30,7 @@ function failure(
   return { ok: false, status, message, avisos };
 }
 
-type Method = "GET" | "POST";
+type Method = "GET" | "POST" | "PUT";
 
 function describeInvalidBody(detail: unknown[]): string {
   // FastAPI sends a list of {loc, msg} when the body does not validate.
@@ -133,6 +133,11 @@ export function apiPost<T>(
   timeoutMs?: number,
 ): Promise<ApiResult<T>> {
   return apiRequest<T>("POST", path, body, timeoutMs);
+}
+
+/** Replaces a whole resource (the consumption form saves its full set of rows this way). Server actions only. */
+export function apiPut<T>(path: string, body: unknown): Promise<ApiResult<T>> {
+  return apiRequest<T>("PUT", path, body);
 }
 
 /**

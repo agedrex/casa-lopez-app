@@ -64,6 +64,10 @@ Roles (stored in `user.role`): `admin` (everything, plus the `/admin` area and u
 
 The admin area (`/admin/*`: users, taxes, Google Sheet; `/admin` redirects to users) is `admin` only, and so are the models and catalogs that moved to Productos (`/productos/modelos`, `/productos/catalogos`) and the people panel of Costos fijos > Mano de obra, at three levels: `proxy.ts` redirects everybody else, every server action re-checks the role, and the API answers 403 to the admin-only writes (see the table in [`backend/README.md`](backend/README.md#costing-api-t3b)). Users are never deleted, only deactivated; nobody can demote or deactivate themselves, and the last active admin can never lose the role (enforced inside Better Auth, so a direct call to `/api/auth/admin/*` is refused too).
 
+## Consumption forms
+
+`/formularios` holds the digital "formulario de consumos y herrajes" of each new article (admin creates and validates, the `taller` role fills it in, `gerente` reads). It does no costing; the flow, buttons and print-to-PDF are described in [`docs/formularios.md`](docs/formularios.md).
+
 ## Checks
 
 ```sh

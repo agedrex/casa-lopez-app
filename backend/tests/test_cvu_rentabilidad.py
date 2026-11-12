@@ -447,11 +447,11 @@ def test_posting_a_sale_price_passes_the_current_user_and_returns_money_as_strin
     def falso(session, codigo, **kwargs):
         visto.update(codigo=codigo, **kwargs)
         return {"producto": codigo, "precio_ars": kwargs["precio_ars"], "vigente_desde": date(2026, 11, 4), "nota": kwargs["nota"],
-                "creado_por": kwargs["quien"], "creado_en": None}
+                "creado_por": kwargs["quien"], "creado_en": None, "margen": kwargs["margen"]}
     monkeypatch.setattr(servicios, "guardar_precio_de_venta", falso)
     response = client.post("/productos/PRD-0001/precio-venta", json={"precio_ars": "60000.50", "nota": "x"})
     assert response.status_code == 201
-    assert visto == {"codigo": "PRD-0001", "precio_ars": D("60000.50"), "vigente_desde": None, "nota": "x", "quien": "user-42"}
+    assert visto == {"codigo": "PRD-0001", "precio_ars": D("60000.50"), "vigente_desde": None, "nota": "x", "margen": None, "quien": "user-42"}
     assert response.json()["precio_ars"] == "60000.50" and response.json()["creado_por"] == "user-42"
 
 
@@ -492,7 +492,7 @@ def test_the_history_and_the_profitability_are_open_to_the_gerente_role(monkeypa
     monkeypatch.delenv("DATABASE_URL", raising=False)
     try:
         monkeypatch.setattr(servicios, "listar_precios_de_venta", lambda session, codigo: [
-            {"producto": codigo, "precio_ars": D("120"), "vigente_desde": date(2026, 11, 1), "nota": None, "creado_por": None, "creado_en": None}])
+            {"producto": codigo, "precio_ars": D("120"), "margen": None, "vigente_desde": date(2026, 11, 1), "nota": None, "creado_por": None, "creado_en": None}])
         visto = {}
         monkeypatch.setattr(servicios, "rentabilidad_de_producto", lambda session, codigo, precio: visto.update(precio=precio) or armar_rentabilidad(
             codigo=codigo, costo=D("100"), precio_ingresado=precio, precio_guardado=None))

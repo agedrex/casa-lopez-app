@@ -142,10 +142,13 @@ SOLO_ADMIN = {"/parametros/{codigo}", "/personas", "/personas/{codigo}/activo", 
               "/proveedores/{codigo}/documentos", "/proveedores/{codigo}/precios", "/documentos-proveedor/{id}/ocr",
               "/documentos-proveedor/{id}/datos",
               # Resale products (see test_reventa.py and test_roles.py).
-              "/reventa", "/reventa/lote", "/reventa/{codigo}/activo", "/reventa/{codigo}/compras"}
+              "/reventa", "/reventa/lote", "/reventa/{codigo}/activo", "/reventa/{codigo}/compras",
+              # Consumption form (see test_formulario.py and test_roles.py).
+              "/formularios", "/formularios/{codigo}/enviar", "/formularios/{codigo}/devolver",
+              "/formularios/{codigo}/validar", "/formularios/{codigo}/duplicar"}
 # Admin and taller: cutting, the voice interpreter and the workshop price a taller loads by voice.
 SOLO_CORTE = {"/cueros/{codigo}/cortes", "/cueros/{codigo}/sobrante", "/voz/interpretar",
-              "/ordenes/{codigo}/items/{item}/precios"}
+              "/ordenes/{codigo}/items/{item}/precios", "/formularios/{codigo}/completar"}
 ESCRITURAS = [(m, r) for m, r in RUTAS if m == "POST" and r not in SOLO_ADMIN | SOLO_CORTE]
 LECTURAS = [(m, r) for m, r in RUTAS if m == "GET"]
 SIN_PERMISO = {"detail": "No tenés permiso para esta acción."}

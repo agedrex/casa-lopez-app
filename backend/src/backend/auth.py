@@ -152,3 +152,7 @@ SOLO_ADMIN = require_role(ADMIN)
 PRODUCTOS = require_role(ADMIN, GERENTE)  # product and quote data, read only
 CORTE = require_role(ADMIN, TALLER)  # voice, cutting and what those pages read
 CUALQUIER_ROL = require_role(ADMIN, GERENTE, TALLER)
+# Consumption forms (formulario.py). What each role sees or does is decided again in the service, which also knows the
+# state of the form. SUPUESTO: validar. `taller` is not tied to one specific workshop (see formulario.py).
+FORMULARIO_LEER = require_role(ADMIN, GERENTE, TALLER)  # admin and gerente see all; taller only ENVIADO / COMPLETADO
+FORMULARIO_TRABAJAR = require_role(ADMIN, TALLER)  # edit the rows and complete; every other action is SOLO_ADMIN

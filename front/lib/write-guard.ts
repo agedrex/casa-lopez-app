@@ -2,7 +2,12 @@ import "server-only";
 import { redirect } from "next/navigation";
 import { error, type FormState } from "./action-state";
 import type { ApiFailure } from "./api";
-import { canUseVoice, canWrite, hasRole } from "./permissions";
+import {
+  canUseVoice,
+  canWorkFormularios,
+  canWrite,
+  hasRole,
+} from "./permissions";
 import { getSession } from "./session";
 
 /**
@@ -24,6 +29,16 @@ export async function denyUnlessVoice(): Promise<FormState | null> {
   const session = await getSession();
   if (!session) redirect("/login");
   if (!canUseVoice(session.user.role)) {
+    return error("No tiene permiso para esta acción.");
+  }
+  return null;
+}
+
+/** Consumption forms: admin and taller edit the rows and complete; the backend narrows it by state (403 / 409). */
+export async function denyUnlessFormularioWorker(): Promise<FormState | null> {
+  const session = await getSession();
+  if (!session) redirect("/login");
+  if (!canWorkFormularios(session.user.role)) {
     return error("No tiene permiso para esta acción.");
   }
   return null;

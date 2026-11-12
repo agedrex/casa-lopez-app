@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Avisos } from "@/components/avisos";
 import { ReadOnlyNote } from "@/components/form";
+import { FormularioConsumos } from "@/components/formulario-consumos";
 import { PrecioReferencia } from "@/components/precio-referencia";
 import {
   Badge,
@@ -29,6 +30,7 @@ import {
   STAGE_ORDER,
   stageLabel,
 } from "@/lib/format";
+import { seesValidatedFormulario } from "@/lib/formulario";
 import { parseNota } from "@/lib/notas";
 import { canWrite, isTallerOnly } from "@/lib/permissions";
 import { collapseSpaces, costoFaltante } from "@/lib/productos";
@@ -38,13 +40,15 @@ import type {
   Desglose,
   EtapaCatalogo,
   Ficha,
+  Formulario,
+  FormularioResumen,
   Material,
   PreciosTalleres,
 } from "@/lib/types";
 import { Comparison } from "./comparison";
 import { ComponenteForm, CotizacionForm, ExtraForm } from "./forms";
 import { ModeloBlock } from "./modelo-block";
-import { RentabilidadBlock } from "./rentabilidad";
+import { PrecioBlock, PriceHistory } from "./rentabilidad";
 
 export const metadata: Metadata = { title: "Ficha de producto" };
 
@@ -56,7 +60,7 @@ function decodeCode(raw: string): string | null {
   }
 }
 
-function typedPriceOf(value: string | string[] | undefined): string {
+function typedMarginOf(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value)?.trim() ?? "";
 }
 
@@ -65,7 +69,7 @@ export default async function FichaPage({
   searchParams,
 }: {
   params: Promise<{ codigo: string }>;
-  searchParams: Promise<{ precio?: string | string[] }>;
+  searchParams: Promise<{ margen?: string | string[] }>;
 }) {
   const { user } = await requireSession();
   const code = decodeCode((await params).codigo);
@@ -102,34 +106,97 @@ export default async function FichaPage({
           <div className="flex flex-wrap gap-2">
             <Badge>{lifecycleLabel(ficha.estado_del_ciclo)}</Badge>
             {ficha.es_kit ? <Badge>Kit</Badge> : null}
-            {ficha.categoria ? <Badge>{ficha.categoria}</Badge> : null}
           </div>
         }
       />
+      <p className="-mt-4 mb-8 text-sm text-muted">
+        {[ficha.modelo, ficha.cuero, ficha.color].filter(Boolean).join(" · ")}
+      </p>
 
       <div className="space-y-10">
-        <Details ficha={ficha} />
         <CostToday ficha={ficha} />
         {isTallerOnly(user.role) ? null : (
-          <RentabilidadBlock
+          <PrecioBlock
             codigo={ficha.codigo}
             writer={canWrite(user.role)}
-            typedPrice={typedPriceOf((await searchParams).precio)}
+            typedMargin={typedMarginOf((await searchParams).margen)}
           />
         )}
-        {canWrite(user.role) ? (
-          <NegotiationReference codigo={ficha.codigo} />
-        ) : null}
         {canWrite(user.role) && ficha.modelo ? (
           <ModeloBlock codigo={ficha.modelo} />
+        ) : (
+          <Recipe ficha={ficha} />
+        )}
+        {seesValidatedFormulario(user.role) ? (
+          <FormularioValidado codigo={ficha.codigo} />
         ) : null}
-        <Recipe ficha={ficha} />
-        {ficha.componentes.length > 0 ? <Components ficha={ficha} /> : null}
-        <StoredQuotes ficha={ficha} />
-        <Comparison ficha={ficha} />
-        <Actions ficha={ficha} writer={canWrite(user.role)} />
+        <details className="rounded-card border border-line p-5">
+          <summary className="cursor-pointer text-sm uppercase tracking-caps-sm text-muted">
+            Más detalle
+          </summary>
+          <div className="mt-8 space-y-10">
+            <Details ficha={ficha} />
+            {canWrite(user.role) && ficha.modelo ? (
+              <Recipe ficha={ficha} />
+            ) : null}
+            {canWrite(user.role) ? (
+              <NegotiationReference codigo={ficha.codigo} />
+            ) : null}
+            {ficha.componentes.length > 0 ? <Components ficha={ficha} /> : null}
+            {isTallerOnly(user.role) ? null : (
+              <PriceHistory codigo={ficha.codigo} />
+            )}
+            <StoredQuotes ficha={ficha} />
+            <Comparison ficha={ficha} />
+            <Actions ficha={ficha} writer={canWrite(user.role)} />
+          </div>
+        </details>
       </div>
     </>
+  );
+}
+
+/** The newest VALIDADO consumption form linked to this product, read only and without the empty rows. */
+async function FormularioValidado({ codigo }: { codigo: string }) {
+  const lista = await apiGet<FormularioResumen[]>(
+    `/formularios?${new URLSearchParams({ producto: codigo, estado: "VALIDADO" })}`,
+  );
+  if (!lista.ok) {
+    return (
+      <ErrorNotice
+        title="No pudimos cargar el formulario de consumos."
+        message={lista.message}
+      />
+    );
+  }
+  const [validado] = lista.data; // newest first
+  if (!validado) return null;
+  const detalle = await apiGet<Formulario>(
+    `/formularios/${encodeURIComponent(validado.codigo)}`,
+  );
+  if (!detalle.ok) {
+    return (
+      <ErrorNotice
+        title="No pudimos cargar el formulario de consumos."
+        message={detalle.message}
+      />
+    );
+  }
+  return (
+    <section>
+      <SectionTitle>Formulario de consumos</SectionTitle>
+      <Card>
+        <FormularioConsumos formulario={detalle.data} mode="readonly" compact />
+        <p className="mt-4 text-sm">
+          <Link
+            href={`/formularios/${encodeURIComponent(validado.codigo)}`}
+            className="text-muted underline decoration-gold underline-offset-4"
+          >
+            Ver el formulario {validado.codigo} →
+          </Link>
+        </p>
+      </Card>
+    </section>
   );
 }
 
@@ -290,17 +357,12 @@ function Nota({ nota }: { nota: string | null }) {
 }
 
 function RecotizarNotice({ recotizar }: { recotizar: boolean | null }) {
-  if (recotizar === true) {
-    return (
-      <Notice title="Conviene recotizar">
-        El costo de hoy se aleja de la última cotización guardada.
-      </Notice>
-    );
-  }
-  if (recotizar === false) {
-    return <Notice tone="info" title="La última cotización sigue al día" />;
-  }
-  return <Notice tone="info" title="Sin cotización guardada para comparar" />;
+  if (recotizar !== true) return null;
+  return (
+    <Notice title="Conviene recotizar">
+      El costo de hoy se aleja de la última cotización guardada.
+    </Notice>
+  );
 }
 
 function stageRows(costo: Desglose) {
@@ -336,63 +398,38 @@ function CostToday({ ficha }: { ficha: Ficha }) {
   const costo = ficha.costo_hoy;
   return (
     <section>
-      <SectionTitle>Costo hoy</SectionTitle>
-      <p className="mb-4 text-sm text-muted">
-        Lo calcula la API con el dólar y los precios vigentes; se actualiza solo
-        al agregar extras o componentes.
-      </p>
-      <div className="space-y-4">
-        <RecotizarNotice recotizar={ficha.recotizar} />
-        {costo === null ? (
-          <Card>
-            <p className="font-display text-xl">
-              {costoFaltante(ficha.avisos)}
-            </p>
-            {ficha.avisos.length > 0 ? (
-              <p className="mt-2 text-sm text-muted">
-                Por eso no se puede calcular el costo de hoy.
-              </p>
-            ) : null}
-            {ficha.avisos.length > 1 ? (
-              <ul className="mt-4 list-disc space-y-1 pl-5 text-sm">
-                {ficha.avisos.slice(1).map((aviso) => (
-                  <li key={aviso}>{aviso}</li>
-                ))}
-              </ul>
-            ) : null}
-          </Card>
-        ) : (
-          <Card>
-            <div className="flex flex-wrap items-end justify-between gap-6">
-              <div>
-                <p className="text-xs uppercase tracking-caps-sm text-muted">
-                  Total
-                </p>
-                <p className="mt-1 font-display text-4xl">
-                  {formatArs(costo.total_ars)}
-                </p>
-                <p className="mt-1 text-sm text-muted">
-                  {formatUsd(costo.total_usd)}
-                </p>
-              </div>
-              <p className="text-sm text-muted">
-                Dólar {formatRate(costo.dolar)} · al {formatDate(costo.fecha)}
-              </p>
+      <SectionTitle>Costo</SectionTitle>
+      <RecotizarNotice recotizar={ficha.recotizar} />
+      {costo === null ? (
+        <Card>
+          <p className="font-display text-xl">{costoFaltante(ficha.avisos)}</p>
+          {ficha.avisos.length > 1 ? (
+            <ul className="mt-4 list-disc space-y-1 pl-5 text-sm">
+              {ficha.avisos.slice(1).map((aviso) => (
+                <li key={aviso}>{aviso}</li>
+              ))}
+            </ul>
+          ) : null}
+        </Card>
+      ) : (
+        <Card>
+          <p className="font-display text-4xl">{formatArs(costo.total_ars)}</p>
+          <p className="mt-1 text-sm text-muted">
+            {formatUsd(costo.total_usd)} · dólar {formatRate(costo.dolar)} al{" "}
+            {formatDate(costo.fecha)}
+          </p>
+          {ficha.avisos.length > 0 ? (
+            <div className="mt-4">
+              <Avisos avisos={ficha.avisos} limit={3} />
             </div>
-            {ficha.avisos.length > 0 ? (
-              <div className="mt-4">
-                <Avisos avisos={ficha.avisos} limit={3} />
-              </div>
-            ) : null}
-            <div className="mt-6">
+          ) : null}
+          <details className="mt-5">
+            <summary className="cursor-pointer text-sm underline decoration-gold underline-offset-4">
+              Ver desglose por etapa
+            </summary>
+            <div className="mt-4">
               <TableWrap>
                 <table className={tableClass}>
-                  <thead>
-                    <tr>
-                      <th className={thClass}>Etapa</th>
-                      <th className={`${thClass} ${numClass}`}>Costo (ARS)</th>
-                    </tr>
-                  </thead>
                   <tbody>
                     {stageRows(costo).map(([stage, amount]) => (
                       <CostRow
@@ -401,24 +438,26 @@ function CostToday({ ficha }: { ficha: Ficha }) {
                         value={amount}
                       />
                     ))}
-                    <CostRow
-                      label="Subtotal de etapas"
-                      value={costo.subtotal}
-                    />
-                    <CostRow
-                      label="Componentes del kit"
-                      value={costo.componentes_kit}
-                    />
-                    <CostRow label="IVA de compras" value={costo.iva_compras} />
-                    <CostRow label="Arreglos" value={costo.arreglos} />
+                    {ficha.es_kit ? (
+                      <>
+                        <CostRow
+                          label="Subtotal de etapas"
+                          value={costo.subtotal}
+                        />
+                        <CostRow
+                          label="Componentes del kit"
+                          value={costo.componentes_kit}
+                        />
+                      </>
+                    ) : null}
                     <CostRow label="Total" value={costo.total_ars} strong />
                   </tbody>
                 </table>
               </TableWrap>
             </div>
-          </Card>
-        )}
-      </div>
+          </details>
+        </Card>
+      )}
     </section>
   );
 }

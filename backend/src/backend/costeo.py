@@ -236,6 +236,16 @@ def margen_por_hora(margen_unidad: Decimal, horas: Decimal | None) -> Decimal | 
     return (margen_unidad / horas).quantize(CUATRO_DECIMALES, ROUND_HALF_UP)
 
 
+def precio_con_margen(costo: Decimal, margen_pct: Decimal) -> Decimal:
+    """Sale price that leaves `margen_pct` % of the price itself: cost / (1 - margin). Rounded to cents.
+
+    The margin is over the sale price, not over the cost (a markup). It must be in [0, 100).
+    """
+    if not ZERO <= margen_pct < 100:
+        raise ValueError("El margen tiene que estar entre 0 y 99,99 %.")
+    return (costo / (1 - margen_pct / 100)).quantize(Decimal("0.01"), ROUND_HALF_UP)
+
+
 def margen_de_contribucion(
     precio: Decimal, variable_por_unidad: Decimal, umbral_pct: Decimal | None = None,
     *, gasto_venta: Decimal = ZERO, iibb: Decimal = ZERO,

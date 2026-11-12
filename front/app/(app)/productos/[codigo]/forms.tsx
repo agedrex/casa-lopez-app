@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   Field,
   FormFeedback,
@@ -192,36 +193,48 @@ export function ComponenteForm({ codigo }: { codigo: string }) {
   );
 }
 
-/** Saves the price that was just checked; the amount travels as the text the person typed. */
+/**
+ * Saves the sale price; the amount travels as the text the person typed (or the one the API suggested).
+ * `margen` is the percent that produced the suggested price: it is saved next to the price, and dropped
+ * as soon as the person edits the price by hand (the margin would no longer match).
+ */
 export function PrecioVentaForm({
   codigo,
   precio,
+  margen,
 }: {
   codigo: string;
   precio: string;
+  margen?: string;
 }) {
   const { state, pending, formKey, onSubmit } = useActionForm(
     savePrecioVenta.bind(null, codigo),
   );
+  const [edited, setEdited] = useState(false);
   return (
-    <form key={formKey} onSubmit={onSubmit} className="space-y-4">
-      <input type="hidden" name="precio" value={precio} />
-      <Field
-        id="precio-venta-nota"
-        label="Nota (opcional)"
-        hint="Se guarda con la fecha de hoy y no se edita: si cambia, se guarda otro precio."
-      >
+    <form
+      key={`${formKey}-${precio}-${margen ?? ""}`}
+      onSubmit={onSubmit}
+      className="space-y-3"
+    >
+      <Field id="precio-venta" label="Precio de venta (ARS)">
         <input
-          id="precio-venta-nota"
-          name="nota"
+          id="precio-venta"
+          name="precio"
+          inputMode="decimal"
           autoComplete="off"
-          aria-describedby="precio-venta-nota-hint"
+          placeholder="Sin precio todavía"
+          defaultValue={precio}
+          onChange={(event) => setEdited(event.target.value.trim() !== precio)}
           className={inputClass}
         />
       </Field>
+      {margen && !edited ? (
+        <input type="hidden" name="margen" value={margen} />
+      ) : null}
       <FormFeedback state={state} />
       <PrimaryButton pending={pending}>
-        {pending ? "Guardando…" : "Guardar este precio"}
+        {pending ? "Guardando…" : "Guardar precio"}
       </PrimaryButton>
     </form>
   );

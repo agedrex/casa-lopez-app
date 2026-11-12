@@ -56,6 +56,9 @@ class RecordedOperations:
         self.metadata.tables[f"{source_schema}.{source_table}"].append_constraint(ForeignKeyConstraint(
             local_cols, [f"{referent_schema}.{referent_table}.{column}" for column in remote_cols], name=name))
 
+    def create_check_constraint(self, name, table_name, condition, schema):
+        self.metadata.tables[f"{schema}.{table_name}"].append_constraint(CheckConstraint(condition, name=name))
+
     def drop_constraint(self, name, table_name, schema, type_):
         self.dropped_constraints.append(name)
 
@@ -72,7 +75,8 @@ class RecordedOperations:
 
 
 # Tables created by revisions after 0003, so 0003 neither creates nor drops them.
-ADDED_AFTER_DER_V3 = {"precio_venta", "proveedor", "documento_proveedor", "producto_reventa", "compra_reventa"}
+ADDED_AFTER_DER_V3 = {"precio_venta", "proveedor", "documento_proveedor", "producto_reventa", "compra_reventa",
+                      "formulario_consumo", "formulario_consumo_linea"}
 
 
 # 0011 links the existing precio_material to proveedor (created by 0007), so that FK comes after both tables exist.
@@ -91,7 +95,8 @@ def test_revision_chain_replaces_v1_with_v3_then_seeds(monkeypatch):
                      "0005_gasto_reemplaza_a.py", "0006_precio_venta.py", "0007_proveedores_documentos.py",
                      "0008_reventa.py", "0009_gasto_anulado.py", "0010_compra_sin_unidades.py",
                      "0011_precio_material_proveedor.py", "0012_impuesto_activo.py",
-                     "0013_impuestos_vacios.py", "0014_gastos_venta_pct.py"):
+                     "0013_impuestos_vacios.py", "0014_gastos_venta_pct.py",
+                     "0015_precio_venta_margen.py", "0016_formulario_consumo.py"):
         _, revision = load_revision(monkeypatch, filename)
         chain[revision["revision"]] = revision["down_revision"]
     assert chain == {
@@ -104,6 +109,8 @@ def test_revision_chain_replaces_v1_with_v3_then_seeds(monkeypatch):
         "0012_impuesto_activo": "0011_precio_material_proveedor",
         "0013_impuestos_vacios": "0012_impuesto_activo",
         "0014_gastos_venta_pct": "0013_impuestos_vacios",
+        "0015_precio_venta_margen": "0014_gastos_venta_pct",
+        "0016_formulario_consumo": "0015_precio_venta_margen",
     }
 
 
@@ -122,7 +129,7 @@ def test_der_v3_revision_matches_orm_and_reverses_dependencies(monkeypatch):
     operations, revision = load_revision(monkeypatch, "0003_der_v3.py")
     revision["upgrade"]()
     # The ORM also carries what 0005 to 0012 add on top of DER v3 (gasto_periodo.reemplaza_a_id, precio_venta,
-    # proveedor, documento_proveedor, the resale tables, gasto_periodo.anulado and precio_material.proveedor_id).
+    # proveedor, documento_proveedor, the resale tables, gasto_periodo.anulado and precio_material.proveedor_id, then precio_venta.margen from 0015 and the consumption form tables from 0016).
     runpy.run_path(str(VERSIONS / "0005_gasto_reemplaza_a.py"))["upgrade"]()
     runpy.run_path(str(VERSIONS / "0006_precio_venta.py"))["upgrade"]()
     runpy.run_path(str(VERSIONS / "0007_proveedores_documentos.py"))["upgrade"]()
@@ -132,6 +139,8 @@ def test_der_v3_revision_matches_orm_and_reverses_dependencies(monkeypatch):
     runpy.run_path(str(VERSIONS / "0011_precio_material_proveedor.py"))["upgrade"]()
     runpy.run_path(str(VERSIONS / "0012_impuesto_activo.py"))["upgrade"]()
     runpy.run_path(str(VERSIONS / "0013_impuestos_vacios.py"))["upgrade"]()
+    runpy.run_path(str(VERSIONS / "0015_precio_venta_margen.py"))["upgrade"]()
+    runpy.run_path(str(VERSIONS / "0016_formulario_consumo.py"))["upgrade"]()
     assert set(operations.metadata.tables) == set(Base.metadata.tables)
     dialect = postgresql.dialect()
     for key, declared in operations.metadata.tables.items():

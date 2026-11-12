@@ -22,10 +22,12 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.orm import Session
 
-from backend import cueros, ocr_llm, proveedores, reventa, servicios, sheets_client, voz, voz_llm
-from backend.auth import CORTE, CUALQUIER_ROL, PRODUCTOS, SOLO_ADMIN, Usuario, require_user
+from backend import cueros, formulario, ocr_llm, proveedores, reventa, servicios, sheets_client, voz, voz_llm
+from backend.auth import (
+    CORTE, CUALQUIER_ROL, FORMULARIO_LEER, FORMULARIO_TRABAJAR, PRODUCTOS, SOLO_ADMIN, Usuario, require_user,
+)
 from backend.database import get_session
-from backend.models import ARS_USD, DOCUMENT_TYPES, LOT_STATES, UNITS, WHERE_MADE
+from backend.models import ARS_USD, DOCUMENT_TYPES, FORM_SECTIONS, FORM_STATES, LOT_STATES, UNITS, WHERE_MADE
 from backend.sheets_client import ErrorDeSheets, SheetsClient
 from backend.sheets_export import NOMBRES_DE_PESTANAS, Fuente, FuenteSQL, _catalogo, _costos_variables, construir_tab, construir_tabs
 
@@ -257,6 +259,8 @@ class PrecioVentaIn(Entrada):
     precio_ars: Annotated[Decimal, Field(gt=0, max_digits=14, decimal_places=4)]
     vigente_desde: date | None = None
     nota: str | None = None
+    # The margin used to reach the price, a fraction of the price (0.30 = 30 %); None = typed by hand.
+    margen: Annotated[Decimal, Field(ge=0, lt=1, max_digits=6, decimal_places=3)] | None = None
 
 
 class EscenarioItemIn(Entrada):
@@ -819,6 +823,7 @@ class ImpuestoDelPrecioOut(Salida):
 class PrecioVentaOut(Salida):
     producto: str
     precio_ars: Decimal
+    margen: Decimal | None
     vigente_desde: date
     nota: str | None
     creado_por: str | None
@@ -839,6 +844,13 @@ class RentabilidadOut(Salida):
     markup_pct: Decimal | None
     veredicto: Literal["NO_CUBRE_VARIABLE", "MC_BAJO", "SALUDABLE"] | None
     motivo: Literal["SIN_PRECIO", "SIN_COSTO_VARIABLE"] | None
+
+
+class PrecioSugeridoOut(Salida):
+    producto: str
+    costo: Decimal | None
+    margen_pct: Decimal
+    precio: Decimal | None
 
 
 class EscenarioFijosOut(Salida):
@@ -1352,6 +1364,15 @@ def rentabilidad_de_producto(
     return servicios.rentabilidad_de_producto(session, codigo, precio)
 
 
+@router.get("/productos/{codigo}/precio-sugerido", dependencies=LECTURA_PRODUCTOS, response_model=PrecioSugeridoOut)
+def precio_sugerido_de_producto(
+    codigo: str, session: Sesion,
+    margen: Annotated[Decimal, Query(ge=0, lt=100, max_digits=6, decimal_places=3)],
+):
+    """Price that leaves `margen` % of the sale price over today's cost (cost / (1 - margin)); saves nothing."""
+    return servicios.precio_sugerido_de_producto(session, codigo, margen)
+
+
 @router.get("/panel/tendencia", dependencies=LECTURA_ADMIN, response_model=TendenciaOut)
 def tendencia_de_costos(
     session: Sesion, hasta: Annotated[str | None, Query(pattern=PERIODO)] = None,
@@ -1412,7 +1433,7 @@ def guardar_precio_de_venta(codigo: str, cuerpo: PrecioVentaIn, session: Sesion,
     """Appends a dated sale price; history is never edited or deleted."""
     return servicios.guardar_precio_de_venta(
         session, codigo, precio_ars=cuerpo.precio_ars, vigente_desde=cuerpo.vigente_desde, nota=cuerpo.nota,
-        quien=usuario.id,
+        margen=cuerpo.margen, quien=usuario.id,
     )
 
 
@@ -2053,6 +2074,135 @@ def confirmar_datos_de_documento(id: DocumentoId, cuerpo: DatosDeDocumentoIn, se
     return proveedores.confirm_document_data(session, id, **cuerpo.model_dump())
 
 
+# --- Consumption forms (formulario de consumos y herrajes) ---------------------------------------------------------------
+# One digital sheet per new article; the rules, states and who may do what are in formulario.py. No costing happens here.
+# Gates: read = admin, gerente, taller (the service shows the taller only ENVIADO / COMPLETADO); edit rows and complete =
+# admin + taller (the service lets a taller touch only the rows, only while ENVIADO); everything else is admin only.
+
+FormularioLector = Annotated[Usuario, Depends(FORMULARIO_LEER)]
+FormularioTrabajador = Annotated[Usuario, Depends(FORMULARIO_TRABAJAR)]
+Articulo = Annotated[str, Field(min_length=1, max_length=200)]
+NotaDeFormulario = Annotated[str, Field(max_length=2000)]
+
+
+class FormularioNuevoIn(Entrada):
+    articulo: Articulo
+    taller: Annotated[str, Field(max_length=40)] | None = None  # TAL-NNNN
+    producto: Annotated[str, Field(max_length=40)] | None = None  # PRD-NNNN
+    nota: NotaDeFormulario | None = None
+
+
+class FormularioLineaIn(Entrada):
+    seccion: Literal[*FORM_SECTIONS]
+    nombre: Annotated[str, Field(min_length=1, max_length=200)]
+    cantidad: Annotated[Decimal, Field(ge=0, max_digits=12, decimal_places=6)] | None = None
+    comentario: Annotated[str, Field(max_length=2000)] | None = None
+
+
+class FormularioGuardarIn(Entrada):
+    """The full sheet: the order of `lineas` is the order of the rows inside each section."""
+    articulo: Articulo
+    nota: NotaDeFormulario | None = None
+    lineas: Annotated[list[FormularioLineaIn], Field(max_length=formulario.MAX_LINEAS)]
+
+
+class FormularioDevolverIn(Entrada):
+    comentario: Annotated[str, Field(min_length=1, max_length=2000)]
+
+
+class FormularioDuplicarIn(Entrada):
+    articulo: Articulo
+
+
+class FormularioLineaOut(Salida):
+    seccion: Literal[*FORM_SECTIONS]
+    orden: int
+    nombre: str
+    cantidad: Decimal | None
+    comentario: str | None
+
+
+class FormularioResumenOut(Salida):
+    codigo: str
+    articulo: str
+    estado: Literal[*FORM_STATES]
+    producto: str | None
+    taller: str | None
+    creado_por: str
+    created_at: datetime
+    enviado_en: datetime | None
+    completado_en: datetime | None
+    validado_en: datetime | None
+
+
+class FormularioOut(FormularioResumenOut):
+    nota: str | None
+    comentario_revision: str | None
+    completado_por: str | None
+    validado_por: str | None
+    lineas: list[FormularioLineaOut]
+
+
+@router.post("/formularios", response_model=FormularioOut, status_code=201)
+def crear_formulario(cuerpo: FormularioNuevoIn, session: Sesion, usuario: SoloAdmin):
+    """A BORRADOR with the preloaded rows (CONSUMOS and HERRAJES, empty quantities)."""
+    return formulario.crear_formulario(session, quien=usuario.id, **cuerpo.model_dump())
+
+
+@router.get("/formularios", response_model=list[FormularioResumenOut])
+def listar_formularios(
+    session: Sesion, usuario: FormularioLector, q: Annotated[str | None, Query(max_length=100)] = None,
+    estado: Literal[*FORM_STATES] | None = None, producto: Annotated[str | None, Query(max_length=40)] = None,
+):
+    """Newest first. A taller only gets the ENVIADO and COMPLETADO ones. `producto` (PRD-NNNN) keeps the forms of that product."""
+    return formulario.listar_formularios(session, q=q, estado=estado, producto=producto, roles=usuario.roles)
+
+
+@router.get("/formularios/{codigo}", response_model=FormularioOut)
+def obtener_formulario(codigo: str, session: Sesion, usuario: FormularioLector):
+    """404 when it does not exist or the caller may not see it (a taller never sees BORRADOR or VALIDADO)."""
+    return formulario.obtener_formulario(session, codigo, usuario.roles)
+
+
+@router.put("/formularios/{codigo}", response_model=FormularioOut)
+def guardar_formulario(codigo: str, cuerpo: FormularioGuardarIn, session: Sesion, usuario: FormularioTrabajador):
+    """Replaces articulo, nota and the full set of rows. 409 if VALIDADO; a taller only edits rows, only while ENVIADO."""
+    return formulario.guardar_formulario(
+        session, codigo, articulo=cuerpo.articulo, nota=cuerpo.nota,
+        lineas=[linea.model_dump() for linea in cuerpo.lineas], roles=usuario.roles)
+
+
+@router.post("/formularios/{codigo}/enviar", response_model=FormularioOut)
+def enviar_formulario(codigo: str, session: Sesion, usuario: SoloAdmin):
+    """BORRADOR | ENVIADO -> ENVIADO."""
+    return formulario.cambiar_estado(session, codigo, "enviar", roles=usuario.roles, quien=usuario.id)
+
+
+@router.post("/formularios/{codigo}/completar", response_model=FormularioOut)
+def completar_formulario(codigo: str, session: Sesion, usuario: FormularioTrabajador):
+    """ENVIADO -> COMPLETADO."""
+    return formulario.cambiar_estado(session, codigo, "completar", roles=usuario.roles, quien=usuario.id)
+
+
+@router.post("/formularios/{codigo}/devolver", response_model=FormularioOut)
+def devolver_formulario(codigo: str, cuerpo: FormularioDevolverIn, session: Sesion, usuario: SoloAdmin):
+    """COMPLETADO -> ENVIADO with a review comment."""
+    return formulario.cambiar_estado(
+        session, codigo, "devolver", roles=usuario.roles, quien=usuario.id, comentario=cuerpo.comentario)
+
+
+@router.post("/formularios/{codigo}/validar", response_model=FormularioOut)
+def validar_formulario(codigo: str, session: Sesion, usuario: SoloAdmin):
+    """COMPLETADO -> VALIDADO (immutable from then on)."""
+    return formulario.cambiar_estado(session, codigo, "validar", roles=usuario.roles, quien=usuario.id)
+
+
+@router.post("/formularios/{codigo}/duplicar", response_model=FormularioOut, status_code=201)
+def duplicar_formulario(codigo: str, cuerpo: FormularioDuplicarIn, session: Sesion, usuario: SoloAdmin):
+    """A new BORRADOR for another article copying the rows of this form, in any state."""
+    return formulario.duplicar_formulario(session, codigo, articulo=cuerpo.articulo, quien=usuario.id, roles=usuario.roles)
+
+
 # --- Voice module (T7) ---------------------------------------------------------------------------------------------------
 # The model only EXTRACTS intent and raw mentions from one short sentence; `voz.proponer` resolves them against the database
 # with deterministic code and answers a PROPOSAL (resolved fields, candidates, missing data, the endpoint and the body for
@@ -2121,7 +2271,7 @@ def interpretar_voz(
 # --- Errors ----------------------------------------------------------------------------------------------------
 
 def registrar_errores(app: FastAPI) -> None:
-    """Map service errors to HTTP codes: 404 missing, 409 already there, 413 file too big, 422 refused, 502 outside source down."""
+    """Map service errors to HTTP codes: 403 role cannot do it on this resource, 404 missing, 409 already there / invalid transition, 413 file too big, 422 refused, 502 outside source down."""
 
     @app.exception_handler(servicios.FuenteNoDisponible)
     async def fuente_no_disponible(request: Request, error: servicios.FuenteNoDisponible):
@@ -2130,6 +2280,10 @@ def registrar_errores(app: FastAPI) -> None:
     @app.exception_handler(proveedores.ArchivoMuyGrande)
     async def archivo_muy_grande(request: Request, error: proveedores.ArchivoMuyGrande):
         return JSONResponse(status_code=413, content={"detail": str(error)})
+
+    @app.exception_handler(formulario.SinPermiso)
+    async def sin_permiso(request: Request, error: formulario.SinPermiso):
+        return JSONResponse(status_code=403, content={"detail": str(error)})
 
     @app.exception_handler(servicios.NoEncontrado)
     async def no_encontrado(request: Request, error: servicios.NoEncontrado):

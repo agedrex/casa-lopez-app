@@ -252,7 +252,7 @@ Son las reglas que el Excel aplica sin decirlo: de fórmula, de criterio o de fo
 
 **La fuente de verdad es el código:** `backend/src/backend/models.py` y las migraciones, explicados en `docs/der-v3.md`. Su origen es la pestaña `Diccionario` de `Plantilla Costos Casa Lopez v4.1 (trabajo).xlsx`, que el 2026-10-27 reemplazó al DER v1 y a las reglas del Excel viejo [V: `odd/tasks/app-casa-lopez-v3.md`, S1 y L1]. Si este archivo y el código no coinciden, **gana el código** y se corrige este. `docs/der-v3.md` está algo atrasado: no lista `precio_venta`, `proveedor` ni `documento_proveedor` (migraciones 0006 y 0007) y dice consumos `NUMERIC(10,4)` cuando son `(12,6)` [V: `models.py`]. `docs/der.md`, `der-borrador.sql`, `wo1-modelo-conceptual.md`, `wo2-decisiones.md` y `wo2-staging.md` hablan del DER v1 (11 tablas, `cotizacion_linea`, GG): son **históricos**, no se implementan.
 
-### Migraciones (14, cabeza `0014_gastos_venta_pct`) [V: `backend/migrations/versions`]
+### Migraciones (16, cabeza `0016_formulario_consumo`) [V: `backend/migrations/versions`]
 | Revisión | Qué hace |
 |---|---|
 | `0001_esquema_costos`, `0002_semillas` | DER v1 y sus semillas. Históricas. |
@@ -268,10 +268,12 @@ Son las reglas que el Excel aplica sin decirlo: de fórmula, de criterio o de fo
 | `0012_impuesto_activo` | `impuesto.activo`: desactivar un impuesto no lo borra. |
 | `0013_impuestos_vacios` | Borra los tres impuestos sembrados (IVA, IIBB, GANANCIAS): la grilla de impuestos arranca vacía. |
 | `0014_gastos_venta_pct` | Agrega la fila de `parametro` `GASTOS_VENTA_PCT` (gastos variables de venta, fracción del precio neto, en 0, sin confirmar). No cambia tablas. Su `downgrade` borra solo esa fila. |
+| `0015_precio_venta_margen` | Agrega `precio_venta.margen` (`NUMERIC(6,3)`, fracción del precio, 0.30 = 30 %, NULL = precio tipeado a mano) y un check `margen IS NULL OR (margen >= 0 AND margen < 1)`. Su `downgrade` borra el check y la columna: se pierden los márgenes guardados. |
+| `0016_formulario_consumo` | Tablas `formulario_consumo` (código `FCO-nnnn`, artículo, estado `BORRADOR` / `ENVIADO` / `COMPLETADO` / `VALIDADO`, comentario de revisión, quién y cuándo envió, completó y validó) y `formulario_consumo_linea` (sección `CONSUMO` / `HERRAJE`, orden, nombre, cantidad `NUMERIC(12,6)` nullable y >= 0, comentario): la planilla digital de consumos y herrajes de un artículo nuevo. No calcula nada. Su `downgrade` borra las dos tablas: se pierden los formularios y las cantidades cargadas. |
 
-Todas tienen `downgrade`, pero bajar de 0014 (borra el valor cargado de `GASTOS_VENTA_PCT`), 0013 (vuelve a crear los impuestos sembrados), 0012 (los impuestos desactivados vuelven a estar activos), 0011 (pierde el vínculo al proveedor), 0010 (falla si hay filas sin unidades), 0009, 0007, 0006 o 0005 borra datos o cambia totales (0009: las filas anuladas vuelven a contar) (ver `docs/produccion.md`, sección 5).
+Todas tienen `downgrade`, pero bajar de 0016 (borra los dos formularios de consumos y todo lo que cargó el taller), 0015 (borra los márgenes guardados en `precio_venta.margen`), 0014 (borra el valor cargado de `GASTOS_VENTA_PCT`), 0013 (vuelve a crear los impuestos sembrados), 0012 (los impuestos desactivados vuelven a estar activos), 0011 (pierde el vínculo al proveedor), 0010 (falla si hay filas sin unidades), 0009, 0007, 0006 o 0005 borra datos o cambia totales (0009: las filas anuladas vuelven a contar) (ver `docs/produccion.md`, sección 5).
 
-### Tablas (30 en el schema `costos`) [V: `models.py`, `docs/der-v3.md`]
+### Tablas (32 en el schema `costos`) [V: `models.py`, `docs/der-v3.md`]
 | Grupo | Tablas | Lo que no hay que romper |
 |---|---|---|
 | Catálogo | `modelo`, `producto`, `receta_linea`, `kit_componente`, `molde`, `modelo_molde` | `modelo` es qué se fabrica y trae los consumos por unidad (cuero, forro, flex, goma EVA, herrajes en USD, hilo y cemento) y la confección estimada. `producto` es un modelo en un cuero y un color (`modelo_id` puede ser NULL en un kit). `receta_linea` guarda **solo** las líneas `EXTRA` (un segundo cuero, un herraje puntual); las del modelo se calculan. En `modelo`, NULL = dato faltante y 0 = "no lleva". `nombre_del_modelo` es único. |
@@ -282,6 +284,7 @@ Todas tienen `downgrade`, pero bajar de 0014 (borra el valor cargado de `GASTOS_
 | Inventario de cuero | `pieza_cuero`, `movimiento_cuero`, `conteo_inventario` | Un movimiento `CORTE` tiene que apuntar a su `orden_item`. |
 | Mercadería (tablas `*_reventa`) | `producto_reventa`, `compra_reventa` | Productos comprados hechos y revendidos, fuera del motor de costeo. El costo es el costo unitario de la compra más nueva; cada compra nueva es una fila (solo se agregan). Solo ARS y sin stock (SUPUESTO: validar). Solo `admin`. |
 | Proveedores | `proveedor`, `documento_proveedor` | Las facturas e imágenes se guardan en la base (`bytea`, sin object storage). El OCR solo sugiere: **no crea precios**. `precio_material.proveedor` es texto y **no** está vinculado a `proveedor` [V: docstring de la migración 0007]. |
+| Formularios de consumos | `formulario_consumo`, `formulario_consumo_linea` | Una planilla por artículo nuevo; el taller carga cantidades en m² o unidades y el admin la valida. Una planilla `VALIDADO` es inmutable (se duplica para cambiarla) y no se borra nada. **No hay costeo ni cálculo** y no toca `modelo` ni `receta_linea`. Las filas precargadas (14 consumos y 16 herrajes) viven en una constante de `backend/src/backend/formulario.py`, no en la base. SUPUESTO: el rol `taller` no está atado a un taller concreto: cualquier usuario `taller` ve las planillas `ENVIADO` y `COMPLETADO`. |
 
 Reglas transversales:
 - `codigo` es la clave de negocio: único y nunca cambia (`MOD-`, `PRD-`, `PRE-`, `GF-`, `PRV-` más número; `REX-`, `LOT-` y `LIT-` son prefijos nuestros, SUPUESTO: validar). Las claves foráneas apuntan a `id`.
@@ -303,15 +306,15 @@ Reglas transversales:
 
 ## 5.1 Pantallas y roles
 
-Menú del admin (escritorio) [V: `front/lib/nav.ts`, revisión 2026-11-12]: **Administración** (arriba de todo; su primera pestaña es el **Panel**, en `/admin/panel`: costo-volumen, dólar del día automático y alertas) · **Producción** (Productos, Modelos, Catálogos, Lotes, Inventario de cuero) · **Abastecimiento** (Proveedores, Talleres) · Costos fijos (Mano de obra, Servicios básicos) · Costos variables · Producción · Voz (botón de micrófono en el header de desktop). Ya no existen Grilla completa ni el menú de Modelos. Versión anterior: **Panel del negocio** (costo-volumen) · **1 · Datos de base** (Dólar, Materiales y precios, Cueros, Proveedores, Modelos) · **2 · Productos y costos** (Productos: lista y ficha con cotizaciones y precio de venta) · **3 · Producción** (Lotes, Talleres) · **4 · Fin de mes** (Costos fijos) · **Consultas** (Grilla completa) · **Control** (Alertas) · **Herramientas** (Voz, Administración: usuarios, parámetros, modelos, catálogos, personas e impuestos). Además hay una pantalla **Corte** para el rol taller. Principio de UI: resumen primero (una línea por producto), detalle a demanda; no replicar el ir y venir del Excel.
+Menú del admin (escritorio) [V: `front/lib/nav.ts`, revisión 2026-11-12]: **Administración** (arriba de todo; su primera pestaña es el **Panel**, en `/admin/panel`: costo-volumen, dólar del día automático y alertas) · **Producción** (Productos, Modelos, Catálogos, Lotes, Formularios de consumos, Inventario de cuero) · **Abastecimiento** (Proveedores, Talleres) · Costos fijos (Mano de obra, Servicios básicos) · Costos variables · Producción · Voz (botón de micrófono en el header de desktop). Ya no existen Grilla completa ni el menú de Modelos. Versión anterior: **Panel del negocio** (costo-volumen) · **1 · Datos de base** (Dólar, Materiales y precios, Cueros, Proveedores, Modelos) · **2 · Productos y costos** (Productos: lista y ficha con cotizaciones y precio de venta) · **3 · Producción** (Lotes, Talleres) · **4 · Fin de mes** (Costos fijos) · **Consultas** (Grilla completa) · **Control** (Alertas) · **Herramientas** (Voz, Administración: usuarios, parámetros, modelos, catálogos, personas e impuestos). Además hay una pantalla **Corte** para el rol taller. Principio de UI: resumen primero (una línea por producto), detalle a demanda; no replicar el ir y venir del Excel.
 
 Roles de la app (`user.role` de Better Auth) [V: `backend/src/backend/auth.py`, `front/lib/permissions.ts`, `odd/tasks/roles-admin-gerente-taller.md`]. Los endpoints niegan por defecto:
 
 | Rol | Qué puede |
 |---|---|
 | `admin` | Todo: lecturas, escrituras y la administración de usuarios. Es el único que escribe. |
-| `gerente` | Solo lectura de Productos (lista y ficha), su rentabilidad, la Grilla y el Panel (`/admin/panel`: costo-volumen, dólar y alertas; sin el botón de cargar dólar). Es el rol por defecto de un usuario nuevo. |
-| `taller` | Corte, Cueros, Voz y la **lista** de productos con sus costos (no la ficha). Por voz confirma solo `registrar_precio_taller`. No ve lo pagado por m² de cuero. |
+| `gerente` | Solo lectura de Productos (lista y ficha), su rentabilidad, la Grilla y el Panel (`/admin/panel`: costo-volumen, dólar y alertas; sin el botón de cargar dólar). Es el rol por defecto de un usuario nuevo. También lee los Formularios de consumos. |
+| `taller` | Corte, Cueros, Voz y la **lista** de productos con sus costos (no la ficha). Por voz confirma solo `registrar_precio_taller`. No ve lo pagado por m² de cuero. Completa los **Formularios** de consumos que le envían (`docs/formularios.md`). |
 
 Los nombres viejos se leen mapeados: `cotizador` → `admin`, `corte` → `taller`, `consulta` → `gerente`. Un usuario sin rol reconocido cae en `/sin-acceso`. SUPUESTO: qué persona real (Gerardo, Alejandro, quien reemplace a Gerardo) tiene qué rol no figura en el repo; el rol `taller` y su alcance están marcados "validar" en la spec de roles.
 

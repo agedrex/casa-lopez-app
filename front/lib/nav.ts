@@ -58,6 +58,11 @@ export const NAV_ITEMS: NavGroup[] = [
     title: "3 · Producción",
     items: [
       { href: "/fabricacion", label: "Lotes" },
+      {
+        href: "/formularios",
+        label: "Formularios",
+        icon: "/costos-fijos",
+      },
       { href: "/talleres", label: "Talleres" },
     ],
   },
@@ -92,6 +97,11 @@ const GERENTE_NAV: NavGroup[] = [
     title: "Producción",
     items: [
       { href: "/fabricacion", label: "Lotes" },
+      {
+        href: "/formularios",
+        label: "Formularios",
+        icon: "/costos-fijos",
+      },
       { href: "/cueros", label: "Inventario de cuero" },
     ],
   },
@@ -111,6 +121,11 @@ const TALLER_NAV: NavGroup[] = [
     items: [
       { href: "/corte", label: "Corte" },
       { href: "/cueros", label: "Cueros" },
+      {
+        href: "/formularios",
+        label: "Formularios",
+        icon: "/costos-fijos",
+      },
     ],
   },
   {
@@ -145,6 +160,11 @@ const DESKTOP_NAV: NavGroup[] = [
       { href: "/productos/modelos", label: "Modelos", adminOnly: true },
       { href: "/productos/catalogos", label: "Catálogos", adminOnly: true },
       { href: "/fabricacion", label: "Lotes" },
+      {
+        href: "/formularios",
+        label: "Formularios",
+        icon: "/costos-fijos",
+      },
       { href: "/cueros", label: "Inventario de cuero" },
     ],
   },

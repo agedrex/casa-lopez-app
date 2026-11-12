@@ -59,6 +59,9 @@ DOCUMENT_TYPES = ("FACTURA", "IMAGEN", "OTRO")
 # The file type is checked by its magic bytes (proveedores.detect_mime); these are the only ones stored.
 DOCUMENT_MIMES = ("image/jpeg", "image/png", "image/webp", "application/pdf")
 OCR_STATES = ("PENDIENTE", "LISTO", "ERROR", "NO_CONFIGURADO")
+# Consumption form of a new article (see formulario.py): its states, in order, and the two tables of the sheet.
+FORM_STATES = ("BORRADOR", "ENVIADO", "COMPLETADO", "VALIDADO")
+FORM_SECTIONS = ("CONSUMO", "HERRAJE")
 
 
 class IdentityAndCreatedAt:
@@ -326,10 +329,13 @@ class PrecioVenta(IdentityAndCreatedAt, Base):
     __tablename__ = "precio_venta"
     __table_args__ = (
         CheckConstraint("precio_ars > 0", name="precio_positivo"),
+        CheckConstraint("margen IS NULL OR (margen >= 0 AND margen < 1)", name="margen_en_rango"),
         Index("precio_venta_producto_fecha", "producto_id", "vigente_desde"),
     )
     producto_id: Mapped[int] = mapped_column(ForeignKey("costos.producto.id"))
     precio_ars: Mapped[Decimal] = mapped_column(money())
+    # The margin the person used to reach the price, as a fraction of the price (0.30 = 30 %); NULL = typed by hand.
+    margen: Mapped[Decimal | None] = mapped_column(pct())
     vigente_desde: Mapped[date] = mapped_column(Date)
     # The auth user id as text, like cotizacion.creado_por (no FK: Better Auth lives in `public`).
     creado_por: Mapped[str | None] = mapped_column(Text)
@@ -599,3 +605,48 @@ class Cotizacion(IdentityAndCreatedAt, Base):
     total_usd: Mapped[Decimal] = mapped_column(money())
     # SUPUESTO: validar. The sheet gives no list of values for the quote "Estado".
     estado: Mapped[str | None] = mapped_column(Text)
+
+
+# --- Consumption form (paper sheet "consumos y herrajes") --------------------------------------------------------
+
+class FormularioConsumo(BusinessKey, Base):
+    """The digital sheet of one new article: what the workshop reports it consumes. Nothing is deleted or calculated.
+
+    `codigo` is `FCO-NNNN`. The state moves BORRADOR -> ENVIADO -> COMPLETADO -> VALIDADO (or back to ENVIADO with a
+    review comment); a VALIDADO form is immutable (duplicate it to change it). The `*_por` columns hold the auth user id
+    as text (no FK: Better Auth lives in `public`). The sheet is per article, not per `modelo`: the product is optional.
+    """
+    __tablename__ = "formulario_consumo"
+    __table_args__ = (one_of("estado", FORM_STATES, "estado"),)
+    articulo: Mapped[str] = mapped_column(Text)
+    producto_id: Mapped[int | None] = mapped_column(ForeignKey("costos.producto.id"), index=True)
+    taller_id: Mapped[int | None] = mapped_column(ForeignKey("costos.taller.id"))
+    estado: Mapped[str] = mapped_column(Text)
+    # Why the admin sent it back to the workshop (kept after the workshop completes it again).
+    comentario_revision: Mapped[str | None] = mapped_column(Text)
+    nota: Mapped[str | None] = mapped_column(Text)
+    creado_por: Mapped[str] = mapped_column(Text)
+    enviado_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completado_por: Mapped[str | None] = mapped_column(Text)
+    completado_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    validado_por: Mapped[str | None] = mapped_column(Text)
+    validado_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class FormularioConsumoLinea(IdentityAndCreatedAt, Base):
+    """One row of a form: a consumption (m2) or a hardware item (units). `nombre` is free text and editable.
+
+    NULL `cantidad` = not filled in yet. The set of rows of a form is replaced as a whole on every save.
+    """
+    __tablename__ = "formulario_consumo_linea"
+    __table_args__ = (
+        one_of("seccion", FORM_SECTIONS, "seccion"),
+        CheckConstraint("cantidad IS NULL OR cantidad >= 0", name="cantidad_no_negativa"),
+        UniqueConstraint("formulario_id", "seccion", "orden", name="uq_formulario_consumo_linea_formulario_id_seccion_orden"),
+    )
+    formulario_id: Mapped[int] = mapped_column(ForeignKey("costos.formulario_consumo.id"))
+    seccion: Mapped[str] = mapped_column(Text)
+    orden: Mapped[int] = mapped_column(Integer)
+    nombre: Mapped[str] = mapped_column(Text)
+    cantidad: Mapped[Decimal | None] = mapped_column(quantity())
+    comentario: Mapped[str | None] = mapped_column(Text)

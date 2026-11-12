@@ -686,6 +686,8 @@ export type ImpuestoDelPrecio = {
 export type PrecioVenta = {
   producto: string;
   precio_ars: string;
+  // Margin used to reach the price, a fraction of the price ("0.300" = 30 %); null = typed by hand.
+  margen: string | null;
   vigente_desde: string;
   nota: string | null;
   creado_por: string | null;
@@ -710,6 +712,13 @@ export type Rentabilidad = {
   markup_pct: string | null;
   veredicto: VeredictoCvu | null;
   motivo: "SIN_PRECIO" | "SIN_COSTO_VARIABLE" | null;
+};
+
+export type PrecioSugerido = {
+  producto: string;
+  costo: string | null;
+  margen_pct: string;
+  precio: string | null;
 };
 
 export type EscenarioResultado = {
@@ -944,4 +953,43 @@ export type HistorialDeTaller = {
   // Newest first.
   lotes: LoteDeTaller[];
   productos: ProductoDeTaller[];
+};
+
+// Consumption form ("formulario de consumos y herrajes"), mirrors FormularioOut in api.py. No amounts of money:
+// `cantidad` is a decimal string (m2 or units) exactly as stored.
+export type FormularioEstado =
+  | "BORRADOR"
+  | "ENVIADO"
+  | "COMPLETADO"
+  | "VALIDADO";
+
+export type FormularioSeccion = "CONSUMO" | "HERRAJE";
+
+export type FormularioLinea = {
+  seccion: FormularioSeccion;
+  orden: number;
+  nombre: string;
+  cantidad: string | null;
+  comentario: string | null;
+};
+
+export type FormularioResumen = {
+  codigo: string;
+  articulo: string;
+  estado: FormularioEstado;
+  producto: string | null;
+  taller: string | null;
+  creado_por: string;
+  created_at: string;
+  enviado_en: string | null;
+  completado_en: string | null;
+  validado_en: string | null;
+};
+
+export type Formulario = FormularioResumen & {
+  nota: string | null;
+  comentario_revision: string | null;
+  completado_por: string | null;
+  validado_por: string | null;
+  lineas: FormularioLinea[];
 };

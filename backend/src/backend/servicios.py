@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session, aliased
 from backend import dolar_bna
 from backend.costeo import (
     Desglose, ItemLote, PrecioVigente, Precios, ProductoEnMezcla, ZERO, confeccion_externa, costo_kit, costo_por_unidad,
-    equilibrio_con_mezcla, importe_sobre_precio, margen_de_contribucion, margen_por_hora, necesita_recotizar, punto_de_equilibrio, resultado_cvu,
+    equilibrio_con_mezcla, importe_sobre_precio, margen_de_contribucion, margen_por_hora, necesita_recotizar, precio_con_margen, punto_de_equilibrio, resultado_cvu,
 )
 from backend.models import (
     Categoria, Color, Cotizacion, Etapa, GastoPeriodo, Impuesto, KitComponente, Material, Modelo,
@@ -2824,8 +2824,8 @@ AVISOS_DE_FIJOS = {
 
 def _precio_de_venta_a_dict(fila: PrecioVenta, codigo: str, impuestos: list[dict]) -> dict:
     return {
-        "producto": codigo, "precio_ars": fila.precio_ars, "vigente_desde": fila.vigente_desde, "nota": fila.nota,
-        "creado_por": fila.creado_por, "creado_en": fila.created_at,
+        "producto": codigo, "precio_ars": fila.precio_ars, "margen": fila.margen, "vigente_desde": fila.vigente_desde,
+        "nota": fila.nota, "creado_por": fila.creado_por, "creado_en": fila.created_at,
         **armar_precio_con_impuestos(fila.precio_ars, impuestos),
     }
 
@@ -2839,15 +2839,18 @@ def _producto_o_404(session: Session, codigo: str) -> Producto:
 
 def guardar_precio_de_venta(
     session: Session, codigo_producto: str, *, precio_ars: Decimal, vigente_desde: date | None = None,
-    nota: str | None = None, quien: str | None = None, hoy: date | None = None,
+    nota: str | None = None, margen: Decimal | None = None, quien: str | None = None, hoy: date | None = None,
 ) -> dict:
-    """Append one dated sale price. Never updates or deletes: a new price is a new row."""
+    """Append one dated sale price. Never updates or deletes: a new price is a new row.
+
+    `margen` is the fraction of the price (0.30 = 30 %) the person used to reach it; None = typed by hand.
+    """
     if precio_ars is None or precio_ars <= 0:
         raise DatosInvalidos("El precio de venta tiene que ser mayor que cero.")
     producto = _producto_o_404(session, codigo_producto)
     fila = PrecioVenta(
         producto_id=producto.id, precio_ars=precio_ars, vigente_desde=vigente_desde or hoy or date.today(),
-        creado_por=quien, nota=nota or None,
+        creado_por=quien, nota=nota or None, margen=margen,
     )
     _insertar(session, fila, "Ya hay un precio de venta cargado para ese producto en esa fecha.")
     session.commit()
@@ -2918,6 +2921,16 @@ def rentabilidad_de_producto(session: Session, codigo: str, precio: Decimal | No
         codigo=codigo, costo=_costos_totales_de_hoy(session, {codigo})[codigo], precio_ingresado=precio,
         precio_guardado=guardado,
     )
+
+
+def precio_sugerido_de_producto(session: Session, codigo: str, margen_pct: Decimal) -> dict:
+    """Price that leaves `margen_pct` % of the sale price over today's cost; reads only, saves nothing."""
+    _producto_o_404(session, codigo)
+    costo = _costos_totales_de_hoy(session, {codigo})[codigo]
+    return {
+        "producto": codigo, "costo": costo, "margen_pct": margen_pct,
+        "precio": None if costo is None else precio_con_margen(costo, margen_pct),
+    }
 
 
 def armar_escenario(

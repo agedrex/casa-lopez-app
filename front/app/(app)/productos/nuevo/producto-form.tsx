@@ -155,6 +155,22 @@ export function ProductoForm({
           </span>
         </label>
       </div>
+      <div className="flex items-start gap-3">
+        <input
+          id="producto-formulario"
+          name="enviar_formulario"
+          type="checkbox"
+          defaultChecked
+          className="mt-0.5 size-5 accent-ink"
+        />
+        <label htmlFor="producto-formulario" className="text-sm">
+          Mandar el formulario de consumos al taller
+          <span className="block text-xs text-muted">
+            El taller recibe la hoja con el nombre del artículo y la completa.
+            Después la revisás y la validás desde Formularios.
+          </span>
+        </label>
+      </div>
       <FormFeedback state={state} />
       <PrimaryButton pending={pending}>
         {pending ? "Creando…" : "Crear producto"}

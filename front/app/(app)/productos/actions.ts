@@ -3,7 +3,8 @@
 import { redirect } from "next/navigation";
 import { error, type FormState } from "@/lib/action-state";
 import { apiPost } from "@/lib/api";
-import type { Ficha } from "@/lib/types";
+import { collapseSpaces } from "@/lib/productos";
+import type { Ficha, Formulario } from "@/lib/types";
 import {
   denyUnlessWriter,
   fromFailure,
@@ -40,5 +41,20 @@ export async function createProducto(
     nota: optional(formData, "nota"),
   });
   if (!result.ok) return fromFailure(result);
-  redirect(`/productos/${encodeURIComponent(result.data.codigo)}`);
+  const producto = `/productos/${encodeURIComponent(result.data.codigo)}`;
+  if (formData.get("enviar_formulario") !== "on" || esKit) redirect(producto);
+
+  // The product already exists: if the form cannot be created or sent, the person lands on the
+  // product and can send it by hand from Formularios (never a second product by retrying).
+  const formulario = await apiPost<Formulario>("/formularios", {
+    articulo: collapseSpaces(result.data.nombre),
+    producto: result.data.codigo,
+  });
+  if (!formulario.ok) redirect(producto);
+  // If sending fails the form stays in BORRADOR and the admin sees it (and the button) on its page.
+  await apiPost<Formulario>(
+    `/formularios/${encodeURIComponent(formulario.data.codigo)}/enviar`,
+    {},
+  );
+  redirect(`/formularios/${encodeURIComponent(formulario.data.codigo)}`);
 }

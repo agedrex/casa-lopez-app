@@ -85,6 +85,7 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
     ("GET", "/productos/conteo"): TODOS,  # taller: the pagination of that list (the sheet itself stays admin / gerente)
     ("GET", "/productos/{codigo}"): TODOS,
     ("GET", "/productos/{codigo}/rentabilidad"): PRODUCTOS,
+    ("GET", "/productos/{codigo}/precio-sugerido"): PRODUCTOS,
     ("GET", "/productos/{codigo}/precio-venta"): PRODUCTOS,
     ("GET", "/grilla"): PRODUCTOS,
     ("GET", "/catalogos"): TODOS,
@@ -113,6 +114,13 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
     # Writes: admin only, except cutting and the voice interpreter.
     ("POST", "/cueros/{codigo}/cortes"): CORTE, ("POST", "/cueros/{codigo}/sobrante"): CORTE,
     ("POST", "/voz/interpretar"): CORTE,
+    # Consumption forms: everybody reads (the service hides BORRADOR / VALIDADO from taller), admin and taller edit the rows
+    # and complete, the rest is admin only.
+    ("GET", "/formularios"): TODOS, ("GET", "/formularios/{codigo}"): TODOS,
+    ("PUT", "/formularios/{codigo}"): CORTE, ("POST", "/formularios/{codigo}/completar"): CORTE,
+    **{("POST", ruta): ADMIN for ruta in (
+        "/formularios", "/formularios/{codigo}/enviar", "/formularios/{codigo}/devolver", "/formularios/{codigo}/validar",
+        "/formularios/{codigo}/duplicar")},
     # The only write the voice grants a taller: the price a workshop quoted or was paid for a lot line.
     ("POST", "/ordenes/{codigo}/items/{item}/precios"): CORTE,
     **{("POST", ruta): ADMIN for ruta in (
@@ -213,16 +221,20 @@ def test_admin_only_routes_refuse_everyone_else_without_calling_the_service(monk
                  ("GET", "/catalogos"), ("GET", "/materiales"),
                  ("GET", "/panel/costos"), ("GET", "/calidad"), ("GET", "/dolar"),
                  ("GET", "/ordenes"), ("GET", "/ordenes/LOT-1"), ("GET", "/cueros"), ("GET", "/cueros/PZC-1"),
-                 ("GET", "/talleres"), ("GET", "/talleres/T-1"), ("GET", "/proveedores"), ("GET", "/proveedores/PRV-1")]),
+                 ("GET", "/talleres"), ("GET", "/talleres/T-1"), ("GET", "/proveedores"), ("GET", "/proveedores/PRV-1"),
+                 ("GET", "/formularios"), ("GET", "/formularios/FCO-0001")]),
     ("taller", [("GET", "/productos"), ("GET", "/productos/conteo"), ("GET", "/materiales"), ("GET", "/cueros"), ("GET", "/cueros/PZC-1"),
                 ("GET", "/cueros/alcanza?producto=P&cantidad=1"), ("GET", "/colores"), ("GET", "/ordenes"),
                 ("GET", "/ordenes/LOT-1"), ("GET", "/voz/estado"),
                 ("GET", "/productos/X-1"),
                 ("GET", "/modelos"), ("GET", "/modelos/MOD-1"), ("GET", "/precios"), ("GET", "/categorias"), ("GET", "/catalogos"), ("GET", "/dolar"),
-                ("POST", "/cueros/PZC-1/cortes"), ("POST", "/cueros/PZC-1/sobrante"), ("POST", "/voz/interpretar")]),
+                ("POST", "/cueros/PZC-1/cortes"), ("POST", "/cueros/PZC-1/sobrante"), ("POST", "/voz/interpretar"),
+                ("GET", "/formularios"), ("GET", "/formularios/FCO-0001"), ("PUT", "/formularios/FCO-0001"),
+                ("POST", "/formularios/FCO-0001/completar")]),
     ("admin", [("GET", "/panel/costos"), ("GET", "/costos-fijos"), ("GET", "/ordenes"), ("GET", "/productos"),
                ("GET", "/cueros"), ("GET", "/voz/estado"), ("POST", "/cvu/escenario"), ("POST", "/ordenes"),
-               ("POST", "/productos"), ("POST", "/cueros/PZC-1/cortes")]),
+               ("POST", "/productos"), ("POST", "/cueros/PZC-1/cortes"), ("POST", "/formularios"),
+               ("PUT", "/formularios/FCO-0001"), ("POST", "/formularios/FCO-0001/validar")]),
 ])
 def test_each_role_passes_the_gate_of_its_allowed_set(role, rutas):
     cliente = _cliente(role)

@@ -1,6 +1,7 @@
 "use server";
 
 import { refresh } from "next/cache";
+import { percentToFraction } from "@/app/(app)/admin/impuestos/percent";
 import { error, type FormState, ok } from "@/lib/action-state";
 import { apiPost } from "@/lib/api";
 import {
@@ -118,9 +119,25 @@ export async function savePrecioVenta(
     );
   }
 
+  // The margin the person typed, in percent ("30" or "30,5"); the API stores it as a fraction of the price.
+  const typedMargin = optional(formData, "margen");
+  let margen: string | null = null;
+  if (typedMargin !== null) {
+    const parsed = parseDecimalInput(typedMargin);
+    margen =
+      parsed !== null && Number(parsed) < 100
+        ? percentToFraction(parsed)
+        : null;
+    if (margen === null) {
+      return error(
+        "El margen tiene que ser un porcentaje entre 0 y 99,9, por ejemplo 30.",
+      );
+    }
+  }
+
   const result = await apiPost<PrecioVenta>(
     `/productos/${encodeURIComponent(codigo)}/precio-venta`,
-    { precio_ars: precio, nota: optional(formData, "nota") },
+    { precio_ars: precio, nota: optional(formData, "nota"), margen },
   );
   if (!result.ok) return fromFailure(result);
   refresh();

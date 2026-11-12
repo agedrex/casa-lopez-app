@@ -92,6 +92,17 @@ export function canUseVoice(value: string | null | undefined): boolean {
   return roles.includes("admin") || roles.includes("taller");
 }
 
+/** Consumption forms: admin, gerente and taller read them (the backend shows the taller only ENVIADO / COMPLETADO). */
+export function canReadFormularios(value: string | null | undefined): boolean {
+  return parseRoles(value).length > 0;
+}
+
+/** Consumption forms: admin and taller fill them in and complete them; every other action is admin only (canWrite). */
+export function canWorkFormularios(value: string | null | undefined): boolean {
+  const roles = parseRoles(value);
+  return roles.includes("admin") || roles.includes("taller");
+}
+
 /**
  * Where each role lands and which paths it may open. `null` paths = everything. `paths` open a
  * route and everything below it; `exact` open only that route (taller reads the product LIST,
@@ -112,13 +123,21 @@ const ROLE_ACCESS: Record<
       "/cueros",
       "/talleres",
       "/proveedores",
+      "/formularios",
     ],
     exact: ["/admin/panel"],
   },
   // Taller keeps Corte, Cueros and Voz, and reads everything needed to quote or assemble a product.
   taller: {
     home: "/corte",
-    paths: ["/corte", "/cueros", "/voz", "/productos", "/materiales"],
+    paths: [
+      "/corte",
+      "/cueros",
+      "/voz",
+      "/productos",
+      "/materiales",
+      "/formularios",
+    ],
   },
 };
 
