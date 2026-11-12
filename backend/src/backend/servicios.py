@@ -2607,14 +2607,14 @@ def _hallazgos_de_modelos(session: Session) -> tuple[list[dict], list[dict]]:
     ).all()
     for codigo, nombre, categoria_id, cuero, forro_id, forro_m2, validado in filas:
         if not validado:
-            sin_validar.append(_hallazgo("baja", codigo, f"Modelo sin validar: {nombre}", "/admin/modelos"))
+            sin_validar.append(_hallazgo("baja", codigo, f"Modelo sin validar: {nombre}", "/productos/modelos"))
         for falla in (
             "Falta la categoría" if categoria_id is None else None,
             "Falta el consumo de cuero" if cuero is None else None,
             "Falta elegir el forro" if (forro_m2 or 0) > 0 and forro_id is None else None,
         ):
             if falla:
-                con_problemas.append(_hallazgo("media", codigo, f"{falla}: {nombre}", "/admin/modelos"))
+                con_problemas.append(_hallazgo("media", codigo, f"{falla}: {nombre}", "/productos/modelos"))
     return sin_validar, con_problemas
 
 

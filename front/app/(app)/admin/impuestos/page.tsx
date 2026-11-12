@@ -51,6 +51,14 @@ export default async function ImpuestosPage() {
                   </tr>
                 </thead>
                 <tbody>
+                  {result.data.length === 0 ? (
+                    <tr>
+                      <td className={tdClass} colSpan={4}>
+                        Todavía no hay impuestos. Los que cargues abajo se suman
+                        al precio de venta.
+                      </td>
+                    </tr>
+                  ) : null}
                   {result.data.map((impuesto) => (
                     <tr key={impuesto.codigo} className="hover:bg-paper-mid/50">
                       <td className={tdClass}>

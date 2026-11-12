@@ -185,15 +185,15 @@ def test_a_tax_is_created_with_a_server_code_on_the_sale_price_and_active(api):
         "es_costo_del_producto": False, "nota": None, "activo": True,
     }
     assert nuevo(api, "Percepción de obra", "0.01")["codigo"] == "IMP-0002"
-    assert [i["codigo"] for i in api.get("/impuestos").json()] == ["IVA", "IIBB", "GANANCIAS", "IMP-0001", "IMP-0002"]
+    assert [i["codigo"] for i in api.get("/impuestos").json()] == ["IMP-0001", "IMP-0002"]
 
 
-def test_the_listing_keeps_every_existing_field_and_adds_the_active_flag(api):
-    impuestos = {i["codigo"]: i for i in api.get("/impuestos").json()}
-    assert set(impuestos["IVA"]) == {"codigo", "nombre", "alicuota", "base", "es_costo_del_producto", "nota", "activo"}
-    assert impuestos["IVA"]["alicuota"] == "0.210" and impuestos["IVA"]["base"] == "COMPRA"
-    assert impuestos["IVA"]["es_costo_del_producto"] is False and impuestos["IIBB"]["alicuota"] is None
-    assert all(i["activo"] is True for i in impuestos.values())
+def test_the_grid_starts_empty_and_the_listing_keeps_every_field_and_adds_the_active_flag(api):
+    assert api.get("/impuestos").json() == []  # revision 0013 removed the seeded taxes
+    nuevo(api)
+    impuesto = api.get("/impuestos").json()[0]
+    assert set(impuesto) == {"codigo", "nombre", "alicuota", "base", "es_costo_del_producto", "nota", "activo"}
+    assert impuesto["alicuota"] == "0.035" and impuesto["base"] == "VENTA" and impuesto["activo"] is True
 
 
 def test_a_repeated_name_is_a_conflict_and_a_bad_percentage_stores_nothing(api):
@@ -202,17 +202,17 @@ def test_a_repeated_name_is_a_conflict_and_a_bad_percentage_stores_nothing(api):
     assert api.post("/impuestos", json={"nombre": "Otro", "alicuota": "21"}).status_code == 422
     assert api.post("/impuestos", json={"nombre": "Otro", "alicuota": "-0.1"}).status_code == 422
     assert api.post("/impuestos", json={"nombre": "   ", "alicuota": "0.1"}).status_code == 422
-    assert len(api.get("/impuestos").json()) == 4
+    assert len(api.get("/impuestos").json()) == 1
 
 
 def test_the_percentage_is_edited_in_place_and_a_bad_one_changes_nothing(api):
-    cambiado = api.post("/impuestos/IVA/alicuota", json={"alicuota": "0.105"})
+    nuevo(api, "IVA", "0.21")
+    cambiado = api.post("/impuestos/IMP-0001/alicuota", json={"alicuota": "0.105"})
     assert cambiado.status_code == 200 and cambiado.json()["alicuota"] == "0.105"
-    assert api.post("/impuestos/IIBB/alicuota", json={"alicuota": "0.035"}).json()["alicuota"] == "0.035"  # it had none
-    assert api.post("/impuestos/IVA/alicuota", json={"alicuota": "2"}).status_code == 422
-    assert api.post("/impuestos/IVA/alicuota", json={"alicuota": None}).status_code == 422
+    assert api.post("/impuestos/IMP-0001/alicuota", json={"alicuota": "2"}).status_code == 422
+    assert api.post("/impuestos/IMP-0001/alicuota", json={"alicuota": None}).status_code == 422
     assert api.post("/impuestos/IMP-9999/alicuota", json={"alicuota": "0.1"}).status_code == 404
-    assert {i["codigo"]: i["alicuota"] for i in api.get("/impuestos").json()}["IVA"] == "0.105"
+    assert {i["codigo"]: i["alicuota"] for i in api.get("/impuestos").json()}["IMP-0001"] == "0.105"
 
 
 def test_a_tax_is_deactivated_not_deleted_and_can_be_activated_again(api):
@@ -222,11 +222,12 @@ def test_a_tax_is_deactivated_not_deleted_and_can_be_activated_again(api):
     assert [i["activo"] for i in api.get("/impuestos").json() if i["codigo"] == "IMP-0001"] == [False]
     assert api.post("/impuestos/IMP-0001/activo", json={"activo": True}).json()["activo"] is True
     assert api.post("/impuestos/IMP-9999/activo", json={"activo": False}).status_code == 404
-    assert len(api.get("/impuestos").json()) == 4  # nothing was deleted
+    assert len(api.get("/impuestos").json()) == 1  # nothing was deleted
     assert api.delete("/impuestos/IMP-0001").status_code in (404, 405)
 
 
 def test_only_an_admin_edits_the_taxes_and_the_gerente_cannot_read_them(api):
+    nuevo(api, "IVA", "0.21")
     for role in ("taller", "gerente"):
         como(role)
         assert api.post("/impuestos", json={"nombre": "X", "alicuota": "0.1"}).status_code == 403
@@ -234,16 +235,17 @@ def test_only_an_admin_edits_the_taxes_and_the_gerente_cannot_read_them(api):
         assert api.post("/impuestos/IVA/activo", json={"activo": False}).status_code == 403
         assert api.get("/impuestos").status_code == 403
     como("admin")
-    assert {i["codigo"]: i["alicuota"] for i in api.get("/impuestos").json()}["IVA"] == "0.210"
+    assert {i["codigo"]: i["alicuota"] for i in api.get("/impuestos").json()}["IMP-0001"] == "0.210"
 
 
 def test_a_saved_price_comes_with_the_breakdown_of_the_active_taxes_and_the_final_price(api):
     codigo = producto(api)["codigo"]
+    nuevo(api, "IVA", "0.21")
     nuevo(api)
     guardado = precio_de_venta(api, codigo)
     assert guardado["precio_ars"] == "50000.0000"  # existing field, untouched
     assert [(i["codigo"], i["alicuota"], D(i["monto"])) for i in guardado["impuestos"]] == [
-        ("IVA", "0.210", D("10500")), ("IMP-0001", "0.035", D("1750"))]
+        ("IMP-0001", "0.210", D("10500")), ("IMP-0002", "0.035", D("1750"))]
     assert D(guardado["total_impuestos"]) == D("12250") and D(guardado["precio_final"]) == D("62250")
     historial = api.get(f"/productos/{codigo}/precio-venta").json()
     assert D(historial[0]["precio_final"]) == D("62250") and historial[0]["precio_ars"] == "50000.0000"
@@ -252,14 +254,15 @@ def test_a_saved_price_comes_with_the_breakdown_of_the_active_taxes_and_the_fina
 
 def test_a_deactivated_tax_leaves_the_breakdown_and_the_history_follows_the_active_ones(api):
     codigo = producto(api)["codigo"]
+    nuevo(api, "IVA", "0.21")
     nuevo(api)
     precio_de_venta(api, codigo, "50000", vigente_desde="2026-09-01")
     precio_de_venta(api, codigo, "60000", vigente_desde="2026-10-01")
-    assert api.post("/impuestos/IVA/activo", json={"activo": False}).status_code == 200
+    assert api.post("/impuestos/IMP-0001/activo", json={"activo": False}).status_code == 200
     historial = api.get(f"/productos/{codigo}/precio-venta").json()
     assert [(p["precio_ars"], [i["codigo"] for i in p["impuestos"]], D(p["precio_final"])) for p in historial] == [
-        ("60000.0000", ["IMP-0001"], D("62100")), ("50000.0000", ["IMP-0001"], D("51750"))]
-    assert api.post("/impuestos/IMP-0001/activo", json={"activo": False}).status_code == 200
+        ("60000.0000", ["IMP-0002"], D("62100")), ("50000.0000", ["IMP-0002"], D("51750"))]
+    assert api.post("/impuestos/IMP-0002/activo", json={"activo": False}).status_code == 200
     sin = api.get(f"/productos/{codigo}/precio-venta").json()[0]
     assert sin["impuestos"] == [] and D(sin["total_impuestos"]) == 0 and D(sin["precio_final"]) == D("60000")
 
@@ -271,9 +274,10 @@ def test_taxes_never_change_the_cost_nor_the_saved_quotes_nor_the_real_margin(ap
     precio_de_venta(api, codigo, "65000")
     antes = api.get(f"/productos/{codigo}").json()
     margen_antes = api.get(f"/productos/{codigo}/rentabilidad").json()
+    nuevo(api, "IVA", "0.21")
     nuevo(api, "Tasa municipal", "0.035")
-    assert api.post("/impuestos/IVA/alicuota", json={"alicuota": "0.5"}).status_code == 200
-    assert api.post("/impuestos/IVA/activo", json={"activo": False}).status_code == 200
+    assert api.post("/impuestos/IMP-0001/alicuota", json={"alicuota": "0.5"}).status_code == 200
+    assert api.post("/impuestos/IMP-0001/activo", json={"activo": False}).status_code == 200
     despues = api.get(f"/productos/{codigo}").json()
     assert despues["costo_hoy"] == antes["costo_hoy"] and D(despues["costo_hoy"]["total_ars"]) == TOTAL_DOLAR_1700
     assert despues["cotizaciones"] == antes["cotizaciones"] and D(despues["costo_hoy"]["iva_compras"]) == 0
@@ -282,3 +286,19 @@ def test_taxes_never_change_the_cost_nor_the_saved_quotes_nor_the_real_margin(ap
     assert D(margen["margen_unidad"]) == D("65000") - TOTAL_DOLAR_1700  # on the price without taxes
     nueva = api.post(f"/productos/{codigo}/cotizaciones", json={"tipo": "RECOTIZACION", "fecha": "2026-10-01"})
     assert nueva.status_code == 201 and D(nueva.json()["total_ars"]) == TOTAL_DOLAR_1700
+
+
+# --- Migration 0013 --------------------------------------------------------------------------------------------
+
+
+def test_the_empty_grid_revision_deletes_only_the_three_seeded_taxes_and_downgrade_restores_them(monkeypatch):
+    ejecutadas = []
+    revision = runpy.run_path(str(VERSIONS / "0013_impuestos_vacios.py"))
+    monkeypatch.setitem(revision["upgrade"].__globals__, "op", type("Op", (), {"execute": staticmethod(ejecutadas.append)}))
+    assert revision["revision"] == "0013_impuestos_vacios" and revision["down_revision"] == "0012_impuesto_activo"
+    revision["upgrade"]()
+    revision["downgrade"]()
+    borrado, reinsertado = (str(sentencia) for sentencia in ejecutadas)
+    assert "DELETE FROM costos.impuesto WHERE codigo IN ('IVA', 'IIBB', 'GANANCIAS')" in borrado
+    assert "IMP-" not in borrado  # a tax created from the grid stays
+    assert "'IVA'" in reinsertado and "ON CONFLICT (codigo) DO NOTHING" in reinsertado

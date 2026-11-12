@@ -2,7 +2,7 @@
 
 Source of truth: sheet `Diccionario` of `Plantilla Costos Casa Lopez v4.1 (trabajo).xlsx`.
 It supersedes [`der.md`](der.md) (DER v1) and the old Excel rules (GG 11 % is gone; CORTE is fixed; CONFECCION and HILO_CEMENTO are separate stages).
-The models are in `backend/src/backend/models.py`; Alembic revision `0003_der_v3` drops the v1 tables and creates these ones, and `0004_semillas_v3` loads the reference data `0005_gasto_reemplaza_a` adds `gasto_periodo.reemplaza_a_id` `0009_gasto_anulado` adds `gasto_periodo.anulado` `0010_compra_sin_unidades` makes `compra_reventa.unidades` nullable and `0012_impuesto_activo` adds `impuesto.activo`.
+The models are in `backend/src/backend/models.py`; Alembic revision `0003_der_v3` drops the v1 tables and creates these ones, and `0004_semillas_v3` loads the reference data `0005_gasto_reemplaza_a` adds `gasto_periodo.reemplaza_a_id` `0009_gasto_anulado` adds `gasto_periodo.anulado` `0010_compra_sin_unidades` makes `compra_reventa.unidades` nullable and `0012_impuesto_activo` adds `impuesto.activo` and `0013_impuestos_vacios` removes the three seeded taxes (the tax grid starts empty).
 
 Only columns marked `carga` / `clave` in the dictionary are persisted. Columns marked `calculada (la app recalcula)` are computed by the backend, except in `cotizacion`, which stores a calculated snapshot. Sheets marked `vista` are not tables.
 
@@ -67,7 +67,8 @@ The payments to a workshop need no new table: `GET /talleres/{codigo}/historial`
 
 - **Taxes go on the sale price, never on the cost.** `GET /productos/{codigo}/precio-venta` and the `POST` that saves a price keep their fields and add `impuestos` (one line per active tax with a percentage: `codigo`, `nombre`, `alicuota`, `monto`), `total_impuestos` and `precio_final`. They are computed on read with `Decimal`, with the taxes active today; nothing is stored with the price.
 - **The costing engine does not change**, and neither do the cost or the saved quotes. The engine only reads the `IVA` row (percentage and `es_costo_del_producto`, which is not editable and is `false`); it does not read `activo`.
-- **Downgrade** drops `impuesto.activo`: the deactivated taxes would be active again.
+- **Revision 0013** deletes the seeded IVA, IIBB and GANANCIAS (no other table references `impuesto`; the engine counts a missing IVA row as 0 %). Its downgrade puts the three back.
+- **Downgrade of 0012** drops `impuesto.activo`: the deactivated taxes would be active again.
 - SUPUESTO: validar con el contador: each tax is `precio × alicuota` over the net price (they do not compound), amounts rounded to 4 decimals, and the real margin stays on the price without taxes. The seeded `IVA` (21 %, `base` COMPRA in the sheet) now also applies to the sale price; `IIBB` and `GANANCIAS` have no percentage, so they add nothing until one is loaded.
 
 ## Open assumptions (`SUPUESTO: validar`)

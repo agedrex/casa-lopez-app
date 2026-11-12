@@ -360,14 +360,12 @@ def test_people_need_an_admin(api):
     assert len(api.get("/personas").json()) == 7 and api.get("/personas").json()[0]["activo"] is True
 
 
-def test_taxes_are_listed_with_their_flags(api):
+def test_the_tax_grid_starts_empty_and_a_new_tax_lists_with_its_flags(api):
     como("admin")
-    impuestos = {i["codigo"]: i for i in api.get("/impuestos").json()}
-    assert list(impuestos) == ["IVA", "IIBB", "GANANCIAS"]
-    assert impuestos["IVA"]["alicuota"] == "0.210" and impuestos["IVA"]["es_costo_del_producto"] is False
-    assert impuestos["IVA"]["base"] == "COMPRA" and impuestos["IIBB"]["alicuota"] is None
-    # `activo` was added by 0012 (taxes on the sale price, see test_impuestos.py); the rest is unchanged.
-    assert set(impuestos["IVA"]) == {"codigo", "nombre", "alicuota", "base", "es_costo_del_producto", "nota", "activo"}
+    assert api.get("/impuestos").json() == []  # revision 0013 removed the seeded taxes
+    creado = api.post("/impuestos", json={"nombre": "IVA", "alicuota": "0.21"}).json()
+    assert set(creado) == {"codigo", "nombre", "alicuota", "base", "es_costo_del_producto", "nota", "activo"}
+    assert creado["alicuota"] == "0.210" and creado["es_costo_del_producto"] is False and creado["base"] == "VENTA"
     assert api.post("/impuestos", json={}).status_code == 422
     assert api.post("/impuestos/IVA", json={"alicuota": "0"}).status_code in (404, 405)
 
@@ -543,6 +541,6 @@ def test_quality_findings_of_models_and_parameters_point_to_their_admin_screens(
     como("admin")
     grupos = {g["clave"]: g for g in api.get("/calidad").json()["grupos"]}
     assert grupos["modelos_sin_validar"]["hallazgos"] and grupos["parametros"]["hallazgos"]
-    assert {h["ruta"] for h in grupos["modelos_sin_validar"]["hallazgos"]} == {"/admin/modelos"}
-    assert {h["ruta"] for h in grupos["modelos"]["hallazgos"]} <= {"/admin/modelos"}
+    assert {h["ruta"] for h in grupos["modelos_sin_validar"]["hallazgos"]} == {"/productos/modelos"}
+    assert {h["ruta"] for h in grupos["modelos"]["hallazgos"]} <= {"/productos/modelos"}
     assert {h["ruta"] for h in grupos["parametros"]["hallazgos"]} == {"/admin/parametros"}
