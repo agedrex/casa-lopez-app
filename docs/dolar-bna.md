@@ -16,11 +16,23 @@ en vez de tipearlo a mano.
   fecha, no se hace nada (la app avisa "ya estaba cargado"). Si el banco cambia el valor el
   mismo día, el que ya está guardado se queda.
 
-## Botón en la app
+## En el panel
 
-En **Dólar** hay un botón **Actualizar desde BNA** (lo ven solo el admin y el cotizador).
-Muestra "Dólar BNA cargado: $… al DD/MM/AAAA." o "El dólar BNA de esa fecha ya estaba
-cargado." Si el banco no responde o cambió la página, muestra un aviso y no guarda nada.
+El Panel muestra **un solo cuadro**, "Dólar del día", con el valor más reciente guardado, su
+origen (Banco Nación · vendedor) y la fecha. No hay botón, formulario ni historial en esa vista.
+
+Se actualiza solo: al abrir el Panel, si el último dólar guardado es anterior a hoy (hora de
+Buenos Aires), el navegador pide a una acción de servidor que corra la misma carga que el
+comando de abajo. **SUPUESTO:** esto reemplaza al cron mientras no exista; como no hay un
+proceso en segundo plano, el dólar se trae la primera vez que alguien abre el Panel cada día.
+
+- Es idempotente: si la fecha del banco ya estaba guardada no cambia nada, y la pantalla solo se
+  refresca cuando se agregó una fila nueva. El historial se agrega, nunca se edita.
+- Se intenta una sola vez por día y por sesión del navegador (`sessionStorage`). Los fines de
+  semana el banco informa la fecha del viernes, así que el cuadro sigue mostrando esa fecha.
+- Si el banco no responde, el cuadro conserva el último valor guardado y no muestra error.
+- Cargar un dólar a mano ya no tiene pantalla; sigue existiendo `POST /dolar` (lo usa la carga
+  por voz) y el historial completo se ve en `GET /dolar`.
 
 ## Correrlo desde la terminal
 
@@ -40,7 +52,7 @@ uv run python -m backend.actualizar_dolar
 Se puede agendar con un **cron de Railway** que corra ese mismo comando, por ejemplo los días
 hábiles a las 10:30 y a las 16:00 hs de Argentina (el banco actualiza durante el día; correr
 dos veces es seguro porque no duplica). **Hoy no hay ningún cron creado**: hasta que se
-configure, el dólar se actualiza con el botón o a mano.
+configure, el dólar se actualiza al abrir el Panel (ver arriba).
 
 ## Cuándo se rompe
 

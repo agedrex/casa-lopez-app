@@ -3,7 +3,7 @@
 import { refresh } from "next/cache";
 import { error, type FormState, ok } from "@/lib/action-state";
 import { apiPost } from "@/lib/api";
-import { formatDate, formatRate, parseDecimalInput } from "@/lib/format";
+import { parseDecimalInput } from "@/lib/format";
 import type { Dolar } from "@/lib/types";
 import {
   denyUnlessWriter,
@@ -50,10 +50,12 @@ export async function createDolar(
   return ok("Dólar cargado.");
 }
 
-export async function actualizarDolarBna(
-  _previous: FormState,
-  _formData: FormData,
-): Promise<FormState> {
+/**
+ * Loads today's BNA quote when the panel opens. Idempotent: if the bank's date is already
+ * stored the API changes nothing (history is only ever appended), and the page is refreshed
+ * only when a new row was added.
+ */
+export async function traerDolarDelDia(): Promise<FormState> {
   const denied = await denyUnlessWriter();
   if (denied) return denied;
 
@@ -63,12 +65,6 @@ export async function actualizarDolarBna(
     BNA_TIMEOUT_MS,
   );
   if (!result.ok) return fromFailure(result);
-  refresh();
-  const { estado, ars_por_usd, fecha } = result.data;
-  if (estado === "ya_existia") {
-    return ok("El dólar BNA de esa fecha ya estaba cargado.");
-  }
-  return ok(
-    `Dólar BNA cargado: $${formatRate(ars_por_usd)} al ${formatDate(fecha)}.`,
-  );
+  if (result.data.estado === "creado") refresh();
+  return ok("Dólar al día.");
 }
