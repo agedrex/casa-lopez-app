@@ -360,14 +360,15 @@ def test_people_need_an_admin(api):
     assert len(api.get("/personas").json()) == 7 and api.get("/personas").json()[0]["activo"] is True
 
 
-def test_taxes_are_listed_with_their_flags_and_cannot_be_edited(api):
+def test_taxes_are_listed_with_their_flags(api):
     como("admin")
     impuestos = {i["codigo"]: i for i in api.get("/impuestos").json()}
     assert list(impuestos) == ["IVA", "IIBB", "GANANCIAS"]
     assert impuestos["IVA"]["alicuota"] == "0.210" and impuestos["IVA"]["es_costo_del_producto"] is False
     assert impuestos["IVA"]["base"] == "COMPRA" and impuestos["IIBB"]["alicuota"] is None
-    assert set(impuestos["IVA"]) == {"codigo", "nombre", "alicuota", "base", "es_costo_del_producto", "nota"}
-    assert api.post("/impuestos", json={}).status_code == 405
+    # `activo` was added by 0012 (taxes on the sale price, see test_impuestos.py); the rest is unchanged.
+    assert set(impuestos["IVA"]) == {"codigo", "nombre", "alicuota", "base", "es_costo_del_producto", "nota", "activo"}
+    assert api.post("/impuestos", json={}).status_code == 422
     assert api.post("/impuestos/IVA", json={"alicuota": "0"}).status_code in (404, 405)
 
 

@@ -124,5 +124,10 @@ export async function savePrecioVenta(
   );
   if (!result.ok) return fromFailure(result);
   refresh();
-  return ok(`Precio guardado: ${formatArs(result.data.precio_ars)}.`);
+  const conImpuestos = result.data.impuestos?.length
+    ? ` Con impuestos: ${formatArs(result.data.precio_final)}.`
+    : "";
+  return ok(
+    `Precio guardado: ${formatArs(result.data.precio_ars)}.${conImpuestos}`,
+  );
 }

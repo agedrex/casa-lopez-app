@@ -90,7 +90,7 @@ def test_revision_chain_replaces_v1_with_v3_then_seeds(monkeypatch):
     for filename in ("0001_esquema_costos.py", "0002_semillas.py", "0003_der_v3.py", "0004_semillas_v3.py",
                      "0005_gasto_reemplaza_a.py", "0006_precio_venta.py", "0007_proveedores_documentos.py",
                      "0008_reventa.py", "0009_gasto_anulado.py", "0010_compra_sin_unidades.py",
-                     "0011_precio_material_proveedor.py"):
+                     "0011_precio_material_proveedor.py", "0012_impuesto_activo.py"):
         _, revision = load_revision(monkeypatch, filename)
         chain[revision["revision"]] = revision["down_revision"]
     assert chain == {
@@ -100,13 +100,14 @@ def test_revision_chain_replaces_v1_with_v3_then_seeds(monkeypatch):
         "0007_proveedores_documentos": "0006_precio_venta", "0008_reventa": "0007_proveedores_documentos",
         "0009_gasto_anulado": "0008_reventa", "0010_compra_sin_unidades": "0009_gasto_anulado",
         "0011_precio_material_proveedor": "0010_compra_sin_unidades",
+        "0012_impuesto_activo": "0011_precio_material_proveedor",
     }
 
 
 def test_der_v3_revision_matches_orm_and_reverses_dependencies(monkeypatch):
     operations, revision = load_revision(monkeypatch, "0003_der_v3.py")
     revision["upgrade"]()
-    # The ORM also carries what 0005 to 0010 add on top of DER v3 (gasto_periodo.reemplaza_a_id, precio_venta,
+    # The ORM also carries what 0005 to 0012 add on top of DER v3 (gasto_periodo.reemplaza_a_id, precio_venta,
     # proveedor, documento_proveedor, the resale tables, gasto_periodo.anulado and precio_material.proveedor_id).
     runpy.run_path(str(VERSIONS / "0005_gasto_reemplaza_a.py"))["upgrade"]()
     runpy.run_path(str(VERSIONS / "0006_precio_venta.py"))["upgrade"]()
@@ -115,6 +116,7 @@ def test_der_v3_revision_matches_orm_and_reverses_dependencies(monkeypatch):
     runpy.run_path(str(VERSIONS / "0009_gasto_anulado.py"))["upgrade"]()
     runpy.run_path(str(VERSIONS / "0010_compra_sin_unidades.py"))["upgrade"]()
     runpy.run_path(str(VERSIONS / "0011_precio_material_proveedor.py"))["upgrade"]()
+    runpy.run_path(str(VERSIONS / "0012_impuesto_activo.py"))["upgrade"]()
     assert set(operations.metadata.tables) == set(Base.metadata.tables)
     dialect = postgresql.dialect()
     for key, declared in operations.metadata.tables.items():

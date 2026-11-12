@@ -135,6 +135,7 @@ def test_invalid_period_is_rejected():
 # test_cvu_rentabilidad.py and test_roles.py), so the generic body-validation tests here leave them out.
 # /cvu/escenario is a POST only because of its body: it computes and saves nothing, but it is admin only anyway.
 SOLO_ADMIN = {"/parametros/{codigo}", "/personas", "/personas/{codigo}/activo", "/colores", "/categorias",
+              "/impuestos", "/impuestos/{codigo}/alicuota", "/impuestos/{codigo}/activo",
               "/modelos/{codigo}/consumos", "/sync/sheets", "/cvu/escenario",
               # Suppliers and documents (see test_proveedores_api.py and test_roles.py).
               "/proveedores", "/proveedores/{codigo}", "/proveedores/{codigo}/activo",

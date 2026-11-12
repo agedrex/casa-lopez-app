@@ -1,27 +1,26 @@
 import type { Metadata } from "next";
 import {
   Badge,
+  Card,
   ErrorNotice,
   Notice,
-  numClass,
   PageHeader,
+  SectionTitle,
   TableWrap,
   tableClass,
   tdClass,
   thClass,
 } from "@/components/ui";
 import { apiGet } from "@/lib/api";
-import { formatQuantity } from "@/lib/format";
 import { requireRole } from "@/lib/session";
 import type { Impuesto } from "@/lib/types";
+import {
+  AlicuotaForm,
+  ImpuestoActivoForm,
+  ImpuestoForm,
+} from "./impuesto-forms";
 
 export const metadata: Metadata = { title: "Impuestos" };
-
-const BASE_LABELS: Record<string, string> = {
-  COMPRA: "Sobre las compras",
-  VENTA: "Sobre las ventas",
-  RESULTADO: "Sobre el resultado de la empresa",
-};
 
 export default async function ImpuestosPage() {
   await requireRole("admin");
@@ -32,62 +31,83 @@ export default async function ImpuestosPage() {
       <PageHeader
         eyebrow="Administración"
         title="Impuestos"
-        description="Solo lectura. Si el IVA cuenta como costo del producto es una decisión de negocio todavía abierta (hay que validarla con el contador), por eso no se edita desde acá."
+        description="Cada impuesto activo se calcula sobre el precio de venta que designás para un producto, no sobre su costo. Nada se borra: un impuesto que ya no corre se desactiva."
       />
-      {result.ok ? (
-        <TableWrap>
-          <table className={tableClass}>
-            <caption className="sr-only">Impuestos y cómo se tratan</caption>
-            <thead>
-              <tr>
-                <th className={thClass}>Impuesto</th>
-                <th className={`${thClass} ${numClass}`}>Alícuota</th>
-                <th className={thClass}>Base</th>
-                <th className={thClass}>¿Es costo del producto?</th>
-                <th className={thClass}>Nota</th>
-              </tr>
-            </thead>
-            <tbody>
-              {result.data.map((impuesto) => (
-                <tr key={impuesto.codigo} className="hover:bg-paper-mid/50">
-                  <td className={tdClass}>
-                    {impuesto.nombre}
-                    <span className="block text-xs text-muted">
-                      {impuesto.codigo}
-                    </span>
-                  </td>
-                  <td className={`${tdClass} ${numClass}`}>
-                    {impuesto.alicuota === null
-                      ? "A confirmar"
-                      : formatQuantity(impuesto.alicuota)}
-                  </td>
-                  <td className={tdClass}>
-                    {impuesto.base
-                      ? (BASE_LABELS[impuesto.base] ?? impuesto.base)
-                      : "—"}
-                  </td>
-                  <td className={tdClass}>
-                    <Badge
-                      tone={impuesto.es_costo_del_producto ? "warn" : "neutral"}
-                    >
-                      {impuesto.es_costo_del_producto ? "Sí" : "No"}
-                    </Badge>
-                  </td>
-                  <td className={`${tdClass} max-w-md text-muted`}>
-                    {impuesto.nota ?? "—"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </TableWrap>
-      ) : (
-        <ErrorNotice message={result.message} />
-      )}
+      <div className="space-y-12">
+        <section>
+          <SectionTitle>Impuestos cargados</SectionTitle>
+          {result.ok ? (
+            <TableWrap>
+              <table className={tableClass}>
+                <caption className="sr-only">
+                  Impuestos y su porcentaje sobre el precio de venta
+                </caption>
+                <thead>
+                  <tr>
+                    <th className={thClass}>Impuesto</th>
+                    <th className={thClass}>Porcentaje</th>
+                    <th className={thClass}>Estado</th>
+                    <th className={thClass}>Acción</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {result.data.map((impuesto) => (
+                    <tr key={impuesto.codigo} className="hover:bg-paper-mid/50">
+                      <td className={tdClass}>
+                        {impuesto.nombre}
+                        <span className="block text-xs text-muted">
+                          {impuesto.codigo}
+                        </span>
+                      </td>
+                      <td className={tdClass}>
+                        <AlicuotaForm
+                          // The key restarts the field when the saved value changes.
+                          key={`${impuesto.codigo}-${impuesto.alicuota}`}
+                          codigo={impuesto.codigo}
+                          nombre={impuesto.nombre}
+                          alicuota={impuesto.alicuota}
+                        />
+                      </td>
+                      <td className={tdClass}>
+                        <Badge tone={impuesto.activo ? "good" : "warn"}>
+                          {impuesto.activo ? "Activo" : "Desactivado"}
+                        </Badge>
+                        {impuesto.alicuota === null ? (
+                          <span className="block text-xs text-muted">
+                            Sin porcentaje: no suma hasta que lo cargue.
+                          </span>
+                        ) : null}
+                      </td>
+                      <td className={tdClass}>
+                        <ImpuestoActivoForm
+                          codigo={impuesto.codigo}
+                          nombre={impuesto.nombre}
+                          activo={impuesto.activo}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableWrap>
+          ) : (
+            <ErrorNotice message={result.message} />
+          )}
+        </section>
+        <section>
+          <SectionTitle>Nuevo impuesto</SectionTitle>
+          <Card>
+            <ImpuestoForm />
+          </Card>
+        </section>
+      </div>
       <div className="mt-6">
-        <Notice tone="info" title="La alícuota es una fracción">
-          0,21 es un 21 %. Los impuestos que no son costo no entran en el costo
-          del producto.
+        <Notice tone="info" title="No cambian el costo">
+          Los impuestos se suman al precio de venta (en la ficha del producto
+          ves el desglose y el precio final). El costo y las cotizaciones no
+          cambian, y el margen real se sigue calculando sobre el precio sin
+          impuestos. Si el IVA cuenta como costo del producto es una decisión
+          abierta que hay que validar con el contador.
         </Notice>
       </div>
     </>

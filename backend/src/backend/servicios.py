@@ -2224,12 +2224,95 @@ def cambiar_activo_persona(session: Session, codigo: str, activo: bool) -> dict:
     return _persona_a_dict(persona)
 
 
-def listar_impuestos(session: Session) -> list[dict]:
-    """Read only: whether VAT is a product cost is an open business decision, so it is not edited from the app."""
-    return [{
+def _impuesto_a_dict(i: Impuesto) -> dict:
+    return {
         "codigo": i.codigo, "nombre": i.nombre, "alicuota": i.alicuota, "base": i.base,
-        "es_costo_del_producto": i.es_costo_del_producto, "nota": i.nota,
-    } for i in session.scalars(select(Impuesto).order_by(Impuesto.id))]
+        "es_costo_del_producto": i.es_costo_del_producto, "nota": i.nota, "activo": i.activo,
+    }
+
+
+def listar_impuestos(session: Session) -> list[dict]:
+    """Every tax, active or not. Whether VAT is a product cost stays an open decision, so it is not edited from the app."""
+    return [_impuesto_a_dict(i) for i in session.scalars(select(Impuesto).order_by(Impuesto.id))]
+
+
+def validar_alicuota(alicuota: Decimal | None) -> None:
+    if alicuota is None:
+        raise DatosInvalidos("Falta el porcentaje del impuesto.")
+    if not ZERO <= alicuota <= Decimal(1):
+        raise DatosInvalidos("Es una fracción entre 0 y 1: un 21 % se escribe 0,21.")
+
+
+def crear_impuesto(session: Session, *, nombre: str, alicuota: Decimal) -> dict:
+    """A tax on the sale price (`base` VENTA), active from the start. The code is `IMP-NNNN`, assigned here.
+    SUPUESTO: validar. `IMP-` is our prefix; the seeded taxes keep their own codes (IVA, IIBB, GANANCIAS)."""
+    nombre = nombre.strip()
+    if not nombre:
+        raise DatosInvalidos("Falta el nombre del impuesto.")
+    validar_alicuota(alicuota)
+    if _nombre_repetido(session, Impuesto.nombre, nombre):
+        raise Conflicto(f"Ya hay un impuesto con el nombre {nombre}.")
+    fila = Impuesto(
+        codigo=f"IMP-{_siguiente_numero(session, Impuesto.codigo, 'IMP'):04d}", nombre=nombre, alicuota=alicuota,
+        base="VENTA", es_costo_del_producto=False, activo=True,
+    )
+    _insertar(session, fila, "No se pudo asignar el código del impuesto; intentá de nuevo.")
+    session.commit()
+    session.refresh(fila)  # answer with what the database stored (NUMERIC(6,3))
+    return _impuesto_a_dict(fila)
+
+
+def _impuesto_o_404(session: Session, codigo: str) -> Impuesto:
+    fila = session.scalar(select(Impuesto).where(Impuesto.codigo == codigo).with_for_update())
+    if fila is None:
+        raise NoEncontrado(f"No existe el impuesto {codigo}.")
+    return fila
+
+
+def cambiar_alicuota_impuesto(session: Session, codigo: str, alicuota: Decimal | None, quien: str | None = None) -> dict:
+    """Overwrite the percentage in place, like a parameter (no history column): the change is logged, nothing else moves.
+    Prices are never stored with taxes, so the next read of a price already uses the new percentage."""
+    validar_alicuota(alicuota)
+    fila = _impuesto_o_404(session, codigo)
+    anterior = fila.alicuota
+    fila.alicuota = alicuota
+    session.commit()
+    session.refresh(fila)
+    logger.info("Tax %s changed by %s: %s -> %s", codigo, quien, anterior, fila.alicuota)
+    return _impuesto_a_dict(fila)
+
+
+def cambiar_activo_impuesto(session: Session, codigo: str, activo: bool) -> dict:
+    """Deactivating deletes nothing: the tax only stops showing in the price breakdown."""
+    fila = _impuesto_o_404(session, codigo)
+    fila.activo = activo
+    session.commit()
+    session.refresh(fila)
+    return _impuesto_a_dict(fila)
+
+
+def _impuestos_activos(session: Session) -> list[dict]:
+    """The taxes that apply to a sale price: active and with a percentage (IIBB and Ganancias have none yet)."""
+    return [
+        {"codigo": i.codigo, "nombre": i.nombre, "alicuota": i.alicuota}
+        for i in session.scalars(
+            select(Impuesto).where(Impuesto.activo.is_(True), Impuesto.alicuota.is_not(None)).order_by(Impuesto.id))
+    ]
+
+
+def armar_precio_con_impuestos(precio: Decimal, impuestos: list[dict]) -> dict:
+    """Pure: breakdown of the taxes over a sale price and the final price. Taxes go on the price, never on the cost.
+
+    SUPUESTO: validar con el contador. Each tax is `precio * alicuota` over the net price (they do not compound), the
+    amounts are rounded to 4 decimals (the money scale) so the lines add up to the total, and the real margin keeps
+    being computed on the price without taxes (they are passed on to the tax office, not earned)."""
+    lineas = [
+        {"codigo": i["codigo"], "nombre": i["nombre"], "alicuota": i["alicuota"],
+         "monto": (precio * i["alicuota"]).quantize(MAS_CUATRO_DECIMALES, ROUND_HALF_UP)}
+        for i in impuestos if i["alicuota"] is not None
+    ]
+    total = sum((linea["monto"] for linea in lineas), ZERO)
+    return {"impuestos": lineas, "total_impuestos": total, "precio_final": precio + total}
 
 
 def _catalogo_a_dict(fila) -> dict:
@@ -2735,10 +2818,11 @@ AVISOS_DE_FIJOS = {
 }
 
 
-def _precio_de_venta_a_dict(fila: PrecioVenta, codigo: str) -> dict:
+def _precio_de_venta_a_dict(fila: PrecioVenta, codigo: str, impuestos: list[dict]) -> dict:
     return {
         "producto": codigo, "precio_ars": fila.precio_ars, "vigente_desde": fila.vigente_desde, "nota": fila.nota,
         "creado_por": fila.creado_por, "creado_en": fila.created_at,
+        **armar_precio_con_impuestos(fila.precio_ars, impuestos),
     }
 
 
@@ -2764,17 +2848,18 @@ def guardar_precio_de_venta(
     _insertar(session, fila, "Ya hay un precio de venta cargado para ese producto en esa fecha.")
     session.commit()
     session.refresh(fila)
-    return _precio_de_venta_a_dict(fila, codigo_producto)
+    return _precio_de_venta_a_dict(fila, codigo_producto, _impuestos_activos(session))
 
 
 def listar_precios_de_venta(session: Session, codigo_producto: str) -> list[dict]:
-    """The price history of a product, newest first (latest `vigente_desde`, then latest id)."""
+    """The price history of a product, newest first (latest `vigente_desde`, then latest id), each with its tax breakdown."""
     producto = _producto_o_404(session, codigo_producto)
     filas = session.scalars(
         select(PrecioVenta).where(PrecioVenta.producto_id == producto.id)
         .order_by(PrecioVenta.vigente_desde.desc(), PrecioVenta.id.desc())
     ).all()
-    return [_precio_de_venta_a_dict(fila, codigo_producto) for fila in filas]
+    impuestos = _impuestos_activos(session)  # the active taxes of today over every saved price
+    return [_precio_de_venta_a_dict(fila, codigo_producto, impuestos) for fila in filas]
 
 
 def _ultimos_precios_de_venta(session: Session, producto_ids: set[int]) -> dict[int, Decimal]:

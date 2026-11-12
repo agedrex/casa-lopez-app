@@ -185,6 +185,7 @@ export type Impuesto = {
   base: string | null;
   es_costo_del_producto: boolean;
   nota: string | null;
+  activo: boolean;
 };
 
 export type ItemCatalogo = {
@@ -675,6 +676,13 @@ export type TendenciaCostos = {
 
 // Sale price and profitability (CVU). Mirrors PrecioVentaOut, RentabilidadOut and EscenarioOut in api.py.
 
+export type ImpuestoDelPrecio = {
+  codigo: string;
+  nombre: string;
+  alicuota: string;
+  monto: string;
+};
+
 export type PrecioVenta = {
   producto: string;
   precio_ars: string;
@@ -682,6 +690,10 @@ export type PrecioVenta = {
   nota: string | null;
   creado_por: string | null;
   creado_en: string | null;
+  // Taxes of today over `precio_ars` (the price without taxes); the cost never carries them.
+  impuestos?: ImpuestoDelPrecio[];
+  total_impuestos?: string | null;
+  precio_final?: string | null;
 };
 
 export type VeredictoCvu = "NO_CUBRE_VARIABLE" | "MC_BAJO" | "SALUDABLE";
