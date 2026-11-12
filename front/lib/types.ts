@@ -808,9 +808,10 @@ export type ProductoReventa = {
 
 export type CompraReventa = {
   fecha: string;
-  unidades: string;
+  // Both null in a price update (a row without units).
+  unidades: string | null;
   costo_unitario_ars: string;
-  costo_total_ars: string;
+  costo_total_ars: string | null;
   precio_venta_unitario_ars: string | null;
   margen_unitario_ars: string | null;
   margen_pct: string | null;
