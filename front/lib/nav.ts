@@ -53,23 +53,14 @@ export const NAV_ITEMS: NavGroup[] = [
     items: [{ href: "/costos-fijos", label: "Costos fijos" }],
   },
   {
-    title: "Consultas",
-    items: [
-      { href: "/grilla", label: "Grilla completa", shortLabel: "Grilla" },
-    ],
-  },
-  {
     title: "Herramientas",
-    items: [
-      { href: "/voz", label: "Voz" },
-      { href: "/admin", label: "Administración", adminOnly: true },
-    ],
+    items: [{ href: "/voz", label: "Voz" }],
   },
 ];
 
 const MOBILE_TAB_HREFS: Record<Role, readonly string[]> = {
   admin: ["/", "/productos", "/materiales", "/fabricacion"],
-  gerente: ["/productos", "/grilla"],
+  gerente: ["/productos"],
   // Three tabs around the "+" button; Voz stays one tap away in that button's quick actions.
   taller: ["/corte", "/cueros", "/productos"],
 };
@@ -78,10 +69,7 @@ const MOBILE_TAB_HREFS: Record<Role, readonly string[]> = {
 const GERENTE_NAV: NavGroup[] = [
   {
     title: "Consultas",
-    items: [
-      { href: "/productos", label: "Productos" },
-      { href: "/grilla", label: "Grilla completa", shortLabel: "Grilla" },
-    ],
+    items: [{ href: "/productos", label: "Productos" }],
   },
 ];
 
@@ -139,10 +127,6 @@ const DESKTOP_NAV: NavGroup[] = [
       { href: "/fabricacion", label: "Lotes" },
       { href: "/talleres", label: "Talleres" },
     ],
-  },
-  {
-    title: "Revisión",
-    items: [{ href: "/grilla", label: "Grilla completa" }],
   },
   {
     title: "",
