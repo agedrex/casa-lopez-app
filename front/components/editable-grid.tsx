@@ -321,6 +321,8 @@ export function EditableGrid({
   rows,
   noun,
   allowNew = false,
+  startWithDraft = true,
+  addLabel = "Agregar fila",
   allowDelete = false,
   newRowDefaults,
   newRowLabel = "Fila nueva",
@@ -340,6 +342,13 @@ export function EditableGrid({
   /** What a row is, for the counters: `{ one: "modelo", many: "modelos" }`. */
   noun: { one: string; many: string };
   allowNew?: boolean;
+  /**
+   * With `allowNew`, whether an empty draft row is always waiting at the end. Turn it off to show
+   * only the saved rows and let the add button create each new row.
+   */
+  startWithDraft?: boolean;
+  /** Text of the add button (needs `allowNew`). */
+  addLabel?: string;
   /** Lets a saved row be marked for deletion; the parent decides what deleting means. */
   allowDelete?: boolean;
   newRowDefaults?: Record<string, string>;
@@ -370,7 +379,9 @@ export function EditableGrid({
   );
   const [edits, setEdits] = useState<Edits>({});
   const [drafts, setDrafts] = useState<Draft[]>(() =>
-    allowNew ? [{ id: "nuevo-0", cells: { ...defaults } }] : [],
+    allowNew && startWithDraft
+      ? [{ id: "nuevo-0", cells: { ...defaults } }]
+      : [],
   );
   const [deleted, setDeleted] = useState<string[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
@@ -553,7 +564,7 @@ export function EditableGrid({
   function discard() {
     setEdits({});
     setDeleted([]);
-    setDrafts(allowNew ? [makeDraft()] : []);
+    setDrafts(allowNew && startWithDraft ? [makeDraft()] : []);
     setAttempted(false);
     setResult(IDLE);
     setPasteInfo("");
@@ -587,7 +598,7 @@ export function EditableGrid({
         if (outcome.status === "ok") {
           setEdits({});
           setDeleted([]);
-          setDrafts(allowNew ? [makeDraft()] : []);
+          setDrafts(allowNew && startWithDraft ? [makeDraft()] : []);
           setAttempted(false);
         }
       } catch {
@@ -997,7 +1008,7 @@ export function EditableGrid({
           onClick={() => addDraft()}
           className="min-h-12 w-full rounded-card border border-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm hover:bg-ink hover:text-white sm:min-h-0 sm:w-auto"
         >
-          Agregar fila
+          {addLabel}
         </button>
       ) : null}
       {footer}
