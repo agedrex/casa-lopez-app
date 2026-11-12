@@ -2,11 +2,10 @@ import type { Metadata } from "next";
 import { ErrorNotice, PageHeader, SectionTitle } from "@/components/ui";
 import { apiGet } from "@/lib/api";
 import { requireSession } from "@/lib/session";
-import type { Calidad, PanelCostos, TendenciaCostos } from "@/lib/types";
+import type { Calidad, PanelCostos } from "@/lib/types";
 import { Alertas, type AlertasSearch, alertasFilters } from "./alertas-panel";
 import { DolarPanel } from "./dolar-panel";
 import { BloqueConError, PanelCvu } from "./panel-cvu";
-import { TendenciaDeCostos } from "./tendencia-costos";
 
 export const metadata: Metadata = { title: "Panel" };
 
@@ -17,9 +16,8 @@ export default async function PanelPage({
 }) {
   const { user } = await requireSession();
   const filters = alertasFilters(await searchParams);
-  const [panel, tendencia, calidad] = await Promise.all([
+  const [panel, calidad] = await Promise.all([
     apiGet<PanelCostos>("/panel/costos"),
-    apiGet<TendenciaCostos>("/panel/tendencia"),
     apiGet<Calidad>("/calidad"),
   ]);
 
@@ -31,12 +29,7 @@ export default async function PanelPage({
         description="Los números del mes comparados con el anterior."
       />
       {panel.ok ? (
-        <div className="space-y-6">
-          <PanelCvu panel={panel.data} />
-          {tendencia.ok && tendencia.data.meses.length > 0 ? (
-            <TendenciaDeCostos tendencia={tendencia.data} />
-          ) : null}
-        </div>
+        <PanelCvu panel={panel.data} />
       ) : (
         <BloqueConError message={panel.message} />
       )}
