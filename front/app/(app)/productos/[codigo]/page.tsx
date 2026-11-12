@@ -43,6 +43,7 @@ import type {
 } from "@/lib/types";
 import { Comparison } from "./comparison";
 import { ComponenteForm, CotizacionForm, ExtraForm } from "./forms";
+import { ModeloBlock } from "./modelo-block";
 import { RentabilidadBlock } from "./rentabilidad";
 
 export const metadata: Metadata = { title: "Ficha de producto" };
@@ -116,6 +117,9 @@ export default async function FichaPage({
         />
         {canWrite(user.role) ? (
           <NegotiationReference codigo={ficha.codigo} />
+        ) : null}
+        {canWrite(user.role) && ficha.modelo ? (
+          <ModeloBlock codigo={ficha.modelo} />
         ) : null}
         <Recipe ficha={ficha} />
         {ficha.componentes.length > 0 ? <Components ficha={ficha} /> : null}

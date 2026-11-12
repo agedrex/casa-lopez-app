@@ -34,7 +34,6 @@ export const NAV_ITEMS: NavGroup[] = [
       },
       { href: "/cueros", label: "Cueros" },
       { href: "/proveedores", label: "Proveedores", adminOnly: true },
-      { href: "/admin/modelos", label: "Modelos", adminOnly: true },
     ],
   },
   {
@@ -131,7 +130,6 @@ const DESKTOP_NAV: NavGroup[] = [
     title: "Producción",
     items: [
       { href: "/cueros", label: "Inventario de cuero" },
-      { href: "/admin/modelos", label: "Modelos", adminOnly: true },
       { href: "/fabricacion", label: "Lotes" },
       { href: "/talleres", label: "Talleres" },
     ],
