@@ -14,6 +14,10 @@ export type NavGroup = { title: string; items: NavItem[] };
 
 export const NAV_ITEMS: NavGroup[] = [
   {
+    title: "Configuración",
+    items: [{ href: "/admin", label: "Administración", adminOnly: true }],
+  },
+  {
     title: "Resumen",
     items: [
       { href: "/", label: "Panel" },
@@ -73,6 +77,7 @@ const GERENTE_NAV: NavGroup[] = [
   },
 ];
 
+// Voz is not listed: on desktop it is the microphone button of the header, on mobile the "+" quick action.
 const TALLER_NAV: NavGroup[] = [
   {
     title: "Producción",
@@ -80,13 +85,16 @@ const TALLER_NAV: NavGroup[] = [
       { href: "/corte", label: "Corte" },
       { href: "/cueros", label: "Cueros" },
       { href: "/productos", label: "Productos" },
-      { href: "/voz", label: "Voz" },
     ],
   },
 ];
 
 /** Simpler, flatter menu for the desktop sidebar. Mobile keeps NAV_ITEMS. */
 const DESKTOP_NAV: NavGroup[] = [
+  {
+    title: "",
+    items: [{ href: "/admin", label: "Administración", adminOnly: true }],
+  },
   {
     title: "",
     items: [
@@ -126,13 +134,6 @@ const DESKTOP_NAV: NavGroup[] = [
       { href: "/admin/modelos", label: "Modelos", adminOnly: true },
       { href: "/fabricacion", label: "Lotes" },
       { href: "/talleres", label: "Talleres" },
-    ],
-  },
-  {
-    title: "",
-    items: [
-      { href: "/voz", label: "Voz" },
-      { href: "/admin", label: "Administración", adminOnly: true },
     ],
   },
 ];
