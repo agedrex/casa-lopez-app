@@ -1,3 +1,4 @@
+import { formatPercent } from "./format";
 import type { DocumentoTipo, OcrEstado } from "./types";
 
 // Client-side hint only: the API checks the real size and the file's magic bytes.
@@ -68,4 +69,12 @@ export function fileHint(file: { size: number; type: string }): string | null {
     return "solo se aceptan fotos (JPG, PNG, WebP) y PDF";
   }
   return null;
+}
+
+/** `10.00` -> `+10 %`, `-25.00` -> `-25 %`, none -> `—`. Display only: the API sends the variation already calculated. */
+export function variationText(value: string | null | undefined): string {
+  const percent = formatPercent(value);
+  if (!value || percent === "—") return "—";
+  const isZero = /^-?0+(\.0+)?$/.test(value);
+  return value.startsWith("-") || isZero ? percent : `+${percent}`;
 }

@@ -11,12 +11,21 @@ import {
   SectionTitle,
 } from "@/components/ui";
 import { apiGet } from "@/lib/api";
+import { stageLabel, todayIso } from "@/lib/format";
 import { canWrite } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
-import type { DocumentoProveedor, Proveedor } from "@/lib/types";
+import type {
+  Catalogos,
+  DocumentoProveedor,
+  Material,
+  MaterialesDeProveedor,
+  Proveedor,
+} from "@/lib/types";
 import { ActivoForm } from "./activo-form";
 import { DocumentoCard } from "./documento-card";
 import { EditarForm } from "./editar-form";
+import { MaterialesDelProveedor } from "./materiales-del-proveedor";
+import { type MaterialOption, PrecioForm } from "./precio-form";
 import { SubirDocumentosForm } from "./subir-documentos-form";
 
 export const metadata: Metadata = { title: "Proveedor" };
@@ -65,12 +74,18 @@ export default async function ProveedorPage({
   }
 
   const path = `/proveedores/${encodeURIComponent(code)}`;
-  const [proveedor, documentos] = await Promise.all([
-    apiGet<Proveedor>(path),
-    apiGet<DocumentoProveedor[]>(
-      `${path}/documentos${q ? `?${new URLSearchParams({ q })}` : ""}`,
-    ),
-  ]);
+  const writer = canWrite(user.role);
+  const [proveedor, documentos, historia, materiales, catalogos] =
+    await Promise.all([
+      apiGet<Proveedor>(path),
+      apiGet<DocumentoProveedor[]>(
+        `${path}/documentos${q ? `?${new URLSearchParams({ q })}` : ""}`,
+      ),
+      apiGet<MaterialesDeProveedor>(`${path}/materiales`),
+      // Only the form needs the catalogs, and only a writer sees it.
+      writer ? apiGet<Material[]>("/materiales") : null,
+      writer ? apiGet<Catalogos>("/catalogos") : null,
+    ]);
 
   if (!proveedor.ok) {
     return (
@@ -88,7 +103,6 @@ export default async function ProveedorPage({
   }
 
   const data = proveedor.data;
-  const writer = canWrite(user.role);
   return (
     <>
       <BackLink />
@@ -100,6 +114,51 @@ export default async function ProveedorPage({
         }
       />
       <div className="space-y-10">
+        <section>
+          <SectionTitle>Materiales y precios</SectionTitle>
+          <div className="space-y-6">
+            <p className="text-sm text-muted">
+              Lo que este proveedor nos cobra por cada material, con la historia
+              de sus precios. Un precio nuevo no reemplaza al anterior: se suma
+              y queda la variación.
+            </p>
+            {historia.ok ? (
+              historia.data.materiales.length === 0 ? (
+                <Notice
+                  tone="info"
+                  title="Este proveedor todavía no tiene precios cargados."
+                >
+                  Cargue el primero abajo y va a aparecer acá con su historia.
+                </Notice>
+              ) : (
+                <MaterialesDelProveedor materiales={historia.data.materiales} />
+              )
+            ) : (
+              <ErrorNotice message={historia.message} />
+            )}
+            {writer && materiales?.ok ? (
+              <Card>
+                <h3 className="mb-1 font-bold">
+                  Cargar un precio de este proveedor
+                </h3>
+                <p className="mb-4 text-sm text-muted">
+                  Desde esa fecha, este pasa a ser el precio que usan los costos
+                  para ese material.
+                </p>
+                <PrecioForm
+                  codigo={data.codigo}
+                  materials={materialOptions(materiales.data)}
+                  colores={catalogos?.ok ? catalogos.data.colores : []}
+                  today={todayIso()}
+                />
+              </Card>
+            ) : null}
+            {writer && materiales && !materiales.ok ? (
+              <ErrorNotice message={materiales.message} />
+            ) : null}
+          </div>
+        </section>
+
         <section>
           <SectionTitle>Facturas e imágenes</SectionTitle>
           <div className="space-y-6">
@@ -184,4 +243,15 @@ export default async function ProveedorPage({
       </div>
     </>
   );
+}
+
+function materialOptions(materiales: Material[]): MaterialOption[] {
+  return materiales
+    .filter((m) => m.cotizable)
+    .map((m) => ({
+      codigo: m.codigo,
+      label: `${m.codigo} · ${m.nombre} (${m.unidad_de_consumo})`,
+      unidad: m.unidad_de_consumo,
+      group: stageLabel(m.etapa),
+    }));
 }

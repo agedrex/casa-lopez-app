@@ -3,10 +3,16 @@
 import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { error, type FormState, ok } from "@/lib/action-state";
-import { apiPost, apiPostForm } from "@/lib/api";
-import { parseDecimalInput } from "@/lib/format";
+import { apiGet, apiPost, apiPostForm } from "@/lib/api";
+import { formatMoney, formatPercent, parseDecimalInput } from "@/lib/format";
 import { DOCUMENT_TYPES, fileHint } from "@/lib/proveedores";
-import type { DocumentoProveedor, Proveedor } from "@/lib/types";
+import type {
+  DocumentoProveedor,
+  Material,
+  Precio,
+  PrecioChequeo,
+  Proveedor,
+} from "@/lib/types";
 import {
   denyUnlessWriter,
   fromFailure,
@@ -181,4 +187,88 @@ export async function retryOcr(
   if (!result.ok) return fromFailure(result);
   refresh();
   return ok("Se volvió a leer el documento.");
+}
+
+const MONEDAS = ["ARS", "USD"];
+
+/**
+ * A new dated price of a material from this supplier. Prices are only added: the history keeps
+ * the older ones. The API compares with the latest earlier price of the material (a big jump is a
+ * warning, confirmed with "Cargar igual") and keeps the same rules as the materials page.
+ */
+export async function createPrecioDeProveedor(
+  codigo: string,
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const denied = await denyUnlessWriter();
+  if (denied) return denied;
+
+  const material = text(formData, "material");
+  const precio = parseDecimalInput(text(formData, "precio"));
+  const moneda = text(formData, "moneda");
+  const vigenteDesde = text(formData, "vigente_desde");
+  const color = optional(formData, "color");
+  if (!material) return error("Elija el material.");
+  if (precio === null) {
+    return error("Ingrese el precio, por ejemplo 24 o 5857,14.");
+  }
+  if (!MONEDAS.includes(moneda)) return error("Elija la moneda.");
+  if (!vigenteDesde) return error("Indique desde qué fecha rige el precio.");
+
+  // The unit is the consumption unit of the material, read here and not trusted from the form;
+  // a blocked material (lagarto, yacaré) is refused too.
+  const materials = await apiGet<Material[]>("/materiales");
+  if (!materials.ok) return fromFailure(materials);
+  const chosen = materials.data.find((m) => m.codigo === material);
+  if (!chosen) return error("No existe ese material.");
+  if (!chosen.cotizable) {
+    return error("Bloqueado: falta definir la unidad de este material.");
+  }
+
+  if (text(formData, "confirmar") !== "1") {
+    const query = new URLSearchParams({
+      material,
+      precio,
+      moneda,
+      vigente_desde: vigenteDesde,
+    });
+    if (color) query.set("color", color);
+    const check = await apiGet<PrecioChequeo>(`/precios/chequeo?${query}`);
+    if (!check.ok) return fromFailure(check);
+    if (check.data.salto_grande) {
+      return {
+        status: "warning",
+        needsConfirm: true,
+        message: `El precio nuevo (${formatMoney(precio, moneda)}) varía ${formatPercent(
+          check.data.variacion_pct,
+        )} respecto del anterior (${formatMoney(check.data.anterior, moneda)}). ¿Es correcto?`,
+        avisos: [
+          "Si es un error de tipeo, corríjalo antes de cargar: los precios no se editan ni se borran.",
+        ],
+      };
+    }
+  }
+
+  const result = await apiPost<Precio>(
+    `/proveedores/${encodeURIComponent(codigo)}/precios`,
+    {
+      material,
+      color,
+      precio,
+      moneda,
+      unidad_del_precio: chosen.unidad_de_consumo,
+      iva_incluido: formData.get("iva_incluido") === "on",
+      vigente_desde: vigenteDesde,
+      nota_fuente: optional(formData, "nota_fuente"),
+    },
+  );
+  if (!result.ok) {
+    return fromFailure(result, {
+      404: "No existe ese proveedor.",
+      409: "Ya hay un precio de ese material y color para esa fecha. Cargue uno con otra fecha.",
+    });
+  }
+  refresh();
+  return ok("Precio cargado.");
 }
