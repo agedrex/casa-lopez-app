@@ -116,6 +116,12 @@ export const NO_ROLE_HOME = "/sin-acceso";
 const matchesPath = (pathname: string, route: string) =>
   pathname === route || pathname.startsWith(`${route}/`);
 
+/** Parts of Productos only an admin opens (models and catalogs); gerente still reads the list and the sheet. */
+const ADMIN_ONLY_PATHS = [
+  "/productos/modelos",
+  "/productos/catalogos",
+] as const;
+
 /** First role in ROLES order decides the landing page. */
 export function homePath(value: string | null | undefined): string {
   const [role] = parseRoles(value);
@@ -129,6 +135,12 @@ export function canAccessPath(
 ): boolean {
   const roles = parseRoles(value);
   if (roles.length === 0) return matchesPath(pathname, NO_ROLE_HOME);
+  if (
+    !roles.includes("admin") &&
+    ADMIN_ONLY_PATHS.some((route) => matchesPath(pathname, route))
+  ) {
+    return false;
+  }
   return roles.some((role) => {
     const { paths, exact } = ROLE_ACCESS[role];
     return (

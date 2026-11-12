@@ -81,7 +81,7 @@ export async function createModelo(
       409: "Ya hay un modelo con ese nombre: agregue algo que lo distinga.",
     });
   }
-  redirect(`/admin/modelos/${encodeURIComponent(result.data.codigo)}`);
+  redirect(`/productos/modelos/${encodeURIComponent(result.data.codigo)}`);
 }
 
 export async function setValidado(

@@ -20,14 +20,10 @@ export const ICONS: Record<string, string> = {
     "M3 7h11v10H3zM14 10h4l3 3v4h-7M7 20a1.5 1.5 0 1 0 0-.01M17 20a1.5 1.5 0 1 0 0-.01",
   "/costos-fijos": "M5 3h14v18H5zM9 8h6M9 12h6M9 16h3",
   "/admin": "M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z",
-  "/admin/modelos": "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z",
+  "/productos/modelos": "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z",
   "/admin/usuarios":
     "M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 5.5a3 3 0 0 1 0 5.5M18 14.5c1.8.8 3 2.6 3 5.5",
-  "/admin/personas":
-    "M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21c0-4.4 3.6-8 8-8s8 3.6 8 8",
-  "/admin/parametros":
-    "M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M16 4v4M10 10v4M18 16v4",
-  "/admin/catalogos": "M4 6h16M4 12h16M4 18h10",
+  "/productos/catalogos": "M4 6h16M4 12h16M4 18h10",
   "/admin/impuestos": "M19 5 5 19M7 9a2 2 0 1 0 0-.01M17 19a2 2 0 1 0 0-.01",
   "/admin/sync":
     "M20 11a8 8 0 0 0-14.5-3.5L4 9M4 5v4h4M4 13a8 8 0 0 0 14.5 3.5L20 15M20 19v-4h-4",

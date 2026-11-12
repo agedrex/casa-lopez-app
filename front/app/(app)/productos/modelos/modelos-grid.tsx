@@ -112,7 +112,7 @@ export function ModelosGrid({
           label: (
             <div className="min-w-48 max-w-72">
               <Link
-                href={`/admin/modelos/${encodeURIComponent(modelo.codigo)}`}
+                href={`/productos/modelos/${encodeURIComponent(modelo.codigo)}`}
                 className="underline decoration-gold underline-offset-4"
               >
                 {modelo.nombre_del_modelo}

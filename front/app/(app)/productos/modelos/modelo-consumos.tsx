@@ -14,7 +14,7 @@ import type { Material, ModeloDetalle } from "@/lib/types";
 import { ConsumosForm } from "./[codigo]/modelo-forms";
 import type { ForroOption } from "./consumption-fields";
 
-// Pieces of the model sheet shared by /admin/modelos/[codigo] and the "Modelo" block of the
+// Pieces of the model sheet shared by /productos/modelos/[codigo] and the "Modelo" block of the
 // product sheet, so the consumptions are shown and edited the same way in both places.
 
 function display(
