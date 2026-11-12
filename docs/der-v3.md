@@ -26,7 +26,7 @@ Conventions: schema `costos`; `id` (identity) and `created_at` everywhere; `codi
 | `producto` | Productos | A model in a leather and color, who makes it, lifecycle state and the three dates (alta, recotización, cierre). |
 | `receta_linea` | Receta_Extra | Only the `EXTRA` recipe lines (second leather, specific hardware); the `MODELO` lines are calculated. |
 | `kit_componente` | Kits | Products inside a kit product, with quantity. |
-| `precio_material` | Precios | Append-only price of a material (and optionally a color) from a date; unique per material + color + `vigente_desde`. |
+| `precio_material` | Precios | Append-only price of a material (and optionally a color) from a date; unique per material + color + `vigente_desde`. `proveedor` is the supplier as typed (text); `proveedor_id` (nullable FK to `proveedor`, revision 0011) is the real link: see the note below. |
 | `tipo_cambio` | Dolar | Dollar per date, type (VENDEDOR / COMPRADOR) and source; unique per date + type + source. |
 | `orden_fabricacion` | Lotes | A lot sent to a workshop or made in house, with state and dates. |
 | `orden_item` | Lote_Productos | A product in a lot with quantity, asked and paid workshop price per unit. |
@@ -48,6 +48,18 @@ Two tables for products Casa López buys ready-made and resells. They are outsid
 | `compra_reventa` | One row of history: date, `unidades` (> 0, or NULL for a price update typed in the Mercadería grid, revision 0010), `costo_unitario_ars` (> 0) and an optional `precio_venta_unitario_ars` (> 0). Only appended. |
 
 The cost of a product is the unit cost of its **latest** purchase (latest `fecha`, then latest id); the sale price is the one typed in the latest purchase that has one; the cost of a purchase is `unidades × costo_unitario_ars`. The margin is computed in `backend/reventa.py` (profit over the sale price), never by the front. Admin only (read and write). SUPUESTO: validar con Casa López: ARS only (no dollar conversion), no stock (units sold are not tracked, there are no sales yet), and the `MER-` prefix is ours.
+
+## Supplier price history (revision 0011)
+
+`precio_material.proveedor_id` (nullable FK to `proveedor`, indexed) says which supplier a price came from. The text column `proveedor` is not touched: it keeps what was typed (`PRV-NNNN` codes from the old external file or free text). Rows are still only added; a new price of a supplier is a new row with its date.
+
+- **Set when:** a price is loaded from the supplier's page (`POST /proveedores/{codigo}/precios`), or through `POST /precios` with a `proveedor` text that is exactly the code of an existing supplier (codes are unique).
+- **Backfill (migration):** only rows whose text equals the code of a supplier that already exists. Free-text names are not matched (the same name can be written many ways); those rows stay NULL and can be linked by loading a new price from the supplier's page.
+- **Reading:** a supplier's history (`GET /proveedores/{codigo}/materiales`) includes the rows linked to it and the unlinked rows whose text is its code, so a supplier created after the migration still finds its old prices (the seeded `PRV-0001` and `PRV-0002`).
+- **Limit kept on purpose:** `precio_material_uq` is still one price per material + color + date. Two suppliers cannot hold a price of the same material and color on the same date, because the costing engine uses one price per material and color. A price loaded for a supplier is, like any price, the one the costs use from its date on.
+- **Downgrade** drops the column and its index: the links made from the supplier's page are lost (the prices and the text stay).
+
+The payments to a workshop need no new table: `GET /talleres/{codigo}/historial` reads the existing `orden_fabricacion` and `orden_item` (units and the paid price per unit of each line). A price counts as paid only when it is above 0.
 
 ## Open assumptions (`SUPUESTO: validar`)
 

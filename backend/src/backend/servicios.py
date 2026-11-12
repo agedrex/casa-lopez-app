@@ -24,8 +24,8 @@ from backend.costeo import (
 )
 from backend.models import (
     Categoria, Color, Cotizacion, Etapa, GastoPeriodo, Impuesto, KitComponente, Material, Modelo,
-    OrdenEstado, OrdenFabricacion, OrdenItem, Parametro, Persona, PrecioMaterial, PrecioVenta, Producto, RecetaLinea,
-    Taller, TipoCambio,
+    OrdenEstado, OrdenFabricacion, OrdenItem, Parametro, Persona, PrecioMaterial, PrecioVenta, Producto, Proveedor,
+    RecetaLinea, Taller, TipoCambio,
 )
 from backend.receta import (
     Cotizado, Extra, ModeloReceta, ProductoReceta, Receta, cotizar_producto, generar_receta,
@@ -594,6 +594,13 @@ def variacion_de_precio(anterior: Decimal | None, nuevo: Decimal) -> tuple[Decim
     return cambio.quantize(Decimal("0.01"), ROUND_HALF_UP), abs(cambio) > SALTO_PRECIO_PCT
 
 
+def porcentaje_de_barra(valor: Decimal | None, maximo: Decimal | None) -> int | None:
+    """Length of a mini bar, 0 to 100, against the biggest value of its series; the front only draws it."""
+    if valor is None or maximo is None or maximo <= 0:
+        return None
+    return int((valor / maximo * 100).quantize(Decimal("1"), ROUND_HALF_UP))
+
+
 def listar_precios(session: Session, material: str | None = None, a_fecha: date | None = None) -> list[dict]:
     """Price history, newest first; `vigente` marks the row in force at `a_fecha` per material and color.
 
@@ -831,8 +838,13 @@ def agregar_componente(session: Session, codigo_kit: str, *, componente: str, ca
 def crear_precio(
     session: Session, *, material: str, color: str | None, proveedor: str | None, precio: Decimal, moneda: str,
     unidad_del_precio: str, iva_incluido: bool, vigente_desde: date, nota_fuente: str | None = None,
+    proveedor_id: int | None = None,
 ) -> dict:
-    """A new price is a new row with its date; an existing (material, color, date) is a conflict."""
+    """A new price is a new row with its date; an existing (material, color, date) is a conflict.
+
+    The supplier text is stored as typed. The link `proveedor_id` is set when the caller knows the supplier (the supplier's
+    page) or when the text is exactly the code of an existing supplier (codes are unique, so that match is unambiguous).
+    """
     material_fila = session.scalar(select(Material).where(Material.codigo == material))
     if material_fila is None:
         raise DatosInvalidos(f"No existe el material {material}.")
@@ -840,9 +852,11 @@ def crear_precio(
         # Rule kept from the old DER: a price is only usable when its unit equals the consumption unit.
         raise DatosInvalidos(
             f"La unidad del precio ({unidad_del_precio}) no coincide con la de consumo ({material_fila.unidad_de_consumo}).")
+    if proveedor_id is None and proveedor:
+        proveedor_id = session.scalar(select(Proveedor.id).where(Proveedor.codigo == proveedor))
     fila = PrecioMaterial(
         codigo=f"PRE-{_siguiente_numero(session, PrecioMaterial.codigo, 'PRE'):04d}", material_id=material_fila.id,
-        color_id=_color_id(session, color), proveedor=proveedor, precio=precio, moneda=moneda,
+        color_id=_color_id(session, color), proveedor=proveedor, proveedor_id=proveedor_id, precio=precio, moneda=moneda,
         unidad_del_precio=unidad_del_precio, iva_incluido=iva_incluido, vigente_desde=vigente_desde,
         nota_fuente=nota_fuente,
     )
@@ -1777,6 +1791,92 @@ def detalle_taller(session: Session, codigo: str) -> dict:
     if taller is None:
         raise NoEncontrado(f"No existe el taller {codigo}.")
     return {**_taller_a_dict(taller, _agregados_de_talleres(session)), "ordenes": listar_ordenes(session, taller=codigo)}
+
+
+# What was given to a workshop and what it was paid, lot by lot and product by product. Read-only: it comes from the lots
+# and their items that already exist, nothing is stored. A price counts as paid only when it is above 0 (a 0 is "not paid
+# yet", like in `confeccion_de_renglon`).
+
+MAS_CUATRO_DECIMALES = Decimal("0.0001")
+
+
+def _pagado(item: ItemDatos) -> Decimal | None:
+    return item.pagado if item.pagado is not None and item.pagado > 0 else None
+
+
+def _renglon_de_historial(lote: LoteDatos, item: ItemDatos) -> dict:
+    return {"item": item.codigo, "fecha": lote.fecha, "lote": lote.codigo, "cantidad": item.cantidad, "cotizado": item.cotizado,
+            "pagado": _pagado(item), "variacion_pct": None, "salto_grande": False, "barra_pct": None}
+
+
+def _mas_nuevo_primero(fecha: date | None, orden: int) -> tuple[bool, int, int]:
+    """Sort key: newest date first, undated last, the newest item first on the same date."""
+    return (fecha is None, -(fecha.toordinal() if fecha else 0), -orden)
+
+
+def _historial_de_producto(codigo: str, info: InfoProducto | None, renglones: list[tuple[int, dict]]) -> dict:
+    """One product at one workshop. `renglones` are (item id, row); the variation chains the dated paid prices in time order."""
+    fechados = sorted((r for r in renglones if r[1]["fecha"] is not None), key=lambda r: (r[1]["fecha"], r[0]))
+    pagados = [fila for _, fila in fechados if fila["pagado"] is not None]
+    anterior = None
+    for fila in pagados:
+        fila["variacion_pct"], fila["salto_grande"] = variacion_de_precio(anterior, fila["pagado"])
+        anterior = fila["pagado"]
+    maximo = max((fila["pagado"] for _, fila in renglones if fila["pagado"] is not None), default=None)
+    for _, fila in renglones:
+        fila["barra_pct"] = porcentaje_de_barra(fila["pagado"], maximo)
+    primero, ultimo = (pagados[0], pagados[-1]) if pagados else (None, None)
+    return {
+        "producto": codigo, "producto_nombre": info.nombre if info else codigo, "categoria": info.categoria if info else None,
+        "lotes": len({fila["lote"] for _, fila in renglones}), "unidades": sum((fila["cantidad"] for _, fila in renglones), ZERO),
+        "primer_pagado": primero["pagado"] if primero else None, "ultimo_pagado": ultimo["pagado"] if ultimo else None,
+        "variacion_ultima_pct": ultimo["variacion_pct"] if ultimo else None,
+        "variacion_total_pct": variacion_de_precio(primero["pagado"], ultimo["pagado"])[0] if len(pagados) > 1 else None,
+        "ultima_fecha": fechados[-1][1]["fecha"] if fechados else None,
+        "historial": [fila for _, fila in sorted(renglones, key=lambda r: _mas_nuevo_primero(r[1]["fecha"], r[0]))],
+    }
+
+
+def armar_historial_de_taller(lotes: list[LoteDatos], items: list[ItemDatos], info: dict[str, InfoProducto]) -> dict:
+    """`lotes` newest first (as `_cargar_lotes` returns them). Per lot: units, what was paid and the average per unit
+    (a mix of products, so it is NOT compared lot to lot). Per product: the paid price at every lot and how it changed."""
+    por_lote: dict[str, list[ItemDatos]] = {}
+    for item in items:
+        por_lote.setdefault(item.lote, []).append(item)
+    filas_de_lotes = []
+    por_producto: dict[str, list[tuple[int, dict]]] = {}
+    for lote in lotes:
+        propios = por_lote.get(lote.codigo, [])
+        con_precio = [i for i in propios if _pagado(i) is not None]
+        total_pagado = sum((i.cantidad * i.pagado for i in con_precio), ZERO)
+        unidades_con_precio = sum((i.cantidad for i in con_precio), ZERO)
+        filas_de_lotes.append({
+            "lote": lote.codigo, "fecha": lote.fecha, "estado": lote.estado, "productos": len(propios),
+            "unidades": sum((i.cantidad for i in propios), ZERO), "unidades_con_precio_pagado": unidades_con_precio,
+            "total_cotizado": sum((i.cantidad * i.cotizado for i in propios if i.cotizado is not None), ZERO),
+            "total_pagado": total_pagado,
+            "precio_pagado_promedio": (total_pagado / unidades_con_precio).quantize(MAS_CUATRO_DECIMALES, ROUND_HALF_UP)
+            if unidades_con_precio > 0 else None,
+            "barra_pct": None,
+        })
+        for item in propios:
+            por_producto.setdefault(item.producto, []).append((item.id, _renglon_de_historial(lote, item)))
+    maximo = max((f["total_pagado"] for f in filas_de_lotes if f["total_pagado"] > 0), default=None)
+    for fila in filas_de_lotes:
+        fila["barra_pct"] = porcentaje_de_barra(fila["total_pagado"], maximo)
+    productos = [_historial_de_producto(codigo, info.get(codigo), renglones) for codigo, renglones in por_producto.items()]
+    productos.sort(key=lambda p: (*_mas_nuevo_primero(p["ultima_fecha"], 0)[:2], p["producto"]))
+    return {"lotes": filas_de_lotes, "productos": productos}
+
+
+def historial_taller(session: Session, codigo: str) -> dict:
+    taller = session.scalar(select(Taller).where(Taller.codigo == codigo))
+    if taller is None:
+        raise NoEncontrado(f"No existe el taller {codigo}.")
+    lotes = _cargar_lotes(session, taller=codigo)
+    items = _cargar_items(session, [lote.id for lote in lotes])
+    info = _info_productos(session, {item.producto for item in items}, con_costo=False)
+    return {"taller": taller.codigo, "taller_nombre": taller.nombre, **armar_historial_de_taller(lotes, items, info)}
 
 
 def _texto_o_nada(valor: str | None) -> str | None:

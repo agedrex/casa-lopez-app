@@ -839,3 +839,91 @@ export type UnidadesProducidas = {
   productos: UnidadProducto[];
   total_unidades: string;
 };
+
+// Price history of a supplier and payment history of a workshop. Mirror MaterialesDeProveedorOut and
+// HistorialDeTallerOut in api.py. Every amount, variation and bar length comes calculated by the API.
+export type PrecioHistorial = {
+  codigo: string;
+  vigente_desde: string;
+  precio: string;
+  moneda: "ARS" | "USD";
+  unidad_del_precio: string;
+  iva_incluido: boolean;
+  nota_fuente: string | null;
+  // Percent change against the previous price of the same material, color and currency (null for the first).
+  variacion_pct: string | null;
+  salto_grande: boolean;
+  // 0 to 100, against the biggest price of the same currency in this series.
+  barra_pct: number | null;
+};
+
+export type MaterialDeProveedor = {
+  material: string;
+  material_nombre: string;
+  color: string | null;
+  ultimo_precio: string;
+  moneda: "ARS" | "USD";
+  unidad_del_precio: string;
+  ultima_fecha: string;
+  variacion_ultima_pct: string | null;
+  variacion_total_pct: string | null;
+  cargas: number;
+  // Newest first.
+  historial: PrecioHistorial[];
+};
+
+export type MaterialesDeProveedor = {
+  proveedor: string;
+  proveedor_nombre: string;
+  materiales: MaterialDeProveedor[];
+};
+
+export type LoteDeTaller = {
+  lote: string;
+  fecha: string | null;
+  estado: string;
+  productos: number;
+  unidades: string;
+  unidades_con_precio_pagado: string;
+  total_cotizado: string;
+  total_pagado: string;
+  // Average over the units with a paid price; a mix of products, so it is not compared lot to lot.
+  precio_pagado_promedio: string | null;
+  barra_pct: number | null;
+};
+
+export type PagoDeProducto = {
+  // Code of the lot line (LIT-nnnn).
+  item: string;
+  fecha: string | null;
+  lote: string;
+  cantidad: string;
+  cotizado: string | null;
+  pagado: string | null;
+  variacion_pct: string | null;
+  salto_grande: boolean;
+  barra_pct: number | null;
+};
+
+export type ProductoDeTaller = {
+  producto: string;
+  producto_nombre: string;
+  categoria: string | null;
+  lotes: number;
+  unidades: string;
+  primer_pagado: string | null;
+  ultimo_pagado: string | null;
+  variacion_ultima_pct: string | null;
+  variacion_total_pct: string | null;
+  ultima_fecha: string | null;
+  // Newest first, undated last.
+  historial: PagoDeProducto[];
+};
+
+export type HistorialDeTaller = {
+  taller: string;
+  taller_nombre: string;
+  // Newest first.
+  lotes: LoteDeTaller[];
+  productos: ProductoDeTaller[];
+};

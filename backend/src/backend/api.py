@@ -980,6 +980,52 @@ class TallerDetalleOut(TallerOut):
     ordenes: list[OrdenResumenOut]
 
 
+class LoteDeTallerOut(Salida):
+    lote: str
+    fecha: date | None
+    estado: str
+    productos: int
+    unidades: Decimal
+    unidades_con_precio_pagado: Decimal
+    total_cotizado: Decimal
+    total_pagado: Decimal
+    precio_pagado_promedio: Decimal | None
+    barra_pct: int | None
+
+
+class PagoDeProductoOut(Salida):
+    item: str
+    fecha: date | None
+    lote: str
+    cantidad: Decimal
+    cotizado: Decimal | None
+    pagado: Decimal | None
+    variacion_pct: Decimal | None
+    salto_grande: bool
+    barra_pct: int | None
+
+
+class ProductoDeTallerOut(Salida):
+    producto: str
+    producto_nombre: str
+    categoria: str | None
+    lotes: int
+    unidades: Decimal
+    primer_pagado: Decimal | None
+    ultimo_pagado: Decimal | None
+    variacion_ultima_pct: Decimal | None
+    variacion_total_pct: Decimal | None
+    ultima_fecha: date | None
+    historial: list[PagoDeProductoOut]
+
+
+class HistorialDeTallerOut(Salida):
+    taller: str
+    taller_nombre: str
+    lotes: list[LoteDeTallerOut]
+    productos: list[ProductoDeTallerOut]
+
+
 class MesCasaTallerOut(Salida):
     periodo: str
     lotes_casa: int
@@ -1240,6 +1286,12 @@ def personas(session: Sesion):
 @router.get("/talleres/{codigo}", dependencies=LECTURA_ADMIN, response_model=TallerDetalleOut)
 def taller(codigo: str, session: Sesion):
     return servicios.detalle_taller(session, codigo)
+
+
+@router.get("/talleres/{codigo}/historial", dependencies=LECTURA_ADMIN, response_model=HistorialDeTallerOut)
+def historial_de_taller(codigo: str, session: Sesion):
+    """Lots given to the workshop (units, total paid) and, per product, what was paid each time and how it changed."""
+    return servicios.historial_taller(session, codigo)
 
 
 @router.get("/costos-fijos", dependencies=LECTURA_ADMIN, response_model=CostosFijosOut)
@@ -1784,6 +1836,51 @@ class DocumentoProveedorOut(Salida):
     created_at: datetime
 
 
+class PrecioDeProveedorIn(Entrada):
+    """A price of a material from this supplier. The supplier comes from the URL, never from the body."""
+    material: str
+    color: str | None = None
+    precio: Annotated[Decimal, Field(ge=0, max_digits=14, decimal_places=4)]
+    moneda: Literal[*ARS_USD]
+    unidad_del_precio: Literal[*UNITS]
+    iva_incluido: bool = False
+    vigente_desde: date
+    nota_fuente: Annotated[str, Field(max_length=500)] | None = None
+
+
+class PrecioHistorialOut(Salida):
+    codigo: str
+    vigente_desde: date
+    precio: Decimal
+    moneda: str
+    unidad_del_precio: str
+    iva_incluido: bool
+    nota_fuente: str | None
+    variacion_pct: Decimal | None
+    salto_grande: bool
+    barra_pct: int | None
+
+
+class MaterialDeProveedorOut(Salida):
+    material: str
+    material_nombre: str
+    color: str | None
+    ultimo_precio: Decimal
+    moneda: str
+    unidad_del_precio: str
+    ultima_fecha: date
+    variacion_ultima_pct: Decimal | None
+    variacion_total_pct: Decimal | None
+    cargas: int
+    historial: list[PrecioHistorialOut]
+
+
+class MaterialesDeProveedorOut(Salida):
+    proveedor: str
+    proveedor_nombre: str
+    materiales: list[MaterialDeProveedorOut]
+
+
 def get_ocr_llm() -> ocr_llm.OcrLLM | None:
     """The real reader while `ANTHROPIC_API_KEY` is set (building it makes no network call), else None."""
     return ocr_llm.create_client()
@@ -1850,6 +1947,18 @@ def editar_proveedor(codigo: str, cuerpo: ProveedorDatosIn, session: Sesion):
 @router.post("/proveedores/{codigo}/activo", dependencies=ESCRITURA, response_model=ProveedorOut)
 def cambiar_activo_de_proveedor(codigo: str, cuerpo: ActivoIn, session: Sesion):
     return proveedores.set_supplier_active(session, codigo, cuerpo.activo)
+
+
+@router.get("/proveedores/{codigo}/materiales", dependencies=LECTURA_ADMIN, response_model=MaterialesDeProveedorOut)
+def materiales_de_proveedor(codigo: str, session: Sesion):
+    """The materials a supplier has priced and the history of each (oldest to newest in time, newest first in the list)."""
+    return proveedores.list_supplier_materials(session, codigo)
+
+
+@router.post("/proveedores/{codigo}/precios", dependencies=ESCRITURA, response_model=PrecioOut, status_code=201)
+def cargar_precio_de_proveedor(codigo: str, cuerpo: PrecioDeProveedorIn, session: Sesion):
+    """Adds a dated price of a material linked to this supplier (a new row; older ones are never changed)."""
+    return proveedores.add_supplier_price(session, codigo, **cuerpo.model_dump())
 
 
 @router.get("/proveedores/{codigo}/documentos", dependencies=LECTURA_ADMIN, response_model=list[DocumentoProveedorOut])
