@@ -217,12 +217,38 @@ class ProductoReventaIn(Entrada):
 
 
 class CompraReventaIn(Entrada):
-    unidades: Annotated[Decimal, Field(gt=0, max_digits=12, decimal_places=6)]
+    # Without units it is a price update, not a purchase.
+    unidades: Annotated[Decimal, Field(gt=0, max_digits=12, decimal_places=6)] | None = None
     costo_unitario_ars: Annotated[Decimal, Field(gt=0, max_digits=14, decimal_places=4)]
     precio_venta_unitario_ars: Annotated[Decimal, Field(gt=0, max_digits=14, decimal_places=4)] | None = None
     fecha: date | None = None
     proveedor: Annotated[str, Field(max_length=200)] | None = None
     nota: Annotated[str, Field(max_length=2000)] | None = None
+
+
+class ReventaCambioIn(Entrada):
+    codigo: str
+    nombre: Annotated[str, Field(max_length=200)] | None = None
+    categoria: str | None = None  # "" or null clears it
+    proveedor: Annotated[str, Field(max_length=200)] | None = None
+    nota: Annotated[str, Field(max_length=2000)] | None = None
+    costo: Annotated[Decimal, Field(gt=0, max_digits=14, decimal_places=4)] | None = None
+    precio_venta: Annotated[Decimal, Field(gt=0, max_digits=14, decimal_places=4)] | None = None
+
+
+class ReventaNuevoIn(Entrada):
+    nombre: Annotated[str, Field(min_length=1, max_length=200)]
+    categoria: str | None = None
+    proveedor: Annotated[str, Field(max_length=200)] | None = None
+    nota: Annotated[str, Field(max_length=2000)] | None = None
+    costo: Annotated[Decimal, Field(gt=0, max_digits=14, decimal_places=4)] | None = None
+    precio_venta: Annotated[Decimal, Field(gt=0, max_digits=14, decimal_places=4)] | None = None
+    unidades: Annotated[Decimal, Field(gt=0, max_digits=12, decimal_places=6)] | None = None
+
+
+class ReventaLoteIn(Entrada):
+    cambios: list[ReventaCambioIn] = []
+    nuevos: list[ReventaNuevoIn] = []
 
 
 class PrecioVentaIn(Entrada):
@@ -739,9 +765,9 @@ class PanelCostosOut(Salida):
 
 class CompraReventaOut(Salida):
     fecha: date
-    unidades: Decimal
+    unidades: Decimal | None
     costo_unitario_ars: Decimal
-    costo_total_ars: Decimal
+    costo_total_ars: Decimal | None
     precio_venta_unitario_ars: Decimal | None
     margen_unitario_ars: Decimal | None
     margen_pct: Decimal | None
@@ -1773,6 +1799,14 @@ def crear_producto_de_reventa(cuerpo: ProductoReventaIn, session: Sesion):
     return reventa.crear(
         session, nombre=cuerpo.nombre, categoria=cuerpo.categoria, proveedor=cuerpo.proveedor, nota=cuerpo.nota,
     )
+
+
+@router.post("/reventa/lote", dependencies=ESCRITURA, response_model=list[ProductoReventaOut])
+def guardar_reventa_en_lote(cuerpo: ReventaLoteIn, session: Sesion, usuario: Escritor):
+    """Grid save: edits, new products and price updates, all or nothing."""
+    return reventa.guardar_en_lote(
+        session, [c.model_dump(exclude_unset=True) for c in cuerpo.cambios], [n.model_dump() for n in cuerpo.nuevos],
+        quien=usuario.id)
 
 
 @router.get("/reventa/{codigo}", dependencies=LECTURA_ADMIN, response_model=ProductoReventaDetalleOut)

@@ -140,9 +140,12 @@ export default async function ReventaProductoPage({
           )}
         </section>
         <section>
-          <SectionTitle>Historial de compras</SectionTitle>
+          <SectionTitle>Historial de compras y precios</SectionTitle>
           {producto.historial.length === 0 ? (
-            <Notice tone="info" title="Todavía no hay compras registradas." />
+            <Notice
+              tone="info"
+              title="Todavía no hay compras ni precios registrados."
+            />
           ) : (
             <TableWrap>
               <table className={tableClass}>
@@ -166,7 +169,14 @@ export default async function ReventaProductoPage({
                       key={`${compra.creado_en}-${compra.fecha}-${compra.costo_unitario_ars}`}
                       className="hover:bg-paper-mid/50"
                     >
-                      <td className={tdClass}>{formatDate(compra.fecha)}</td>
+                      <td className={tdClass}>
+                        {formatDate(compra.fecha)}
+                        {compra.unidades === null ? (
+                          <span className="block text-xs text-muted">
+                            Actualización de precio
+                          </span>
+                        ) : null}
+                      </td>
                       <td className={`${tdClass} ${numClass}`}>
                         {formatQuantity(compra.unidades)}
                       </td>

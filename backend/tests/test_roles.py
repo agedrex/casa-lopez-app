@@ -127,7 +127,7 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
     ("GET", "/proveedores"): ADMIN, ("GET", "/proveedores/{codigo}"): ADMIN,
     ("GET", "/proveedores/{codigo}/documentos"): ADMIN, ("GET", "/documentos-proveedor/{id}/archivo"): ADMIN,
     **{("POST", ruta): ADMIN for ruta in (
-        "/reventa", "/reventa/{codigo}/activo", "/reventa/{codigo}/compras",
+        "/reventa", "/reventa/lote", "/reventa/{codigo}/activo", "/reventa/{codigo}/compras",
         "/proveedores", "/proveedores/{codigo}", "/proveedores/{codigo}/activo", "/proveedores/{codigo}/documentos",
         "/documentos-proveedor/{id}/ocr", "/documentos-proveedor/{id}/datos")},
 }

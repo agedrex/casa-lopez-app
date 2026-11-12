@@ -252,7 +252,7 @@ Son las reglas que el Excel aplica sin decirlo: de fórmula, de criterio o de fo
 
 **La fuente de verdad es el código:** `backend/src/backend/models.py` y las migraciones, explicados en `docs/der-v3.md`. Su origen es la pestaña `Diccionario` de `Plantilla Costos Casa Lopez v4.1 (trabajo).xlsx`, que el 2026-10-27 reemplazó al DER v1 y a las reglas del Excel viejo [V: `odd/tasks/app-casa-lopez-v3.md`, S1 y L1]. Si este archivo y el código no coinciden, **gana el código** y se corrige este. `docs/der-v3.md` está algo atrasado: no lista `precio_venta`, `proveedor` ni `documento_proveedor` (migraciones 0006 y 0007) y dice consumos `NUMERIC(10,4)` cuando son `(12,6)` [V: `models.py`]. `docs/der.md`, `der-borrador.sql`, `wo1-modelo-conceptual.md`, `wo2-decisiones.md` y `wo2-staging.md` hablan del DER v1 (11 tablas, `cotizacion_linea`, GG): son **históricos**, no se implementan.
 
-### Migraciones (9, cabeza `0009_gasto_anulado`) [V: `backend/migrations/versions`]
+### Migraciones (10, cabeza `0010_compra_sin_unidades`) [V: `backend/migrations/versions`]
 | Revisión | Qué hace |
 |---|---|
 | `0001_esquema_costos`, `0002_semillas` | DER v1 y sus semillas. Históricas. |
@@ -263,8 +263,9 @@ Son las reglas que el Excel aplica sin decirlo: de fórmula, de criterio o de fo
 | `0007_proveedores_documentos` | Tablas `proveedor` y `documento_proveedor`. |
 | `0008_reventa` | Tablas `producto_reventa` y `compra_reventa`: productos que se compran hechos y se revenden (en la app se llama "Mercadería", código `MER-`) (costo = último costo unitario de compra; ver `backend/src/backend/reventa.py`). |
 | `0009_gasto_anulado` | `gasto_periodo.anulado` (boolean, por defecto false): borrar un costo fijo solo marca la fila como anulada; deja de contar en totales, listas, copiar mes y exportación, pero se conserva. |
+| `0010_compra_sin_unidades` | `compra_reventa.unidades` pasa a admitir NULL: un cambio de costo o de precio de venta hecho en la grilla de Mercadería es una fila nueva **sin unidades** (actualización de precio, no compra). |
 
-Todas tienen `downgrade`, pero bajar de 0009, 0007, 0006 o 0005 borra datos o cambia totales (0009: las filas anuladas vuelven a contar) (ver `docs/produccion.md`, sección 5).
+Todas tienen `downgrade`, pero bajar de 0010 (falla si hay filas sin unidades), 0009, 0007, 0006 o 0005 borra datos o cambia totales (0009: las filas anuladas vuelven a contar) (ver `docs/produccion.md`, sección 5).
 
 ### Tablas (30 en el schema `costos`) [V: `models.py`, `docs/der-v3.md`]
 | Grupo | Tablas | Lo que no hay que romper |

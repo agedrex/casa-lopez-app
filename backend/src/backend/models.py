@@ -362,7 +362,8 @@ class CompraReventa(IdentityAndCreatedAt, Base):
     )
     producto_reventa_id: Mapped[int] = mapped_column(ForeignKey("costos.producto_reventa.id"))
     fecha: Mapped[date] = mapped_column(Date)
-    unidades: Mapped[Decimal] = mapped_column(quantity())
+    # NULL = a price update from the grid, not a purchase (no units arrived).
+    unidades: Mapped[Decimal | None] = mapped_column(quantity())
     costo_unitario_ars: Mapped[Decimal] = mapped_column(money())
     precio_venta_unitario_ars: Mapped[Decimal | None] = mapped_column(money())
     proveedor: Mapped[str | None] = mapped_column(Text)
