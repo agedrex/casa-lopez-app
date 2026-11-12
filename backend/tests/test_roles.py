@@ -105,6 +105,7 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
     ("GET", "/precios"): ADMIN, ("GET", "/precios/chequeo"): ADMIN,
     ("GET", "/categorias"): ADMIN, ("GET", "/impuestos"): ADMIN, ("GET", "/dolar"): ADMIN, ("GET", "/parametros"): ADMIN,
     ("GET", "/talleres"): ADMIN, ("GET", "/talleres/{codigo}"): ADMIN, ("GET", "/personas"): ADMIN,
+    ("GET", "/talleres/{codigo}/historial"): ADMIN,
     ("GET", "/costos-fijos"): ADMIN, ("GET", "/costos-fijos/periodos"): ADMIN,
     ("GET", "/panel/costos"): ADMIN, ("GET", "/panel/tendencia"): ADMIN,
     ("GET", "/fabricacion/casa-vs-taller"): ADMIN, ("GET", "/calidad"): ADMIN,
@@ -126,9 +127,11 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
     ("GET", "/reventa"): ADMIN, ("GET", "/reventa/{codigo}"): ADMIN,
     ("GET", "/proveedores"): ADMIN, ("GET", "/proveedores/{codigo}"): ADMIN,
     ("GET", "/proveedores/{codigo}/documentos"): ADMIN, ("GET", "/documentos-proveedor/{id}/archivo"): ADMIN,
+    ("GET", "/proveedores/{codigo}/materiales"): ADMIN,
     **{("POST", ruta): ADMIN for ruta in (
         "/reventa", "/reventa/lote", "/reventa/{codigo}/activo", "/reventa/{codigo}/compras",
         "/proveedores", "/proveedores/{codigo}", "/proveedores/{codigo}/activo", "/proveedores/{codigo}/documentos",
+        "/proveedores/{codigo}/precios",
         "/documentos-proveedor/{id}/ocr", "/documentos-proveedor/{id}/datos")},
 }
 # Open on purpose: the health check of the deploy and the stage catalog of routers.py, which carries no business data

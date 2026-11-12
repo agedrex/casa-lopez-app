@@ -1,4 +1,5 @@
-"""Suppliers and their documents (invoices, images): storage, the file checks and the OCR states.
+"""Suppliers, what they charge for each material over time, and their documents (invoices, images): storage, the file
+checks and the OCR states.
 
 Files are stored in the database (bytea). The type is decided by the file's magic bytes, never by the declared mime or the
 extension; the file name is sanitized and only ever used as a label. The OCR reads the file and stores plain text plus a
@@ -15,14 +16,15 @@ from datetime import date
 from decimal import Decimal
 from urllib.parse import quote
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, undefer
 
-from backend.models import DOCUMENT_TYPES, DocumentoProveedor, Proveedor
+from backend.models import DOCUMENT_TYPES, Color, DocumentoProveedor, Material, PrecioMaterial, Proveedor
 from backend.ocr_llm import OcrError, OcrLLM, OcrResult, OcrSuggestion
 from backend.servicios import (
     UNIQUE_VIOLATION, Conflicto, DatosInvalidos, NoEncontrado, _insertar, _patron, _siguiente_numero, _texto_o_nada,
+    crear_precio, porcentaje_de_barra, variacion_de_precio,
 )
 
 # Audit lines go to uvicorn's logger. Only ids, sizes and outcome classes are logged: never the key, the file or its text.
@@ -379,3 +381,102 @@ def confirm_document_data(
     document.moneda = moneda
     session.commit()
     return _document_to_dict(document, supplier_code)
+
+
+# --- What a supplier charges: materials and the history of their prices -------------------------------------------
+# The prices live in `precio_material` (append-only). A price belongs to a supplier through `proveedor_id`; a row that was
+# loaded before the link existed still counts when its text is exactly the supplier's code (codes are unique).
+
+@dataclass(frozen=True)
+class PrecioDeProveedor:
+    id: int
+    codigo: str
+    material_id: int
+    material: str
+    material_nombre: str
+    color_id: int | None
+    color: str | None
+    precio: Decimal
+    moneda: str
+    unidad_del_precio: str
+    iva_incluido: bool
+    vigente_desde: date
+    nota_fuente: str | None
+
+
+def _serie_de_precios(precios: list[PrecioDeProveedor]) -> dict:
+    """One material (and color) of one supplier. The variation compares each price with the previous one in the same currency."""
+    cronologico = sorted(precios, key=lambda p: (p.vigente_desde, p.id))
+    anterior_por_moneda: dict[str, Decimal] = {}
+    entradas = []
+    for precio in cronologico:
+        variacion, salto = variacion_de_precio(anterior_por_moneda.get(precio.moneda), precio.precio)
+        anterior_por_moneda[precio.moneda] = precio.precio
+        entradas.append({
+            "codigo": precio.codigo, "vigente_desde": precio.vigente_desde, "precio": precio.precio, "moneda": precio.moneda,
+            "unidad_del_precio": precio.unidad_del_precio, "iva_incluido": precio.iva_incluido,
+            "nota_fuente": precio.nota_fuente, "variacion_pct": variacion, "salto_grande": salto,
+        })
+    maximo_por_moneda: dict[str, Decimal] = {}
+    for entrada in entradas:
+        maximo_por_moneda[entrada["moneda"]] = max(maximo_por_moneda.get(entrada["moneda"], entrada["precio"]), entrada["precio"])
+    for entrada in entradas:  # bars only compare prices in the same currency
+        entrada["barra_pct"] = porcentaje_de_barra(entrada["precio"], maximo_por_moneda[entrada["moneda"]])
+    ultimo = entradas[-1]
+    primero_ultimo = variacion_de_precio(entradas[0]["precio"], ultimo["precio"])[0] \
+        if len(entradas) > 1 and entradas[0]["moneda"] == ultimo["moneda"] else None
+    muestra = cronologico[0]
+    return {
+        "material": muestra.material, "material_nombre": muestra.material_nombre, "color": muestra.color,
+        "ultimo_precio": ultimo["precio"], "moneda": ultimo["moneda"], "unidad_del_precio": ultimo["unidad_del_precio"],
+        "ultima_fecha": ultimo["vigente_desde"], "variacion_ultima_pct": ultimo["variacion_pct"],
+        "variacion_total_pct": primero_ultimo, "cargas": len(entradas), "historial": entradas[::-1],
+    }
+
+
+def materiales_de_proveedor(precios: list[PrecioDeProveedor]) -> list[dict]:
+    """Group the prices of one supplier by material and color; materials A to Z, the plain color before the colored ones."""
+    series: dict[tuple[int, int | None], list[PrecioDeProveedor]] = {}
+    for precio in precios:
+        series.setdefault((precio.material_id, precio.color_id), []).append(precio)
+    ordenadas = sorted(series.values(), key=lambda lista: (lista[0].material_nombre.lower(), lista[0].color or ""))
+    return [_serie_de_precios(lista) for lista in ordenadas]
+
+
+def _prices_of(session: Session, supplier: Proveedor) -> list[PrecioDeProveedor]:
+    linked = or_(PrecioMaterial.proveedor_id == supplier.id,
+                 and_(PrecioMaterial.proveedor_id.is_(None), PrecioMaterial.proveedor == supplier.codigo))
+    rows = session.execute(
+        select(PrecioMaterial, Material.codigo, Material.nombre, Color.nombre)
+        .join(Material, Material.id == PrecioMaterial.material_id)
+        .outerjoin(Color, Color.id == PrecioMaterial.color_id)
+        .where(linked)
+    ).all()
+    return [PrecioDeProveedor(
+        id=p.id, codigo=p.codigo, material_id=p.material_id, material=material, material_nombre=nombre,
+        color_id=p.color_id, color=color, precio=p.precio, moneda=p.moneda, unidad_del_precio=p.unidad_del_precio,
+        iva_incluido=p.iva_incluido, vigente_desde=p.vigente_desde, nota_fuente=p.nota_fuente,
+    ) for p, material, nombre, color in rows]
+
+
+def list_supplier_materials(session: Session, code: str) -> dict:
+    supplier = _supplier(session, code)
+    return {"proveedor": supplier.codigo, "proveedor_nombre": supplier.nombre,
+            "materiales": materiales_de_proveedor(_prices_of(session, supplier))}
+
+
+def add_supplier_price(
+    session: Session, code: str, *, material: str, color: str | None, precio: Decimal, moneda: str,
+    unidad_del_precio: str, iva_incluido: bool, vigente_desde: date, nota_fuente: str | None,
+) -> dict:
+    """A new price of a material from this supplier: a new dated row linked to it, never an edit of an older one.
+
+    The same rules as `POST /precios` apply (unit equal to the consumption unit, one price per material, color and date).
+    SUPUESTO: validar. Like any price, from its date on it is the one the costs use for that material.
+    """
+    supplier = _supplier(session, code)
+    return crear_precio(
+        session, material=material, color=color, proveedor=supplier.codigo, proveedor_id=supplier.id, precio=precio,
+        moneda=moneda, unidad_del_precio=unidad_del_precio, iva_incluido=iva_incluido, vigente_desde=vigente_desde,
+        nota_fuente=_texto_o_nada(nota_fuente),
+    )
