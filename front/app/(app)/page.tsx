@@ -14,7 +14,7 @@ export default async function PanelPage({
 }: {
   searchParams: Promise<AlertasSearch>;
 }) {
-  const { user } = await requireSession();
+  await requireSession();
   const filters = alertasFilters(await searchParams);
   const [panel, calidad] = await Promise.all([
     apiGet<PanelCostos>("/panel/costos"),
@@ -34,7 +34,7 @@ export default async function PanelPage({
         <BloqueConError message={panel.message} />
       )}
       <div className="mt-12 space-y-12">
-        <DolarPanel role={user.role} />
+        <DolarPanel />
         <section
           id="alertas"
           aria-labelledby="alertas-titulo"
