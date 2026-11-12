@@ -2673,7 +2673,7 @@ def _hallazgos_de_parametros(session: Session) -> list[dict]:
     for p in session.scalars(select(Parametro).order_by(Parametro.id)):
         estado = estado_de_parametro(p.fuente_estado)
         if estado:
-            hallazgos.append(_hallazgo(estado[0], p.codigo, f"{p.constante}: {estado[1]}", "/admin/parametros"))
+            hallazgos.append(_hallazgo(estado[0], p.codigo, f"{p.constante}: {estado[1]}", ""))  # no screen edits parameters: no link
     return hallazgos
 
 

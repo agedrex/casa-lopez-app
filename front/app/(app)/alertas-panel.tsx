@@ -187,13 +187,15 @@ export function Alertas({
                   {hallazgo.mensaje}
                   <span className="text-muted"> · {tema}</span>
                 </span>
-                <Link
-                  href={safeNext(hallazgo.ruta)}
-                  className="underline decoration-gold underline-offset-4"
-                >
-                  Corregir
-                  <span className="sr-only"> {hallazgo.entidad}</span>
-                </Link>
+                {hallazgo.ruta ? (
+                  <Link
+                    href={safeNext(hallazgo.ruta)}
+                    className="underline decoration-gold underline-offset-4"
+                  >
+                    Corregir
+                    <span className="sr-only"> {hallazgo.entidad}</span>
+                  </Link>
+                ) : null}
               </li>
             ))}
           </ul>

@@ -543,4 +543,4 @@ def test_quality_findings_of_models_and_parameters_point_to_their_admin_screens(
     assert grupos["modelos_sin_validar"]["hallazgos"] and grupos["parametros"]["hallazgos"]
     assert {h["ruta"] for h in grupos["modelos_sin_validar"]["hallazgos"]} == {"/productos/modelos"}
     assert {h["ruta"] for h in grupos["modelos"]["hallazgos"]} <= {"/productos/modelos"}
-    assert {h["ruta"] for h in grupos["parametros"]["hallazgos"]} == {"/admin/parametros"}
+    assert {h["ruta"] for h in grupos["parametros"]["hallazgos"]} == {""}  # no screen edits parameters
