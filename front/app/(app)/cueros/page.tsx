@@ -6,18 +6,16 @@ import {
   labelClass,
   linkButtonClass,
 } from "@/components/cueros/estilos";
-import { GrupoCard, UmbralLinea } from "@/components/cueros/grupo-card";
+import { UmbralLinea } from "@/components/cueros/grupo-card";
 import { GruposTabla, PiezasTabla } from "@/components/cueros/tablas";
 import { inputClass } from "@/components/form";
 import {
   Card,
-  CardList,
   ErrorNotice,
   Notice,
   PageHeader,
   SectionTitle,
 } from "@/components/ui";
-import { selectedView, ViewSelector } from "@/components/view-selector";
 import { apiGet } from "@/lib/api";
 import { grupoTitulo, isPositive } from "@/lib/cueros";
 import { parseDecimalInput, todayIso } from "@/lib/format";
@@ -53,7 +51,6 @@ export default async function CuerosPage({
   const params = await searchParams;
   const writer = canWrite(user.role);
   const showMoney = !isTallerOnly(user.role);
-  const view = selectedView(params.vista);
   const material = first(params.material);
   const color = first(params.color);
   const solo = first(params.solo) === "1";
@@ -104,10 +101,6 @@ export default async function CuerosPage({
         .filter((grupo) => !solo || isPositive(grupo.disponible))
     : [];
 
-  const filterParams = new URLSearchParams();
-  if (material) filterParams.set("material", material);
-  if (color) filterParams.set("color", color);
-  if (solo) filterParams.set("solo", "1");
   const hayFiltros = Boolean(material || color || solo);
 
   return (
@@ -138,9 +131,6 @@ export default async function CuerosPage({
                 <input type="hidden" name="color" value={color} />
               ) : null}
               {solo ? <input type="hidden" name="solo" value="1" /> : null}
-              {view === "tabla" ? (
-                <input type="hidden" name="vista" value="tabla" />
-              ) : null}
               <div className="grid gap-4 sm:grid-cols-[2fr_1fr]">
                 <div>
                   <label htmlFor="alcanza-producto" className={labelClass}>
@@ -260,10 +250,8 @@ export default async function CuerosPage({
                 material={material}
                 color={color}
                 solo={solo}
-                vista={view}
                 hayFiltros={hayFiltros}
               />
-              <ViewSelector path="/cueros" params={filterParams} view={view} />
               {filtrados.length === 0 ? (
                 <Notice
                   tone="info"
@@ -273,41 +261,26 @@ export default async function CuerosPage({
                       : "Todavía no hay cueros cargados."
                   }
                 />
-              ) : view === "tabla" ? (
-                <div className="space-y-8">
-                  <GruposTabla
-                    grupos={filtrados}
-                    nombres={nombres}
-                    showMoney={showMoney}
-                  />
-                  <div className="space-y-3">
-                    <SectionTitle>Pieles</SectionTitle>
-                    <PiezasTabla
-                      piezas={filtrados.flatMap((grupo) => grupo.piezas)}
+              ) : (
+                <>
+                  <div className="space-y-8">
+                    <GruposTabla
+                      grupos={filtrados}
                       nombres={nombres}
                       showMoney={showMoney}
                     />
+                    <div className="space-y-3">
+                      <SectionTitle>Pieles</SectionTitle>
+                      <PiezasTabla
+                        piezas={filtrados.flatMap((grupo) => grupo.piezas)}
+                        nombres={nombres}
+                        showMoney={showMoney}
+                      />
+                    </div>
                   </div>
-                </div>
-              ) : (
-                <CardList>
-                  {filtrados.map((grupo) => (
-                    <GrupoCard
-                      key={groupKey(grupo)}
-                      grupo={grupo}
-                      titulo={grupoTitulo(
-                        nombres[grupo.material] ?? grupo.material,
-                        grupo.color,
-                      )}
-                      showMoney={showMoney}
-                      conPiezas
-                    />
-                  ))}
-                </CardList>
+                  <Umbrales grupos={filtrados} nombres={nombres} />
+                </>
               )}
-              {view === "tabla" && filtrados.length > 0 ? (
-                <Umbrales grupos={filtrados} nombres={nombres} />
-              ) : null}
             </>
           )}
         </section>
@@ -322,7 +295,6 @@ function FiltrosForm({
   material,
   color,
   solo,
-  vista,
   hayFiltros,
 }: {
   grupos: GrupoCuero[];
@@ -330,7 +302,6 @@ function FiltrosForm({
   material: string;
   color: string;
   solo: boolean;
-  vista: string;
   hayFiltros: boolean;
 }) {
   const materialesPresentes = [
@@ -342,9 +313,6 @@ function FiltrosForm({
   return (
     <Card>
       <form method="get" className="space-y-4">
-        {vista === "tabla" ? (
-          <input type="hidden" name="vista" value="tabla" />
-        ) : null}
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label htmlFor="filtro-material" className={labelClass}>
@@ -398,10 +366,7 @@ function FiltrosForm({
             Filtrar
           </button>
           {hayFiltros ? (
-            <Link
-              href={vista === "tabla" ? "/cueros?vista=tabla" : "/cueros"}
-              className={linkButtonClass}
-            >
+            <Link href="/cueros" className={linkButtonClass}>
               Quitar filtros
             </Link>
           ) : null}

@@ -48,7 +48,6 @@ export function GruposTabla({
                 grupo.color,
               )}
               showMoney={showMoney}
-              conPiezas={false}
             />
           ))}
         </CardList>
