@@ -165,6 +165,7 @@ def test_the_history_lists_what_was_paid_per_lot_and_per_product_with_its_variat
     assert cartera["lotes"] == 2 and D(cartera["unidades"]) == 30 and cartera["producto_nombre"]
     assert [(h["lote"], D(h["pagado"]), h["variacion_pct"]) for h in cartera["historial"]] == [
         (segundo, D("11000"), "10.00"), (primero, D("10000"), None)]
+    assert [h["item"] for h in cartera["historial"]] == ["LIT-0002", "LIT-0001"]
     assert cartera["variacion_total_pct"] == "10.00" and D(cartera["ultimo_pagado"]) == 11000
     assert isinstance(cartera["historial"][0]["pagado"], str) and isinstance(cuerpo["lotes"][0]["total_pagado"], str)
 

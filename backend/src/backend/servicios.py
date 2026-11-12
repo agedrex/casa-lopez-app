@@ -1805,7 +1805,7 @@ def _pagado(item: ItemDatos) -> Decimal | None:
 
 
 def _renglon_de_historial(lote: LoteDatos, item: ItemDatos) -> dict:
-    return {"fecha": lote.fecha, "lote": lote.codigo, "cantidad": item.cantidad, "cotizado": item.cotizado,
+    return {"item": item.codigo, "fecha": lote.fecha, "lote": lote.codigo, "cantidad": item.cantidad, "cotizado": item.cotizado,
             "pagado": _pagado(item), "variacion_pct": None, "salto_grande": False, "barra_pct": None}
 
 

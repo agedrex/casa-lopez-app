@@ -994,6 +994,7 @@ class LoteDeTallerOut(Salida):
 
 
 class PagoDeProductoOut(Salida):
+    item: str
     fecha: date | None
     lote: str
     cantidad: Decimal
