@@ -165,7 +165,7 @@ function SearchForm({
             type="search"
             defaultValue={q}
             autoComplete="off"
-            placeholder="PRD-0001, portafolio, negro…"
+            placeholder="PRD-0001, MOD-0001, portafolio, negro…"
             className={inputClass}
           />
         </div>
@@ -463,7 +463,19 @@ function ProductTable({
                         producto.codigo
                       )}
                     </td>
-                    <td className={tdClass}>{producto.modelo ?? "—"}</td>
+                    <td className={tdClass}>
+                      {producto.modelo ? (
+                        <Link
+                          href={`/productos?q=${encodeURIComponent(producto.modelo)}`}
+                          title="Ver los productos de este modelo"
+                          className="underline decoration-gold underline-offset-4"
+                        >
+                          {producto.modelo}
+                        </Link>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
                     <td className={tdClass}>
                       <div className="max-w-sm">
                         <NombreProducto nombre={producto.nombre} />
