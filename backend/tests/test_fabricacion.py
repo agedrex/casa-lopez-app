@@ -495,8 +495,10 @@ def test_quality_report_shape_and_the_seeded_findings(api):
     assert set(datos["resumen"]) == {"alta", "media", "baja", "total"}
     todos = [h for g in datos["grupos"] for h in g["hallazgos"]]
     assert datos["resumen"]["total"] == len(todos) == sum(datos["resumen"][s] for s in ("alta", "media", "baja"))
-    assert all(h["severidad"] in ("alta", "media", "baja") and h["entidad"] and h["mensaje"] and h["ruta"].startswith("/")
-               for h in todos)
+    assert all(h["severidad"] in ("alta", "media", "baja") and h["entidad"] and h["mensaje"] for h in todos)
+    # Every finding links to a screen, except the parameters: no screen edits them (empty route, no link).
+    con_ruta = [h for g in datos["grupos"] if g["clave"] != "parametros" for h in g["hallazgos"]]
+    assert all(h["ruta"].startswith("/") for h in con_ruta)
     assert len(grupos["modelos_sin_validar"]["hallazgos"]) == 325 and grupos["modelos_sin_validar"]["total"] == 325
     assert len(grupos["parametros"]["hallazgos"]) == 8
     gastos = grupos["gastos_fijos"]["hallazgos"]
