@@ -43,14 +43,9 @@ export async function createProveedor(
   const body = proveedorBody(formData);
   if (!body.nombre) return error("Indique el nombre del proveedor.");
 
-  const result = await apiPost<Proveedor>("/proveedores", {
-    codigo: optional(formData, "codigo"),
-    ...body,
-  });
+  const result = await apiPost<Proveedor>("/proveedores", body);
   if (!result.ok) {
-    return fromFailure(result, {
-      409: `${CONFLICT_PROVEEDOR} Revise también el código si lo escribió.`,
-    });
+    return fromFailure(result, { 409: CONFLICT_PROVEEDOR });
   }
   redirect(`/proveedores/${encodeURIComponent(result.data.codigo)}`);
 }

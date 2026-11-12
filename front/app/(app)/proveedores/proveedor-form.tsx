@@ -20,17 +20,15 @@ export type ProveedorValues = {
   nota: string | null;
 };
 
-/** Create and edit share the fields; only create offers the optional code. */
+/** Create and edit share the fields; the code is assigned by the backend, never typed. */
 export function ProveedorForm({
   action,
   initial,
-  withCodigo = false,
   submitLabel,
   pendingLabel,
 }: {
   action: Action;
   initial?: ProveedorValues;
-  withCodigo?: boolean;
   submitLabel: string;
   pendingLabel: string;
 }) {
@@ -49,22 +47,6 @@ export function ProveedorForm({
             className={inputClass}
           />
         </Field>
-        {withCodigo ? (
-          <Field
-            id="proveedor-codigo"
-            label="Código (opcional)"
-            hint="Si lo deja vacío, la aplicación asigna el siguiente (PRV-0001, PRV-0002…)."
-          >
-            <input
-              id="proveedor-codigo"
-              name="codigo"
-              autoComplete="off"
-              placeholder="PRV-0001"
-              aria-describedby="proveedor-codigo-hint"
-              className={inputClass}
-            />
-          </Field>
-        ) : null}
         <Field
           id="proveedor-cuit"
           label="CUIT (opcional)"
