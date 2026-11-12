@@ -87,6 +87,7 @@ export default async function MaterialesPage({
               precios={precios.data}
               sort={sort}
               direction={direction}
+              canWrite={canWrite(user.role)}
             />
           </section>
         </div>
@@ -100,11 +101,13 @@ function AllMaterials({
   precios,
   sort,
   direction,
+  canWrite: writable,
 }: {
   materiales: Material[];
   precios: Precio[];
   sort: string;
   direction: "asc" | "desc";
+  canWrite: boolean;
 }) {
   const entries = materiales.flatMap((material) => {
     const history = precios.filter(
@@ -163,6 +166,14 @@ function AllMaterials({
                     <span className="block text-xs text-muted">
                       {material.codigo}
                     </span>
+                    {writable && material.cotizable ? (
+                      <Link
+                        href={`/materiales?material=${material.codigo}#cargar`}
+                        className="text-xs underline decoration-gold underline-offset-4"
+                      >
+                        Cargar precio nuevo
+                      </Link>
+                    ) : null}
                   </td>
                   <td className={tdClass}>
                     {price ? formatDate(price.vigente_desde) : "—"}
