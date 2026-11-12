@@ -217,7 +217,7 @@ def test_kit_sums_its_components_and_rejects_cycles(api):
 def test_catalog_reads(api):
     assert len(api.get("/modelos").json()) == 325
     assert len(api.get("/materiales").json()) == 13
-    assert len(api.get("/parametros").json()) == 8
+    assert len(api.get("/parametros").json()) == 9
     assert len(api.get("/talleres").json()) == 3
     precios = api.get("/precios", params={"a_fecha": "2026-10-01"}).json()
     assert len(precios) == 11 and all(p["vigente"] for p in precios)

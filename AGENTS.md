@@ -252,7 +252,7 @@ Son las reglas que el Excel aplica sin decirlo: de fórmula, de criterio o de fo
 
 **La fuente de verdad es el código:** `backend/src/backend/models.py` y las migraciones, explicados en `docs/der-v3.md`. Su origen es la pestaña `Diccionario` de `Plantilla Costos Casa Lopez v4.1 (trabajo).xlsx`, que el 2026-10-27 reemplazó al DER v1 y a las reglas del Excel viejo [V: `odd/tasks/app-casa-lopez-v3.md`, S1 y L1]. Si este archivo y el código no coinciden, **gana el código** y se corrige este. `docs/der-v3.md` está algo atrasado: no lista `precio_venta`, `proveedor` ni `documento_proveedor` (migraciones 0006 y 0007) y dice consumos `NUMERIC(10,4)` cuando son `(12,6)` [V: `models.py`]. `docs/der.md`, `der-borrador.sql`, `wo1-modelo-conceptual.md`, `wo2-decisiones.md` y `wo2-staging.md` hablan del DER v1 (11 tablas, `cotizacion_linea`, GG): son **históricos**, no se implementan.
 
-### Migraciones (11, cabeza `0011_precio_material_proveedor`) [V: `backend/migrations/versions`]
+### Migraciones (14, cabeza `0014_gastos_venta_pct`) [V: `backend/migrations/versions`]
 | Revisión | Qué hace |
 |---|---|
 | `0001_esquema_costos`, `0002_semillas` | DER v1 y sus semillas. Históricas. |
@@ -265,8 +265,11 @@ Son las reglas que el Excel aplica sin decirlo: de fórmula, de criterio o de fo
 | `0009_gasto_anulado` | `gasto_periodo.anulado` (boolean, por defecto false): borrar un costo fijo solo marca la fila como anulada; deja de contar en totales, listas, copiar mes y exportación, pero se conserva. |
 | `0010_compra_sin_unidades` | `compra_reventa.unidades` pasa a admitir NULL: un cambio de costo o de precio de venta hecho en la grilla de Mercadería es una fila nueva **sin unidades** (actualización de precio, no compra). |
 | `0011_precio_material_proveedor` | `precio_material.proveedor_id` (FK nullable a `proveedor`); el texto `proveedor` queda. Backfill solo cuando el texto es exactamente el código de un proveedor. |
+| `0012_impuesto_activo` | `impuesto.activo`: desactivar un impuesto no lo borra. |
+| `0013_impuestos_vacios` | Borra los tres impuestos sembrados (IVA, IIBB, GANANCIAS): la grilla de impuestos arranca vacía. |
+| `0014_gastos_venta_pct` | Agrega la fila de `parametro` `GASTOS_VENTA_PCT` (gastos variables de venta, fracción del precio neto, en 0, sin confirmar). No cambia tablas. Su `downgrade` borra solo esa fila. |
 
-Todas tienen `downgrade`, pero bajar de 0011 (pierde el vínculo al proveedor), 0010 (falla si hay filas sin unidades), 0009, 0007, 0006 o 0005 borra datos o cambia totales (0009: las filas anuladas vuelven a contar) (ver `docs/produccion.md`, sección 5).
+Todas tienen `downgrade`, pero bajar de 0014 (borra el valor cargado de `GASTOS_VENTA_PCT`), 0013 (vuelve a crear los impuestos sembrados), 0012 (los impuestos desactivados vuelven a estar activos), 0011 (pierde el vínculo al proveedor), 0010 (falla si hay filas sin unidades), 0009, 0007, 0006 o 0005 borra datos o cambia totales (0009: las filas anuladas vuelven a contar) (ver `docs/produccion.md`, sección 5).
 
 ### Tablas (30 en el schema `costos`) [V: `models.py`, `docs/der-v3.md`]
 | Grupo | Tablas | Lo que no hay que romper |
@@ -348,6 +351,7 @@ La lista completa de preguntas, ordenada por sección y prioridad, estaba en `pr
 - **6, 7 y 8:** HILO_CEMENTO se separó de HERRAJES; CORTE vale 0 (sueldo en costos fijos); CONFECCION une REB, PREP y M.O. (ver 3.5.4). Los códigos REB y PREP ya no existen como etapas. Qué eran exactamente sigue abierto.
 - **9 Código de modelo:** `modelo.codigo` (`MOD-nnnn`) y `producto.codigo` (`PRD-nnnn`) son claves internas; el código del Excel es `modelo_excel_viejo`. Sigue sin saberse si es el del ERP de Alejandro.
 - **10 Recotización:** la app marca RECOTIZAR si el costo se desvía más de `TOLERANCIA_DESVIO_PCT` (0,05) o el dólar se movió más de `VARIACION_DOLAR_RECOTIZAR_PCT` (0,10). Ambos están sembrados como "Propuesta, a confirmar con Robert" (SUPUESTO).
+- **Escenario CVU (multiproducto):** el aporte por unidad del escenario es precio neto - costo variable - gastos de venta (`GASTOS_VENTA_PCT` × precio neto, en 0) - IIBB (alícuota del impuesto activo con código `IIBB` y base VENTA × precio neto; sin alícuota cuenta 0 y avisa `IIBB_SIN_ALICUOTA`). También muestra el aporte por hora de taller cuando el modelo tiene `horas_de_confeccion` (SUPUESTO: validar con el contador y Robert). Sigue sin existir `venta`: el volumen es el que se escribe en el escenario.
 - **11 Impuestos:** existe la tabla `impuesto` (IVA 21 %, no es costo: supuesto del DER, a validar con el contador; IIBB y Ganancias sin alícuota) y `ARREGLOS_PCT` = 0.
 - **12 Dólar:** `tipo_cambio.tipo` (`VENDEDOR` o `COMPRADOR`); el botón y `backend.actualizar_dolar` cargan el vendedor del BNA (SUPUESTO: validar con Gerardo, ver `docs/dolar-bna.md`). El cron todavía no está configurado.
 - **13 IVA en precios de compra:** existe `precio_material.iva_incluido` (por defecto `false`); sigue sin saberse si los precios del Excel lo incluyen.

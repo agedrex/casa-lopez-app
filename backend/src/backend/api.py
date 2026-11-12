@@ -865,11 +865,16 @@ class EscenarioLineaOut(Salida):
     precio: Decimal
     fuente_precio: Literal["INGRESADO", "GUARDADO"]
     costo_variable: Decimal
+    gasto_venta_unidad: Decimal
+    iibb_unidad: Decimal
     margen_unidad: Decimal
     margen_pct: Decimal | None
     veredicto: Literal["NO_CUBRE_VARIABLE", "MC_BAJO", "SALUDABLE"]
     contribucion_total: Decimal
     participacion_pct: Decimal | None
+    horas_confeccion: Decimal | None
+    margen_por_hora: Decimal | None
+    ranking_por_hora: int | None
 
 
 class EscenarioOmitidoOut(Salida):
@@ -883,6 +888,7 @@ class EscenarioOut(Salida):
     resultado: EscenarioResultadoOut
     lineas: list[EscenarioLineaOut]
     omitidos: list[EscenarioOmitidoOut]
+    mejor_por_hora: str | None
     avisos: list[PanelAvisoOut]
     confiable: bool
 

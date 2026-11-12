@@ -500,7 +500,7 @@ def test_quality_report_shape_and_the_seeded_findings(api):
     con_ruta = [h for g in datos["grupos"] if g["clave"] != "parametros" for h in g["hallazgos"]]
     assert all(h["ruta"].startswith("/") for h in con_ruta)
     assert len(grupos["modelos_sin_validar"]["hallazgos"]) == 325 and grupos["modelos_sin_validar"]["total"] == 325
-    assert len(grupos["parametros"]["hallazgos"]) == 8
+    assert len(grupos["parametros"]["hallazgos"]) == 9
     gastos = grupos["gastos_fijos"]["hallazgos"]
     assert {h["entidad"] for h in gastos if "sin monto" in h["mensaje"]} and any("ficticio" in h["mensaje"] for h in gastos)
     assert all(h["ruta"].startswith("/costos-fijos?periodo=2026-10") for h in gastos)

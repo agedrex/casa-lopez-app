@@ -340,3 +340,52 @@ def test_below_break_even_the_profit_and_the_safety_margin_are_negative():
     assert r.margen_seguridad_pct == D("-2000") / D("3000") * 100
     assert r.margen_seguridad_pct < 0
     assert r.equilibrio_unidades == D("34")  # 20 units x 5000 / 3000 = 33.33 -> 34
+
+
+# --- CVU multiproducto: contribution per unit = net price - variable cost - variable selling expense - IIBB ----------
+# The guide's example: price 121.000 with IVA -> net 100.000; cost 50.000; other variable expense 5.000; IIBB 3 %.
+
+def test_the_guide_example_leaves_42000_per_unit_when_selling_expense_and_iibb_are_discounted():
+    from backend.costeo import margen_de_contribucion
+    neto = D("121000") / D("1.21")
+    assert neto == D("100000")
+    r = margen_de_contribucion(neto, D("50000"), gasto_venta=D("5000"), iibb=D("3000"))
+    assert r.margen_unidad == D("42000") and r.margen_pct == D("42") and r.veredicto == "SALUDABLE"
+
+
+def test_a_selling_expense_or_iibb_can_turn_a_covered_variable_cost_into_a_loss():
+    from backend.costeo import margen_de_contribucion
+    assert margen_de_contribucion(D("100"), D("90")).veredicto == "SALUDABLE"
+    assert margen_de_contribucion(D("100"), D("90"), gasto_venta=D("5"), iibb=D("5")).veredicto == "NO_CUBRE_VARIABLE"
+
+
+def test_without_selling_expense_or_iibb_the_margin_is_what_it_always_was():
+    from backend.costeo import margen_de_contribucion
+    base = margen_de_contribucion(D("125"), D("100"), D("30"))
+    explicit = margen_de_contribucion(D("125"), D("100"), D("30"), gasto_venta=D("0"), iibb=D("0"))
+    assert base == explicit and (base.margen_unidad, base.margen_pct, base.markup_pct) == (D("25"), D("20"), D("25"))
+
+
+def test_an_amount_over_the_net_price_is_price_times_fraction_in_the_money_scale():
+    from backend.costeo import importe_sobre_precio
+    assert importe_sobre_precio(D("100000"), D("0.03")) == D("3000")
+    assert importe_sobre_precio(D("100"), D("0")) == D("0")
+    assert importe_sobre_precio(D("100.5"), D("0.0333")) == D("3.3467")  # 3.34666... rounded half up to 4 decimals
+
+
+def test_the_mix_discounts_selling_expense_and_iibb_from_every_product_and_defaults_to_none():
+    from backend.costeo import ProductoEnMezcla, equilibrio_con_mezcla
+    con = equilibrio_con_mezcla(D("100000"), [ProductoEnMezcla(
+        D("100000"), D("50000"), D("10"), gasto_venta_por_unidad=D("5000"), iibb_por_unidad=D("3000"))])
+    assert con.margen_contribucion == D("420000") and con.margen_contribucion_pct == D("42")
+    assert con.equilibrio_ingresos == D("100000") * D("1000000") / D("420000")
+    sin = equilibrio_con_mezcla(D("100000"), [ProductoEnMezcla(D("100000"), D("50000"), D("10"))])
+    assert sin.margen_contribucion == D("500000")
+
+
+def test_contribution_per_workshop_hour_needs_known_positive_hours():
+    from backend.costeo import margen_por_hora
+    assert margen_por_hora(D("42000"), D("3")) == D("14000")
+    assert margen_por_hora(D("-100"), D("4")) == D("-25")
+    assert margen_por_hora(D("42000"), None) is None
+    assert margen_por_hora(D("42000"), D("0")) is None

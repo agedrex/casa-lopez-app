@@ -17,8 +17,8 @@ function positive(value: string | null): value is string {
 }
 
 /**
- * Runs the sales scenario. It saves nothing and the API lets any signed-in role call it
- * (no ESCRITURA), so it only checks the session, not the writer role.
+ * Runs the sales scenario. It saves nothing, but the API only lets an admin call it
+ * (ESCRITURA); here we only check the session and the API's 403 comes back as the error.
  */
 export async function runEscenario(
   _previous: EscenarioState,

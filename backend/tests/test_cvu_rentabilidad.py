@@ -39,8 +39,131 @@ def item(codigo, unidades="10", precio=None):
     return {"codigo": codigo, "unidades": D(unidades), "precio": None if precio is None else D(precio)}
 
 
+def sin_iibb_ni_gastos(monkeypatch):
+    """The three new reads of the scenario service, as they are today: no IIBB alicuota, selling expense 0, no hours."""
+    monkeypatch.setattr(servicios, "_alicuota_iibb", lambda s: D("0"))
+    monkeypatch.setattr(servicios, "_gastos_venta_pct", lambda s: D("0"))
+    monkeypatch.setattr(servicios, "_horas_de_confeccion", lambda s, ids: {})
+
+
 def codigos(resultado):
     return [a["codigo"] for a in resultado["avisos"]]
+
+
+def escenario_guia(*, iibb_alicuota=D("0.03"), gastos_venta_pct=D("0.05"), horas=None):
+    """The guide's example: net price 100.000 (121.000 with IVA), cost 50.000, 5 % selling expense, 3 % IIBB."""
+    return armar_escenario(
+        periodo="2026-11", items=[item("A", "10", "100000")], existentes={"A"}, costos={"A": D("50000")}, guardados={},
+        fijos=fijos(), iibb_alicuota=iibb_alicuota, gastos_venta_pct=gastos_venta_pct, horas=horas)
+
+
+# --- CVU multiproducto (S1-S4) ----------------------------------------------------------------------------------------
+
+def test_s1_iibb_is_the_net_price_times_the_alicuota_and_is_discounted_from_the_contribution():
+    linea = escenario_guia(gastos_venta_pct=D("0"))["lineas"][0]
+    assert linea["iibb_unidad"] == D("3000") and linea["margen_unidad"] == D("47000")
+    assert "IIBB_SIN_ALICUOTA" not in codigos(escenario_guia())
+
+
+def test_s1_without_an_iibb_alicuota_it_counts_zero_and_the_scenario_says_so():
+    r = escenario_guia(iibb_alicuota=None, gastos_venta_pct=D("0"))
+    assert r["lineas"][0]["iibb_unidad"] == D("0") and r["lineas"][0]["margen_unidad"] == D("50000")
+    aviso = next(a for a in r["avisos"] if a["codigo"] == "IIBB_SIN_ALICUOTA")
+    assert "Ingresos Brutos" in aviso["texto"] and "contador" in aviso["texto"]
+    assert codigos(r)[-1] == "VOLUMEN_ESCENARIO" and r["confiable"] is True  # a missing rate is not a fixed-cost problem
+
+
+def test_s2_the_selling_expense_is_the_net_price_times_the_parameter_and_the_guide_example_leaves_42000():
+    r = escenario_guia()
+    linea = r["lineas"][0]
+    assert linea["gasto_venta_unidad"] == D("5000") and linea["iibb_unidad"] == D("3000")
+    assert linea["margen_unidad"] == D("42000") and linea["contribucion_total"] == D("420000")
+    assert r["resultado"]["margen_contribucion"] == D("420000") and r["resultado"]["margen_contribucion_pct"] == D("42")
+
+
+def test_s2_the_break_even_uses_the_contribution_after_selling_expense_and_iibb():
+    r = escenario_guia()  # fixed costs 600, 42.000 per unit -> 1 unit; the participation of the only line is 100 %
+    assert r["resultado"]["equilibrio_unidades"] == D("1")
+    assert r["lineas"][0]["participacion_pct"] == D("100")
+
+
+def test_s3_the_margin_per_workshop_hour_is_listed_and_the_best_line_is_flagged():
+    r = armar_escenario(
+        periodo="2026-11", items=[item("A", precio="100"), item("B"), item("C", precio="100")], existentes={"A", "B", "C"},
+        costos={"A": D("60"), "B": D("150"), "C": D("90")}, guardados={"B": D("200")}, fijos=fijos(),
+        horas={"A": D("2"), "B": D("5"), "C": None})
+    por_codigo = {linea["codigo"]: linea for linea in r["lineas"]}
+    assert [linea["codigo"] for linea in r["lineas"]] == ["A", "B", "C"]  # the order of the request is kept
+    assert por_codigo["A"]["horas_confeccion"] == D("2") and por_codigo["A"]["margen_por_hora"] == D("20")  # (100-60)/2
+    assert por_codigo["B"]["margen_por_hora"] == D("10")  # (200-150)/5
+    assert por_codigo["C"]["horas_confeccion"] is None and por_codigo["C"]["margen_por_hora"] is None
+    assert [por_codigo[c]["ranking_por_hora"] for c in "ABC"] == [1, 2, None]
+    assert r["mejor_por_hora"] == "A"
+
+
+def test_s3_without_hours_nothing_is_invented():
+    r = escenario([item("A", precio="100")])
+    assert r["mejor_por_hora"] is None
+    assert r["lineas"][0]["horas_confeccion"] is None and r["lineas"][0]["margen_por_hora"] is None
+    assert r["lineas"][0]["ranking_por_hora"] is None
+    zero = escenario_guia(horas={"A": D("0")})["lineas"][0]
+    assert zero["margen_por_hora"] is None and zero["ranking_por_hora"] is None
+
+
+def test_s4_with_no_iibb_and_no_selling_expense_every_old_number_is_identical():
+    antes = escenario([item("A", "10", "100"), item("B", "5")])
+    ahora = armar_escenario(
+        periodo="2026-11", items=[item("A", "10", "100"), item("B", "5")], existentes={"A", "B"},
+        costos={"A": D("60"), "B": D("150")}, guardados={"B": D("200")}, fijos=fijos(), iibb_alicuota=None,
+        gastos_venta_pct=D("0"))
+    assert antes["resultado"] == ahora["resultado"] and antes["fijos"] == ahora["fijos"]
+    viejas = ("codigo", "unidades", "precio", "fuente_precio", "costo_variable", "margen_unidad", "margen_pct", "veredicto",
+              "contribucion_total", "participacion_pct")
+    assert [{k: l[k] for k in viejas} for l in antes["lineas"]] == [{k: l[k] for k in viejas} for l in ahora["lineas"]]
+    assert all(l["iibb_unidad"] == D("0") and l["gasto_venta_unidad"] == D("0") for l in ahora["lineas"])
+    assert codigos(ahora) == ["IIBB_SIN_ALICUOTA", "VOLUMEN_ESCENARIO"] and codigos(antes) == ["VOLUMEN_ESCENARIO"]
+
+
+def test_s1_the_iibb_alicuota_is_read_from_the_active_ventas_tax_with_code_iibb():
+    session = MagicMock()
+    session.scalar.return_value = D("0.03")
+    assert servicios._alicuota_iibb(session) == D("0.03")
+    sql = str(session.scalar.call_args.args[0])
+    assert "impuesto.codigo =" in sql and "impuesto.activo IS true" in sql and "impuesto.base =" in sql
+    session.scalar.return_value = None  # no row, an inactive one or an empty alicuota: the same, no rate
+    assert servicios._alicuota_iibb(session) is None
+
+
+def test_s2_the_selling_expense_parameter_defaults_to_zero_when_missing_or_empty():
+    session = MagicMock()
+    session.scalar.return_value = D("0.05")
+    assert servicios._gastos_venta_pct(session) == D("0.05")
+    assert "GASTOS_VENTA_PCT" in str(session.scalar.call_args.args[0].compile(compile_kwargs={"literal_binds": True}))
+    for sin_valor in (None, D("0")):
+        session.scalar.return_value = sin_valor
+        assert servicios._gastos_venta_pct(session) == D("0")
+
+
+def test_s1_s3_the_service_passes_the_alicuota_the_parameter_and_the_hours_to_the_scenario(monkeypatch):
+    session = MagicMock()
+    session.execute.return_value.all.return_value = [("A", 1)]
+    monkeypatch.setattr(servicios, "_costos_totales_de_hoy", lambda s, codigos: {"A": D("50000")})
+    monkeypatch.setattr(servicios, "_ultimos_precios_de_venta", lambda s, ids: {})
+    monkeypatch.setattr(servicios, "_fijos_de_fabrica", lambda s, periodos: {"2026-11": fijos("600")})
+    monkeypatch.setattr(servicios, "_alicuota_iibb", lambda s: D("0.03"))
+    monkeypatch.setattr(servicios, "_gastos_venta_pct", lambda s: D("0.05"))
+    monkeypatch.setattr(servicios, "_horas_de_confeccion", lambda s, ids: {"A": D("3")})
+    r = servicios.escenario_cvu(session, None, [item("A", precio="100000")], hoy=HOY)
+    linea = r["lineas"][0]
+    assert linea["margen_unidad"] == D("42000") and linea["margen_por_hora"] == D("14000") and r["mejor_por_hora"] == "A"
+    assert "IIBB_SIN_ALICUOTA" not in codigos(r)
+
+
+def test_s3_the_hours_come_from_the_model_of_each_product_and_a_kit_has_none():
+    session = MagicMock()
+    session.execute.return_value.all.return_value = [("A", D("2.5")), ("K", None)]
+    assert servicios._horas_de_confeccion(session, {"A", "K"}) == {"A": D("2.5"), "K": None}
+    assert servicios._horas_de_confeccion(session, set()) == {}
 
 
 # --- Profitability of one product (S9) ------------------------------------------------------------------------------
@@ -274,6 +397,7 @@ def test_the_scenario_service_loads_fixed_costs_costs_and_saved_prices_and_saves
     monkeypatch.setattr(servicios, "_costos_totales_de_hoy", lambda s, codigos: pedidos.update(costos=codigos) or {"A": D("60"), "B": D("150")})
     monkeypatch.setattr(servicios, "_ultimos_precios_de_venta", lambda s, ids: pedidos.update(ids=ids) or {2: D("200")})
     monkeypatch.setattr(servicios, "_fijos_de_fabrica", lambda s, periodos: pedidos.update(periodos=periodos) or {"2026-11": fijos("600")})
+    sin_iibb_ni_gastos(monkeypatch)
     r = servicios.escenario_cvu(session, None, [item("A", precio="100"), item("B"), item("Z")], hoy=HOY)
     assert pedidos == {"costos": {"A", "B"}, "ids": {1, 2}, "periodos": ["2026-11"]}
     assert r["periodo"] == "2026-11" and r["resultado"]["equilibrio_unidades"] == D("14") and r["confiable"] is True
@@ -288,6 +412,7 @@ def test_the_scenario_service_uses_the_period_asked_and_a_period_without_rows_is
     monkeypatch.setattr(servicios, "_costos_totales_de_hoy", lambda s, codigos: {"A": D("60")})
     monkeypatch.setattr(servicios, "_ultimos_precios_de_venta", lambda s, ids: {})
     monkeypatch.setattr(servicios, "_fijos_de_fabrica", lambda s, periodos: {})
+    sin_iibb_ni_gastos(monkeypatch)
     r = servicios.escenario_cvu(session, "2026-08", [item("A", precio="100")])
     assert r["periodo"] == "2026-08" and r["confiable"] is False and "SIN_FIJOS" in codigos(r)
 
@@ -388,6 +513,21 @@ def test_a_bad_typed_price_is_a_422_on_the_profitability_route(client, monkeypat
     assert client.get("/productos/PRD-0001/rentabilidad", params=params).status_code == 422
 
 
+def test_the_scenario_response_carries_iibb_selling_expense_and_margin_per_hour_as_strings(monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    try:
+        monkeypatch.setattr(servicios, "escenario_cvu", lambda session, periodo, items: escenario_guia(
+            iibb_alicuota=None, horas={"A": D("3")}))
+        cuerpo = con_rol("admin").post("/cvu/escenario", json={"items": [{"codigo": "A", "unidades": "10"}]}).json()
+        linea = cuerpo["lineas"][0]
+        assert linea["iibb_unidad"] == "0" and linea["gasto_venta_unidad"] == "5000.0000"
+        assert linea["horas_confeccion"] == "3" and linea["margen_por_hora"] == "15000.0000" and linea["ranking_por_hora"] == 1
+        assert cuerpo["mejor_por_hora"] == "A"
+        assert [a["codigo"] for a in cuerpo["avisos"]] == ["IIBB_SIN_ALICUOTA", "VOLUMEN_ESCENARIO"]
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_the_scenario_is_admin_only_and_leaves_money_as_strings(monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
     try:
@@ -483,3 +623,21 @@ def test_prices_are_stored_append_only_and_the_latest_one_drives_the_profitabili
     escenario = api.post("/cvu/escenario", json={"periodo": "2027-05", "items": [{"codigo": codigo, "unidades": "10"}]}).json()
     assert escenario["lineas"][0]["fuente_precio"] == "GUARDADO"
     assert "SIN_FIJOS" in [a["codigo"] for a in escenario["avisos"]] and escenario["confiable"] is False
+
+
+def test_s1_the_iibb_tax_is_also_found_by_its_name_because_the_grid_assigns_imp_codes():
+    session = MagicMock()
+    session.scalar.return_value = D("0.03")
+    assert servicios._alicuota_iibb(session) == D("0.03")
+    sql = str(session.scalar.call_args.args[0].compile(compile_kwargs={"literal_binds": True})).lower()
+    assert "ingresos brutos" in sql and "iibb%" in sql and "alicuota is not null" in sql
+
+
+def test_s4_without_iibb_or_selling_expense_the_margin_keeps_the_exact_decimal_scale():
+    costo = D("22310.60000000000000000")
+    r = armar_escenario(periodo="2026-11", items=[item("A", "10", "30000")], existentes={"A"},
+                        costos={"A": costo}, guardados={}, fijos=fijos(),
+                        iibb_alicuota=None, gastos_venta_pct=D("0.0000"))
+    linea = r["lineas"][0]
+    assert linea["margen_unidad"].as_tuple() == (D("30000") - costo).as_tuple()
+    assert linea["gasto_venta_unidad"] == 0 and linea["iibb_unidad"] == 0

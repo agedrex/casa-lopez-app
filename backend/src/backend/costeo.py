@@ -5,9 +5,10 @@ Rules come from the plantilla's LEEME section 6. All money is Decimal.
 
 from dataclasses import dataclass
 from datetime import date
-from decimal import ROUND_CEILING, Decimal
+from decimal import ROUND_CEILING, ROUND_HALF_UP, Decimal
 
 ZERO = Decimal(0)
+CUATRO_DECIMALES = Decimal("0.0001")  # the money scale (NUMERIC(14,4))
 
 MATERIAL_STAGES = ("CUERO", "FORRO", "FLEX", "GOMA_EVA", "HERRAJES", "HILO_CEMENTO")
 # CORTE is always 0: Alderete's salary is a fixed cost (Costos_Fijos).
@@ -219,14 +220,33 @@ class MargenContribucion:
     veredicto: str
 
 
+def importe_sobre_precio(precio_neto: Decimal, fraccion: Decimal) -> Decimal:
+    """An amount that is a fraction of the net price (0.03 = 3 %), rounded to the money scale like the price taxes.
+
+    A fraction of 0 gives a bare 0, so adding it to a margin leaves the number exactly as it was."""
+    if not fraccion:
+        return ZERO
+    return (precio_neto * fraccion).quantize(CUATRO_DECIMALES, ROUND_HALF_UP)
+
+
+def margen_por_hora(margen_unidad: Decimal, horas: Decimal | None) -> Decimal | None:
+    """Contribution of one unit per workshop hour; None unless the hours are known and above 0 (nothing is invented)."""
+    if horas is None or horas <= 0:
+        return None
+    return (margen_unidad / horas).quantize(CUATRO_DECIMALES, ROUND_HALF_UP)
+
+
 def margen_de_contribucion(
     precio: Decimal, variable_por_unidad: Decimal, umbral_pct: Decimal | None = None,
+    *, gasto_venta: Decimal = ZERO, iibb: Decimal = ZERO,
 ) -> MargenContribucion:
     """What one unit sold leaves to pay the fixed costs; fixed costs are deliberately not part of this verdict.
 
+    Contribution = net price - variable cost - variable selling expense - IIBB (per unit). The last two default to 0, so
+    callers that do not pass them (profitability, resale) get exactly what they always got.
     SUPUESTO: validar con Gerardo/Alejandro. The low-margin threshold is optional and has no default value.
     """
-    margen = precio - variable_por_unidad
+    margen = precio - variable_por_unidad - gasto_venta - iibb
     margen_pct = margen / precio * 100 if precio > 0 else None
     markup_pct = margen / variable_por_unidad * 100 if variable_por_unidad > 0 else None
     if margen <= 0:
@@ -243,6 +263,8 @@ class ProductoEnMezcla:
     precio: Decimal
     variable_por_unidad: Decimal
     unidades: Decimal
+    gasto_venta_por_unidad: Decimal = ZERO
+    iibb_por_unidad: Decimal = ZERO
 
 
 @dataclass(frozen=True)
@@ -270,7 +292,9 @@ def equilibrio_con_mezcla(fijos: Decimal, mezcla: list[ProductoEnMezcla]) -> Equ
     ingresos = sum((p.precio * p.unidades for p in mezcla), ZERO)
     if ingresos <= 0:
         return sin_numeros("SIN_VENTAS")
-    contribucion = sum(((p.precio - p.variable_por_unidad) * p.unidades for p in mezcla), ZERO)
+    contribucion = sum(
+        ((p.precio - p.variable_por_unidad - p.gasto_venta_por_unidad - p.iibb_por_unidad) * p.unidades for p in mezcla),
+        ZERO)
     if contribucion <= 0:
         return sin_numeros("MC_NO_POSITIVO")
     unidades = sum((p.unidades for p in mezcla), ZERO)

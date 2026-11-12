@@ -91,7 +91,7 @@ def test_revision_chain_replaces_v1_with_v3_then_seeds(monkeypatch):
                      "0005_gasto_reemplaza_a.py", "0006_precio_venta.py", "0007_proveedores_documentos.py",
                      "0008_reventa.py", "0009_gasto_anulado.py", "0010_compra_sin_unidades.py",
                      "0011_precio_material_proveedor.py", "0012_impuesto_activo.py",
-                     "0013_impuestos_vacios.py"):
+                     "0013_impuestos_vacios.py", "0014_gastos_venta_pct.py"):
         _, revision = load_revision(monkeypatch, filename)
         chain[revision["revision"]] = revision["down_revision"]
     assert chain == {
@@ -103,7 +103,19 @@ def test_revision_chain_replaces_v1_with_v3_then_seeds(monkeypatch):
         "0011_precio_material_proveedor": "0010_compra_sin_unidades",
         "0012_impuesto_activo": "0011_precio_material_proveedor",
         "0013_impuestos_vacios": "0012_impuesto_activo",
+        "0014_gastos_venta_pct": "0013_impuestos_vacios",
     }
+
+
+def test_the_selling_expense_revision_adds_one_unconfirmed_parameter_at_zero_and_downgrade_removes_only_it(monkeypatch):
+    operations, revision = load_revision(monkeypatch, "0014_gastos_venta_pct.py")
+    revision["upgrade"]()
+    revision["downgrade"]()
+    insercion, borrado = (str(sentencia) for sentencia in operations.executed)
+    assert "INSERT INTO costos.parametro" in insercion and "'GASTOS_VENTA_PCT'" in insercion
+    assert "'Propuesta, a confirmar con Robert'" in insercion and "ON CONFLICT (codigo) DO NOTHING" in insercion
+    assert "'Gastos variables de venta', 0, NULL, '%'" in insercion  # starts at 0: no scenario number moves
+    assert borrado == "DELETE FROM costos.parametro WHERE codigo = 'GASTOS_VENTA_PCT'"
 
 
 def test_der_v3_revision_matches_orm_and_reverses_dependencies(monkeypatch):

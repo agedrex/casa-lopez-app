@@ -18,7 +18,7 @@ DOMAIN_TABLES = frozenset(table.name for table in Base.metadata.tables.values())
 # Rows loaded by revision 0004_semillas_v3 from the plantilla (color has no names filled in yet; 0013 empties impuesto).
 SEED_COUNTS = {
     "etapa": 8, "categoria": 16, "color": 0, "material": 13, "persona": 7, "taller": 3,
-    "impuesto": 0, "parametro": 8, "tipo_cambio": 1, "precio_material": 11, "modelo": 325,
+    "impuesto": 0, "parametro": 9, "tipo_cambio": 1, "precio_material": 11, "modelo": 325,
     "gasto_periodo": 15,
 }
 EXPECTED_SEED_CODES = {

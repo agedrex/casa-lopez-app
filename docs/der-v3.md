@@ -2,7 +2,7 @@
 
 Source of truth: sheet `Diccionario` of `Plantilla Costos Casa Lopez v4.1 (trabajo).xlsx`.
 It supersedes [`der.md`](der.md) (DER v1) and the old Excel rules (GG 11 % is gone; CORTE is fixed; CONFECCION and HILO_CEMENTO are separate stages).
-The models are in `backend/src/backend/models.py`; Alembic revision `0003_der_v3` drops the v1 tables and creates these ones, and `0004_semillas_v3` loads the reference data `0005_gasto_reemplaza_a` adds `gasto_periodo.reemplaza_a_id` `0009_gasto_anulado` adds `gasto_periodo.anulado` `0010_compra_sin_unidades` makes `compra_reventa.unidades` nullable and `0012_impuesto_activo` adds `impuesto.activo` and `0013_impuestos_vacios` removes the three seeded taxes (the tax grid starts empty).
+The models are in `backend/src/backend/models.py`; Alembic revision `0003_der_v3` drops the v1 tables and creates these ones, and `0004_semillas_v3` loads the reference data `0005_gasto_reemplaza_a` adds `gasto_periodo.reemplaza_a_id` `0009_gasto_anulado` adds `gasto_periodo.anulado` `0010_compra_sin_unidades` makes `compra_reventa.unidades` nullable and `0012_impuesto_activo` adds `impuesto.activo` and `0013_impuestos_vacios` removes the three seeded taxes (the tax grid starts empty) and `0014_gastos_venta_pct` adds the parameter `GASTOS_VENTA_PCT`.
 
 Only columns marked `carga` / `clave` in the dictionary are persisted. Columns marked `calculada (la app recalcula)` are computed by the backend, except in `cotizacion`, which stores a calculated snapshot. Sheets marked `vista` are not tables.
 
@@ -70,6 +70,18 @@ The payments to a workshop need no new table: `GET /talleres/{codigo}/historial`
 - **Revision 0013** deletes the seeded IVA, IIBB and GANANCIAS (no other table references `impuesto`; the engine counts a missing IVA row as 0 %). Its downgrade puts the three back.
 - **Downgrade of 0012** drops `impuesto.activo`: the deactivated taxes would be active again.
 - SUPUESTO: validar con el contador: each tax is `precio × alicuota` over the net price (they do not compound), amounts rounded to 4 decimals, and the real margin stays on the price without taxes. The seeded `IVA` (21 %, `base` COMPRA in the sheet) now also applies to the sale price; `IIBB` and `GANANCIAS` have no percentage, so they add nothing until one is loaded.
+
+## Contribution in the sales scenario (CVU multiproducto, revision 0014)
+
+`POST /cvu/escenario` (admin only, reads and saves nothing) follows the guide "Guia CVU multiproducto": **contribution per unit = net price - variable cost - variable selling expense - IIBB per unit**. There is no `venta` table: the volume is still the one typed in the scenario, never real sales.
+
+- **Revision 0014** inserts one `parametro` row: `GASTOS_VENTA_PCT` (fraction of the net price, `0` = nothing, `fuente_estado` "Propuesta, a confirmar con Robert"). It changes no table or column. Its downgrade deletes only that row (a value a person typed in it is lost; nothing references `parametro`).
+- **Selling expense per unit** = `precio_neto × GASTOS_VENTA_PCT`. A missing or empty parameter counts 0.
+- **IIBB per unit** = `precio_neto × alicuota` of the **active** tax with `base = 'VENTA'` and a percentage whose `codigo` is `IIBB` or whose name is "Ingresos brutos" / starts with "IIBB" (filtered in the scenario code; `_impuestos_activos`, the price breakdown, is unchanged). No such row, an inactive one or an empty `alicuota` counts 0 and the scenario adds the notice `IIBB_SIN_ALICUOTA` ("el margen no incluye Ingresos Brutos"). The notice does not make the scenario "no confiable" (that flag is only about fixed costs). Revision 0013 removed the seeded `IIBB` row and the tax grid assigns `IMP-NNNN` codes, so it is matched by name too: the notice shows until such a tax with a percentage exists. With two active IIBB taxes one is taken (they are not added).
+- **Each line** adds `gasto_venta_unidad`, `iibb_unidad`, `horas_confeccion`, `margen_por_hora` and `ranking_por_hora`; the scenario adds `mejor_por_hora` (product code). The saved price is the net price (taxes go on top of it).
+- **Contribution per workshop hour** = `margen_unidad / modelo.horas_de_confeccion`, only when the hours are known and above 0 (a kit has no model): otherwise `null`, nothing is invented. `ranking_por_hora` is 1 for the line that leaves the most per hour (the bottleneck view); the request order of the lines is kept.
+- With no IIBB percentage and `GASTOS_VENTA_PCT` = 0 every number the scenario already returned is the same as before. `margen_de_contribucion` (also used by the single-product profitability and resale) takes `gasto_venta` and `iibb` as optional keyword arguments that default to 0.
+- SUPUESTO: validar con el contador y con Robert: the base of both amounts is the net price, they are rounded to 4 decimals, and the rate and the percentage are loaded by a person.
 
 ## Open assumptions (`SUPUESTO: validar`)
 

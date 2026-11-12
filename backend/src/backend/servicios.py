@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session, aliased
 from backend import dolar_bna
 from backend.costeo import (
     Desglose, ItemLote, PrecioVigente, Precios, ProductoEnMezcla, ZERO, confeccion_externa, costo_kit, costo_por_unidad,
-    equilibrio_con_mezcla, margen_de_contribucion, necesita_recotizar, punto_de_equilibrio, resultado_cvu,
+    equilibrio_con_mezcla, importe_sobre_precio, margen_de_contribucion, margen_por_hora, necesita_recotizar, punto_de_equilibrio, resultado_cvu,
 )
 from backend.models import (
     Categoria, Color, Cotizacion, Etapa, GastoPeriodo, Impuesto, KitComponente, Material, Modelo,
@@ -2811,6 +2811,10 @@ def lotes_para_voz(session: Session) -> list[dict]:
 # read from today's cost and the pure engine in costeo.py. Nothing in this section writes a cost.
 
 AVISO_VOLUMEN_ESCENARIO = "El volumen es el que cargaste, no ventas reales."
+# SUPUESTO: validar con el contador. Until the IIBB percentage is loaded the scenario counts it as 0.
+AVISO_IIBB_SIN_ALICUOTA = (
+    "El margen no incluye Ingresos Brutos: todavía falta que el contador pase la alícuota. Cuando se cargue, el margen va a bajar."
+)
 AVISOS_DE_FIJOS = {
     "SIN_FIJOS": "Todavía no se cargaron los costos fijos de la fábrica de este período: el punto de equilibrio no es confiable.",
     "FIJOS_PENDIENTES": "Hay costos fijos de la fábrica sin monto cargado: el punto de equilibrio no es confiable.",
@@ -2918,14 +2922,21 @@ def rentabilidad_de_producto(session: Session, codigo: str, precio: Decimal | No
 
 def armar_escenario(
     *, periodo: str, items: list[dict], existentes: set[str], costos: dict[str, Decimal | None],
-    guardados: dict[str, Decimal], fijos: FijosDelMes,
+    guardados: dict[str, Decimal], fijos: FijosDelMes, iibb_alicuota: Decimal | None = ZERO,
+    gastos_venta_pct: Decimal = ZERO, horas: dict[str, Decimal | None] | None = None,
 ) -> dict:
     """Pure: break-even of the whole factory for a mix of products typed by the owner.
 
     `items` are {codigo, unidades, precio|None}; `guardados` the latest saved price per product code. A product without
     price or cost cannot be computed, so it goes to `omitidos` with its reason and stays out of the mix.
+    Contribution per unit = net price - variable cost - selling expense (`gastos_venta_pct` of the price) - IIBB
+    (`iibb_alicuota` of the price). `iibb_alicuota=None` means the rate is not loaded yet: it counts 0 and the scenario
+    warns; the default 0 means "IIBB not considered" and warns nothing. `horas` are the workshop hours per unit by code.
     SUPUESTO: validar con Gerardo. The volume is a scenario, not sales; the fixed costs are the FABRICA ones of the period.
+    SUPUESTO: validar con el contador. The saved price is already net (taxes go on top of it, see `armar_precio_con_impuestos`).
     """
+    horas = horas or {}
+    alicuota = iibb_alicuota or ZERO
     lineas, omitidos, mezcla = [], [], []
     for item in items:
         codigo = item["codigo"]
@@ -2938,17 +2949,26 @@ def armar_escenario(
             omitidos.append({"codigo": codigo, "motivo": "SIN_COSTO_VARIABLE"})
         else:
             costo, unidades = costos[codigo], item["unidades"]
-            margen = margen_de_contribucion(precio, costo)
-            mezcla.append(ProductoEnMezcla(precio, costo, unidades))
+            gasto_venta, iibb = importe_sobre_precio(precio, gastos_venta_pct), importe_sobre_precio(precio, alicuota)
+            margen = margen_de_contribucion(precio, costo, gasto_venta=gasto_venta, iibb=iibb)
+            por_hora = margen_por_hora(margen.margen_unidad, horas.get(codigo))
+            mezcla.append(ProductoEnMezcla(precio, costo, unidades, gasto_venta, iibb))
             lineas.append({
                 "codigo": codigo, "unidades": unidades, "precio": precio, "fuente_precio": fuente, "costo_variable": costo,
+                "gasto_venta_unidad": gasto_venta, "iibb_unidad": iibb,
                 "margen_unidad": margen.margen_unidad, "margen_pct": margen.margen_pct, "veredicto": margen.veredicto,
                 "contribucion_total": margen.margen_unidad * unidades, "participacion_pct": None,
+                "horas_confeccion": horas.get(codigo) if por_hora is not None else None,
+                "margen_por_hora": por_hora, "ranking_por_hora": None,
             })
     global_ = equilibrio_con_mezcla(fijos.total_fabrica, mezcla)
     if global_.motivo is None:
         for linea in lineas:
             linea["participacion_pct"] = linea["contribucion_total"] / global_.margen_contribucion * 100
+    # The line that leaves the most per workshop hour is the one to push when hours are the bottleneck (rank 1).
+    con_horas = sorted((l for l in lineas if l["margen_por_hora"] is not None), key=lambda l: l["margen_por_hora"], reverse=True)
+    for puesto, linea in enumerate(con_horas, start=1):
+        linea["ranking_por_hora"] = puesto
     avisos = []
     if not fijos.cargados:
         avisos.append("SIN_FIJOS")
@@ -2961,10 +2981,37 @@ def armar_escenario(
         "fijos": {"total_fabrica": fijos.total_fabrica, "cargados": fijos.cargados, "pendientes": fijos.pendientes,
                   "ficticios": fijos.ficticios},
         "resultado": asdict(global_), "lineas": lineas, "omitidos": omitidos,
+        "mejor_por_hora": con_horas[0]["codigo"] if con_horas else None,
         "avisos": [{"codigo": c, "texto": AVISOS_DE_FIJOS[c]} for c in avisos]
+                  + ([{"codigo": "IIBB_SIN_ALICUOTA", "texto": AVISO_IIBB_SIN_ALICUOTA}] if iibb_alicuota is None else [])
                   + [{"codigo": "VOLUMEN_ESCENARIO", "texto": AVISO_VOLUMEN_ESCENARIO}],
         "confiable": not avisos,
     }
+
+
+def _alicuota_iibb(session: Session) -> Decimal | None:
+    """Rate of the active sales tax with code IIBB; None when there is no such row, it is inactive or has no percentage.
+
+    Filters `base` itself on purpose: `_impuestos_activos` (the price breakdown) does not, and stays as it is."""
+    # The grid creates taxes with `IMP-` codes (migration 0013 removed the seeded `IIBB`), so match the name too.
+    return session.scalar(select(Impuesto.alicuota).where(
+        or_(Impuesto.codigo == "IIBB", Impuesto.nombre.ilike("%ingresos brutos%"), Impuesto.nombre.ilike("IIBB%")),
+        Impuesto.activo.is_(True), Impuesto.base == "VENTA", Impuesto.alicuota.is_not(None)).limit(1))
+
+
+def _gastos_venta_pct(session: Session) -> Decimal:
+    """SUPUESTO: validar. Variable selling expense as a fraction of the net price (0.05 = 5 %); missing or empty counts 0."""
+    return session.scalar(select(Parametro.valor).where(Parametro.codigo == "GASTOS_VENTA_PCT")) or ZERO
+
+
+def _horas_de_confeccion(session: Session, ids: set[int]) -> dict[str, Decimal | None]:
+    """Workshop hours per unit by product code, from its model; None for a kit (no model) or an unknown value."""
+    if not ids:
+        return {}
+    filas = session.execute(
+        select(Producto.codigo, Modelo.horas_de_confeccion).outerjoin(Modelo, Modelo.id == Producto.modelo_id)
+        .where(Producto.id.in_(ids))).all()
+    return {codigo: horas for codigo, horas in filas}
 
 
 def escenario_cvu(session: Session, periodo: str | None, items: list[dict], hoy: date | None = None) -> dict:
@@ -2973,8 +3020,11 @@ def escenario_cvu(session: Session, periodo: str | None, items: list[dict], hoy:
     codigos = {item["codigo"] for item in items}
     ids = dict(session.execute(select(Producto.codigo, Producto.id).where(Producto.codigo.in_(codigos))).all()) if codigos else {}
     por_id = _ultimos_precios_de_venta(session, set(ids.values()))
+    # An empty scenario has no lines: it reads no tax, parameter or hours, and warns about no IIBB rate.
+    extras = {"iibb_alicuota": _alicuota_iibb(session), "gastos_venta_pct": _gastos_venta_pct(session),
+              "horas": _horas_de_confeccion(session, set(ids.values()))} if codigos else {}
     return armar_escenario(
         periodo=periodo, items=items, existentes=set(ids), costos=_costos_totales_de_hoy(session, set(ids)),
         guardados={codigo: por_id[id_] for codigo, id_ in ids.items() if id_ in por_id},
-        fijos=_fijos_de_fabrica(session, [periodo]).get(periodo, SIN_FIJOS),
+        fijos=_fijos_de_fabrica(session, [periodo]).get(periodo, SIN_FIJOS), **extras,
     )

@@ -730,11 +730,16 @@ export type EscenarioLinea = {
   precio: string;
   fuente_precio: FuentePrecio;
   costo_variable: string;
+  gasto_venta_unidad: string;
+  iibb_unidad: string;
   margen_unidad: string;
   margen_pct: string | null;
   veredicto: VeredictoCvu;
   contribucion_total: string;
   participacion_pct: string | null;
+  horas_confeccion: string | null;
+  margen_por_hora: string | null;
+  ranking_por_hora: number | null;
 };
 
 export type EscenarioOmitido = {
@@ -753,6 +758,7 @@ export type Escenario = {
   resultado: EscenarioResultado;
   lineas: EscenarioLinea[];
   omitidos: EscenarioOmitido[];
+  mejor_por_hora: string | null;
   avisos: AvisoPanel[];
   confiable: boolean;
 };

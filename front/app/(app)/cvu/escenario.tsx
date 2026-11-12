@@ -56,6 +56,7 @@ const AVISO_LINK: Record<string, { text: string; href: string }> = {
   SIN_FIJOS: { text: "Cargar costos fijos", href: "/costos-fijos" },
   FIJOS_PENDIENTES: { text: "Completar montos", href: "/costos-fijos" },
   FIJOS_FICTICIOS: { text: "Revisar costos fijos", href: "/costos-fijos" },
+  IIBB_SIN_ALICUOTA: { text: "Cargar impuestos", href: "/admin/impuestos" },
 };
 
 function Cifra({
@@ -133,7 +134,16 @@ function Resultado({ data }: { data: Escenario }) {
                 <th className={`${thClass} ${numClass}`}>Unidades</th>
                 <th className={`${thClass} ${numClass}`}>Precio</th>
                 <th className={`${thClass} ${numClass}`}>
+                  Gastos de venta por unidad
+                </th>
+                <th className={`${thClass} ${numClass}`}>
+                  Ingresos Brutos por unidad
+                </th>
+                <th className={`${thClass} ${numClass}`}>
                   Te queda por unidad
+                </th>
+                <th className={`${thClass} ${numClass}`}>
+                  Te queda por hora de taller
                 </th>
                 <th className={thClass}>Resultado</th>
                 <th className={`${thClass} ${numClass}`}>Aporte total</th>
@@ -163,7 +173,30 @@ function Resultado({ data }: { data: Escenario }) {
                     </span>
                   </td>
                   <td className={`${tdClass} ${numClass}`}>
+                    {formatArs(line.gasto_venta_unidad)}
+                  </td>
+                  <td className={`${tdClass} ${numClass}`}>
+                    {formatArs(line.iibb_unidad)}
+                  </td>
+                  <td className={`${tdClass} ${numClass}`}>
                     {formatArs(line.margen_unidad)}
+                  </td>
+                  <td className={`${tdClass} ${numClass}`}>
+                    {formatArs(line.margen_por_hora)}
+                    {line.horas_confeccion ? (
+                      <span className="block text-xs text-muted">
+                        {formatQuantity(line.horas_confeccion)} h por unidad
+                      </span>
+                    ) : (
+                      <span className="block text-xs text-muted">
+                        sin horas cargadas
+                      </span>
+                    )}
+                    {line.ranking_por_hora === 1 ? (
+                      <span className="block text-xs font-bold">
+                        Rinde más por hora
+                      </span>
+                    ) : null}
                   </td>
                   <td className={tdClass}>
                     <VeredictoBadge veredicto={line.veredicto} />
