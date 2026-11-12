@@ -290,10 +290,10 @@ def test_the_price_check_warns_before_saving_and_saves_nothing(api):
     assert len(api.get("/precios", params={"material": "MAT-CU01"}).json()) == 1
 
 
-def test_gerente_cannot_write_nor_read_the_dollar(api):
+def test_gerente_cannot_write_the_dollar_but_reads_it_for_the_panel(api):
     app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="u", role="gerente"))
     assert api.post("/dolar", json={"fecha": "2026-10-01", "ars_por_usd": "1700"}).status_code == 403
-    assert api.get("/dolar").status_code == 403
+    assert api.get("/dolar").status_code == 200  # the Panel shows the rate of the day to a gerente
     assert api.get("/productos").status_code == 200  # product data is what a gerente reads
     app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="u", role="admin"))
     assert api.get("/dolar").status_code == 200
