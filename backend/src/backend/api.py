@@ -371,6 +371,15 @@ class PersonaIn(Entrada):
     nota: str | None = None
 
 
+class ImpuestoIn(Entrada):
+    nombre: Annotated[str, Field(min_length=1, max_length=120)]
+    alicuota: Annotated[Decimal, Field(max_digits=6, decimal_places=3)]
+
+
+class AlicuotaIn(Entrada):
+    alicuota: Annotated[Decimal, Field(max_digits=6, decimal_places=3)]
+
+
 class CatalogoIn(Entrada):
     nombre: Annotated[str, Field(min_length=1, max_length=120)]
     nota: str | None = None
@@ -650,6 +659,7 @@ class ImpuestoOut(Salida):
     base: str | None
     es_costo_del_producto: bool
     nota: str | None
+    activo: bool = True
 
 
 class CatalogoItemOut(Salida):
@@ -797,6 +807,13 @@ class ProductoReventaDetalleOut(ProductoReventaOut):
     historial: list[CompraReventaOut]
 
 
+class ImpuestoDelPrecioOut(Salida):
+    codigo: str
+    nombre: str
+    alicuota: Decimal
+    monto: Decimal
+
+
 class PrecioVentaOut(Salida):
     producto: str
     precio_ars: Decimal
@@ -804,6 +821,10 @@ class PrecioVentaOut(Salida):
     nota: str | None
     creado_por: str | None
     creado_en: datetime | None
+    # Taxes of today over `precio_ars` (the price without taxes); the cost never carries them.
+    impuestos: list[ImpuestoDelPrecioOut] = []
+    total_impuestos: Decimal | None = None
+    precio_final: Decimal | None = None
 
 
 class RentabilidadOut(Salida):
@@ -1259,7 +1280,7 @@ def categorias(session: Sesion):
 
 @router.get("/impuestos", dependencies=LECTURA_ADMIN, response_model=list[ImpuestoOut])
 def impuestos(session: Sesion):
-    """Read only: whether VAT counts as a product cost is an open business decision."""
+    """Every tax, active or not. Whether VAT counts as a product cost is an open business decision and is not edited."""
     return servicios.listar_impuestos(session)
 
 
@@ -1512,6 +1533,23 @@ def cambiar_parametro(codigo: str, cuerpo: ParametroIn, session: Sesion, usuario
 @router.post("/personas", dependencies=ADMINISTRACION, response_model=PersonaOut, status_code=201)
 def crear_persona(cuerpo: PersonaIn, session: Sesion):
     return servicios.crear_persona(session, **cuerpo.model_dump())
+
+
+@router.post("/impuestos", dependencies=ADMINISTRACION, response_model=ImpuestoOut, status_code=201)
+def crear_impuesto(cuerpo: ImpuestoIn, session: Sesion):
+    """A tax on the sale price (not on the cost): name and percentage, as a fraction (0.21 = 21 %)."""
+    return servicios.crear_impuesto(session, **cuerpo.model_dump())
+
+
+@router.post("/impuestos/{codigo}/alicuota", dependencies=ADMINISTRACION, response_model=ImpuestoOut)
+def cambiar_alicuota_de_impuesto(codigo: str, cuerpo: AlicuotaIn, session: Sesion, usuario: Escritor):
+    return servicios.cambiar_alicuota_impuesto(session, codigo, cuerpo.alicuota, usuario.id)
+
+
+@router.post("/impuestos/{codigo}/activo", dependencies=ADMINISTRACION, response_model=ImpuestoOut)
+def cambiar_activo_de_impuesto(codigo: str, cuerpo: ActivoIn, session: Sesion):
+    """Nothing is deleted: a deactivated tax stops showing in the price breakdown."""
+    return servicios.cambiar_activo_impuesto(session, codigo, cuerpo.activo)
 
 
 @router.post("/personas/{codigo}/activo", dependencies=ADMINISTRACION, response_model=PersonaOut)

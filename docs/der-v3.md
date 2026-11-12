@@ -2,7 +2,7 @@
 
 Source of truth: sheet `Diccionario` of `Plantilla Costos Casa Lopez v4.1 (trabajo).xlsx`.
 It supersedes [`der.md`](der.md) (DER v1) and the old Excel rules (GG 11 % is gone; CORTE is fixed; CONFECCION and HILO_CEMENTO are separate stages).
-The models are in `backend/src/backend/models.py`; Alembic revision `0003_der_v3` drops the v1 tables and creates these ones, and `0004_semillas_v3` loads the reference data `0005_gasto_reemplaza_a` adds `gasto_periodo.reemplaza_a_id` `0009_gasto_anulado` adds `gasto_periodo.anulado` and `0010_compra_sin_unidades` makes `compra_reventa.unidades` nullable.
+The models are in `backend/src/backend/models.py`; Alembic revision `0003_der_v3` drops the v1 tables and creates these ones, and `0004_semillas_v3` loads the reference data `0005_gasto_reemplaza_a` adds `gasto_periodo.reemplaza_a_id` `0009_gasto_anulado` adds `gasto_periodo.anulado` `0010_compra_sin_unidades` makes `compra_reventa.unidades` nullable and `0012_impuesto_activo` adds `impuesto.activo`.
 
 Only columns marked `carga` / `clave` in the dictionary are persisted. Columns marked `calculada (la app recalcula)` are computed by the backend, except in `cotizacion`, which stores a calculated snapshot. Sheets marked `vista` are not tables.
 
@@ -17,7 +17,7 @@ Conventions: schema `costos`; `id` (identity) and `created_at` everywhere; `codi
 | `color` | Colores | Colors chosen in products, prices and leather. Empty until Casa López fills the list. |
 | `persona` | Personas | People with role and link (salaried or other). |
 | `taller` | Talleres | External workshops (CUIT, contact). |
-| `impuesto` | Impuestos | Taxes with rate, base and whether they are a product cost. |
+| `impuesto` | Impuestos | Taxes with rate, base, whether they are a product cost and `activo` (revision 0012): see the section on taxes on the sale price. |
 | `parametro` | Parametros | Constants by technical code (`valor` numeric or `valor_texto`), each with its `fuente_estado`. |
 | `material` | Materiales | Everything that is bought: stage, consumption unit, `cotizable`, inventory control, manual waste. |
 | `molde` | Moldes | Pattern pieces with measures. |
@@ -60,6 +60,15 @@ The cost of a product is the unit cost of its **latest** purchase (latest `fecha
 - **Downgrade** drops the column and its index: the links made from the supplier's page are lost (the prices and the text stay).
 
 The payments to a workshop need no new table: `GET /talleres/{codigo}/historial` reads the existing `orden_fabricacion` and `orden_item` (units and the paid price per unit of each line). A price counts as paid only when it is above 0.
+
+## Taxes on the sale price (revision 0012)
+
+`impuesto.activo` (boolean, NOT NULL, default `true`) switches a tax on or off; every existing row stays active. Nothing is deleted. The grid at `/admin/impuestos` creates taxes (`POST /impuestos`: name + percentage, code `IMP-NNNN` assigned by the API, `base` VENTA, never a product cost), edits the percentage in place (`POST /impuestos/{codigo}/alicuota`, logged with who, old and new value, like a parameter) and activates or deactivates (`POST /impuestos/{codigo}/activo`). Admin only. The percentage is a fraction `NUMERIC(6,3)` (0.21 = 21 %).
+
+- **Taxes go on the sale price, never on the cost.** `GET /productos/{codigo}/precio-venta` and the `POST` that saves a price keep their fields and add `impuestos` (one line per active tax with a percentage: `codigo`, `nombre`, `alicuota`, `monto`), `total_impuestos` and `precio_final`. They are computed on read with `Decimal`, with the taxes active today; nothing is stored with the price.
+- **The costing engine does not change**, and neither do the cost or the saved quotes. The engine only reads the `IVA` row (percentage and `es_costo_del_producto`, which is not editable and is `false`); it does not read `activo`.
+- **Downgrade** drops `impuesto.activo`: the deactivated taxes would be active again.
+- SUPUESTO: validar con el contador: each tax is `precio × alicuota` over the net price (they do not compound), amounts rounded to 4 decimals, and the real margin stays on the price without taxes. The seeded `IVA` (21 %, `base` COMPRA in the sheet) now also applies to the sale price; `IIBB` and `GANANCIAS` have no percentage, so they add nothing until one is loaded.
 
 ## Open assumptions (`SUPUESTO: validar`)
 

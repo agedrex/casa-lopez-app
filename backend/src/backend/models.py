@@ -128,6 +128,8 @@ class Impuesto(BusinessKey, Base):
     # SUPUESTO: validar. `base` has no dropdown in the sheet (data: COMPRA, VENTA, RESULTADO).
     base: Mapped[str | None] = mapped_column(Text)
     es_costo_del_producto: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    # Taxes go on the sale price (precio_venta), never on the cost. Deactivating deletes nothing.
+    activo: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
     nota: Mapped[str | None] = mapped_column(Text)
 
 

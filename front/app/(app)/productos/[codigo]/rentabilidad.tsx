@@ -1,3 +1,4 @@
+import { fractionToPercentInput } from "@/app/(app)/admin/impuestos/percent";
 import {
   MC_EXPLICACION,
   VERDICT_SENTENCE,
@@ -114,6 +115,8 @@ function History({ history }: { history: PrecioVenta[] }) {
           <tr>
             <th className={thClass}>Desde</th>
             <th className={`${thClass} ${numClass}`}>Precio de venta</th>
+            <th className={thClass}>Impuestos</th>
+            <th className={`${thClass} ${numClass}`}>Precio final</th>
             <th className={thClass}>Nota</th>
           </tr>
         </thead>
@@ -123,6 +126,23 @@ function History({ history }: { history: PrecioVenta[] }) {
               <td className={tdClass}>{formatDate(price.vigente_desde)}</td>
               <td className={`${tdClass} ${numClass}`}>
                 {formatArs(price.precio_ars)}
+              </td>
+              <td className={tdClass}>
+                {price.impuestos?.length ? (
+                  <ul className="space-y-0.5">
+                    {price.impuestos.map((tax) => (
+                      <li key={tax.codigo}>
+                        {tax.nombre} ({fractionToPercentInput(tax.alicuota)} %):{" "}
+                        {formatArs(tax.monto)}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  "—"
+                )}
+              </td>
+              <td className={`${tdClass} ${numClass}`}>
+                {price.impuestos?.length ? formatArs(price.precio_final) : "—"}
               </td>
               <td className={tdClass}>{price.nota ?? "—"}</td>
             </tr>
@@ -227,9 +247,13 @@ export async function RentabilidadBlock({
         ) : null}
       </Card>
 
-      <h3 className="mb-3 mt-8 font-display text-lg">
+      <h3 className="mb-1 mt-8 font-display text-lg">
         Precios de venta guardados
       </h3>
+      <p className="mb-3 text-sm text-muted">
+        Los impuestos activos se suman al precio de venta; el costo y el margen
+        se calculan sobre el precio sin impuestos.
+      </p>
       {history.ok ? (
         <History history={history.data} />
       ) : (

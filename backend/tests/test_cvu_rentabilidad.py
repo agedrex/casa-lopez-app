@@ -214,7 +214,7 @@ def test_the_history_is_read_newest_first_by_date_then_id_and_never_writes():
     session.scalars.return_value.all.return_value = [nuevo, viejo]
     r = servicios.listar_precios_de_venta(session, "PRD-0001")
     assert [p["precio_ars"] for p in r] == [D("120"), D("100")]
-    sql = str(session.scalars.call_args.args[0])
+    sql = str(session.scalars.call_args_list[0].args[0])  # the second read is the active taxes (see test_impuestos.py)
     assert "ORDER BY costos.precio_venta.vigente_desde DESC, costos.precio_venta.id DESC" in sql
     session.add.assert_not_called()
     session.commit.assert_not_called()
