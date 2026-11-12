@@ -162,7 +162,6 @@ export default async function ProveedoresPage({
           <Card>
             <ProveedorForm
               action={createProveedor}
-              withCodigo
               submitLabel="Crear proveedor"
               pendingLabel="Creando…"
             />
