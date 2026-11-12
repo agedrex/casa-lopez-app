@@ -15,7 +15,6 @@ import { apiGet } from "@/lib/api";
 import { personRoleLabel } from "@/lib/people";
 import { requireRole } from "@/lib/session";
 import type { Persona } from "@/lib/types";
-import { BackToAdmin } from "../back-link";
 import { PersonaActivaForm, PersonaForm } from "./persona-forms";
 
 export const metadata: Metadata = { title: "Personas" };
@@ -26,7 +25,6 @@ export default async function PersonasPage() {
 
   return (
     <>
-      <BackToAdmin />
       <PageHeader
         eyebrow="Administración"
         title="Personas"

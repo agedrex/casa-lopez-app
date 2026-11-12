@@ -16,7 +16,6 @@ import { apiGet } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import { requireRole } from "@/lib/session";
 import type { SyncEstado, SyncUltima, SyncVista } from "@/lib/types";
-import { BackToAdmin } from "../back-link";
 import { SimularForm, SincronizarForm } from "./sync-forms";
 
 export const metadata: Metadata = { title: "Sincronización con Google Sheets" };
@@ -40,7 +39,6 @@ export default async function SyncPage({
   if (!estado.ok) {
     return (
       <>
-        <BackToAdmin />
         <PageHeader eyebrow="Administración" title="Google Sheets" />
         <ErrorNotice message={estado.message} />
       </>
@@ -61,7 +59,6 @@ export default async function SyncPage({
 
   return (
     <>
-      <BackToAdmin />
       <PageHeader
         eyebrow="Administración"
         title="Google Sheets"

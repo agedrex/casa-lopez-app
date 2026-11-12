@@ -14,7 +14,6 @@ import { apiGet } from "@/lib/api";
 import { formatQuantity } from "@/lib/format";
 import { requireRole } from "@/lib/session";
 import type { Impuesto } from "@/lib/types";
-import { BackToAdmin } from "../back-link";
 
 export const metadata: Metadata = { title: "Impuestos" };
 
@@ -30,7 +29,6 @@ export default async function ImpuestosPage() {
 
   return (
     <>
-      <BackToAdmin />
       <PageHeader
         eyebrow="Administración"
         title="Impuestos"

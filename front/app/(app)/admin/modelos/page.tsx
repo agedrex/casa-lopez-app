@@ -6,7 +6,6 @@ import { apiGet } from "@/lib/api";
 import { hasMissingConsumptions, SIZES } from "@/lib/modelos";
 import { requireRole } from "@/lib/session";
 import type { Catalogos, Material, ModeloLista } from "@/lib/types";
-import { BackToAdmin } from "../back-link";
 import { ModelosGrid } from "./modelos-grid";
 
 export const metadata: Metadata = { title: "Modelos" };
@@ -78,7 +77,6 @@ export default async function ModelosPage({
 
   return (
     <>
-      <BackToAdmin />
       <PageHeader
         eyebrow="Administración"
         title="Modelos"

@@ -13,7 +13,6 @@ import {
 import { apiGet } from "@/lib/api";
 import { requireRole } from "@/lib/session";
 import type { ItemCatalogo } from "@/lib/types";
-import { BackToAdmin } from "../back-link";
 import { CatalogoForm } from "./catalogo-form";
 
 export const metadata: Metadata = { title: "Catálogos" };
@@ -27,7 +26,6 @@ export default async function CatalogosPage() {
 
   return (
     <>
-      <BackToAdmin />
       <PageHeader
         eyebrow="Administración"
         title="Catálogos"
