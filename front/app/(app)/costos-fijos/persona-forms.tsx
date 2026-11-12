@@ -9,7 +9,7 @@ import {
 } from "@/components/form";
 import { PERSON_LINKS, PERSON_ROLES } from "@/lib/people";
 import { useActionForm } from "@/lib/use-action-form";
-import { createPersona, setPersonaActiva } from "./actions";
+import { createPersona, setPersonaActiva } from "./personas-actions";
 
 export function PersonaForm() {
   const { state, pending, formKey, onSubmit } = useActionForm(createPersona);

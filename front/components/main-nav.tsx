@@ -2,15 +2,17 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { NAV_ITEMS, type NavGroup } from "@/lib/nav";
+import { NAV_ITEMS, type NavGroup, type NavItem } from "@/lib/nav";
 import { ICONS, Icon } from "./nav-icons";
 
 export function isActive(pathname: string, href: string) {
+  const prefix = (item: NavItem) => item.activePrefix ?? item.href;
   const activeHref = NAV_ITEMS.flatMap((group) => group.items)
     .filter(
-      (item) => pathname === item.href || pathname.startsWith(`${item.href}/`),
+      (item) =>
+        pathname === prefix(item) || pathname.startsWith(`${prefix(item)}/`),
     )
-    .sort((a, b) => b.href.length - a.href.length)[0]?.href;
+    .sort((a, b) => prefix(b).length - prefix(a).length)[0]?.href;
   return href === activeHref;
 }
 
@@ -22,7 +24,7 @@ function activeSidebarHref(
 ) {
   let best: { href: string; score: number } | null = null;
   for (const item of groups.flatMap((group) => group.items)) {
-    const [path, query = ""] = item.href.split("?");
+    const [path, query = ""] = (item.activePrefix ?? item.href).split("?");
     if (pathname !== path && !pathname.startsWith(`${path}/`)) continue;
     const wanted = [...new URLSearchParams(query)];
     if (wanted.some(([key, value]) => search.get(key) !== value)) continue;

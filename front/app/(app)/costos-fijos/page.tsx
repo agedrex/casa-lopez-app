@@ -37,6 +37,7 @@ import type {
 import { CostosGrid } from "./costos-grid";
 import { CopiarMesForm } from "./forms";
 import { PeriodSelect } from "./period-select";
+import { PersonasPanel } from "./personas-panel";
 
 export const metadata: Metadata = { title: "Costos fijos" };
 
@@ -222,6 +223,9 @@ export default async function CostosFijosPage({
         ) : (
           <ErrorNotice message={result.message} />
         )}
+        {writer && bloque === "personal" ? (
+          <PersonasPanel personas={personas} />
+        ) : null}
       </div>
     </>
   );

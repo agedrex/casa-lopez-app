@@ -3,12 +3,12 @@ import { Badge, Card, ErrorNotice, SectionTitle } from "@/components/ui";
 import { apiGet } from "@/lib/api";
 import { originLabel, sizeLabel } from "@/lib/modelos";
 import type { ModeloDetalle } from "@/lib/types";
-import { ValidadoForm } from "../../admin/modelos/[codigo]/modelo-forms";
+import { ValidadoForm } from "../modelos/[codigo]/modelo-forms";
 import {
   ConsumosTable,
   EditarConsumos,
   loadForros,
-} from "../../admin/modelos/modelo-consumos";
+} from "../modelos/modelo-consumos";
 
 const linkClass = "underline decoration-gold underline-offset-4";
 
@@ -74,7 +74,7 @@ export async function ModeloBlock({ codigo }: { codigo: string }) {
               : `${modelo.productos} productos usan este modelo`}
           </Link>
           <Link
-            href={`/admin/modelos/${encodeURIComponent(modelo.codigo)}`}
+            href={`/productos/modelos/${encodeURIComponent(modelo.codigo)}`}
             className={linkClass}
           >
             Abrir en Administración

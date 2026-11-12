@@ -29,6 +29,7 @@ import {
 } from "@/lib/productos";
 import { requireSession } from "@/lib/session";
 import type { Catalogos, Conteo, ProductoResumen } from "@/lib/types";
+import { ProductosNav } from "./productos-nav";
 
 export const metadata: Metadata = { title: "Productos" };
 
@@ -86,6 +87,7 @@ export default async function ProductosPage({
 
   return (
     <>
+      {canWrite(user.role) ? <ProductosNav /> : null}
       <PageHeader
         eyebrow="Catálogo"
         title="Productos"

@@ -7,6 +7,8 @@ export type NavItem = {
   shortLabel?: string;
   /** Key in ICONS when it differs from the href (filters of one page share it). */
   icon?: string;
+  /** Path prefix that keeps this item highlighted when it differs from the href (Administración lands on /admin/usuarios). */
+  activePrefix?: string;
   adminOnly?: boolean;
 };
 
@@ -15,7 +17,15 @@ export type NavGroup = { title: string; items: NavItem[] };
 export const NAV_ITEMS: NavGroup[] = [
   {
     title: "Configuración",
-    items: [{ href: "/admin", label: "Administración", adminOnly: true }],
+    items: [
+      {
+        href: "/admin/usuarios",
+        label: "Administración",
+        icon: "/admin",
+        activePrefix: "/admin",
+        adminOnly: true,
+      },
+    ],
   },
   {
     title: "Resumen",
@@ -40,6 +50,8 @@ export const NAV_ITEMS: NavGroup[] = [
     title: "2 · Productos y costos",
     items: [
       { href: "/productos", label: "Productos" },
+      { href: "/productos/modelos", label: "Modelos", adminOnly: true },
+      { href: "/productos/catalogos", label: "Catálogos", adminOnly: true },
       { href: "/reventa", label: "Mercadería", adminOnly: true },
       { href: "/unidades", label: "Unidades producidas", adminOnly: true },
     ],
@@ -92,13 +104,23 @@ const TALLER_NAV: NavGroup[] = [
 const DESKTOP_NAV: NavGroup[] = [
   {
     title: "",
-    items: [{ href: "/admin", label: "Administración", adminOnly: true }],
+    items: [
+      {
+        href: "/admin/usuarios",
+        label: "Administración",
+        icon: "/admin",
+        activePrefix: "/admin",
+        adminOnly: true,
+      },
+    ],
   },
   {
     title: "",
     items: [
       { href: "/", label: "Panel" },
       { href: "/productos", label: "Productos" },
+      { href: "/productos/modelos", label: "Modelos", adminOnly: true },
+      { href: "/productos/catalogos", label: "Catálogos", adminOnly: true },
       { href: "/proveedores", label: "Proveedores", adminOnly: true },
     ],
   },
