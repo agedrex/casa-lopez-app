@@ -15,7 +15,6 @@ import { listAdminUsers } from "@/lib/admin-users";
 import { formatDate } from "@/lib/format";
 import { ROLE_LABELS } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
-import { BackToAdmin } from "../back-link";
 
 export const metadata: Metadata = { title: "Usuarios" };
 
@@ -55,7 +54,6 @@ export default async function UsuariosPage({
 
   return (
     <>
-      <BackToAdmin />
       <PageHeader
         eyebrow="Administración"
         title="Usuarios"

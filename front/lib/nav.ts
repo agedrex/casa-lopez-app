@@ -14,6 +14,10 @@ export type NavGroup = { title: string; items: NavItem[] };
 
 export const NAV_ITEMS: NavGroup[] = [
   {
+    title: "Configuración",
+    items: [{ href: "/admin", label: "Administración", adminOnly: true }],
+  },
+  {
     title: "Resumen",
     items: [
       { href: "/", label: "Panel" },
@@ -53,23 +57,14 @@ export const NAV_ITEMS: NavGroup[] = [
     items: [{ href: "/costos-fijos", label: "Costos fijos" }],
   },
   {
-    title: "Consultas",
-    items: [
-      { href: "/grilla", label: "Grilla completa", shortLabel: "Grilla" },
-    ],
-  },
-  {
     title: "Herramientas",
-    items: [
-      { href: "/voz", label: "Voz" },
-      { href: "/admin", label: "Administración", adminOnly: true },
-    ],
+    items: [{ href: "/voz", label: "Voz" }],
   },
 ];
 
 const MOBILE_TAB_HREFS: Record<Role, readonly string[]> = {
   admin: ["/", "/productos", "/materiales", "/fabricacion"],
-  gerente: ["/productos", "/grilla"],
+  gerente: ["/productos"],
   // Three tabs around the "+" button; Voz stays one tap away in that button's quick actions.
   taller: ["/corte", "/cueros", "/productos"],
 };
@@ -78,13 +73,11 @@ const MOBILE_TAB_HREFS: Record<Role, readonly string[]> = {
 const GERENTE_NAV: NavGroup[] = [
   {
     title: "Consultas",
-    items: [
-      { href: "/productos", label: "Productos" },
-      { href: "/grilla", label: "Grilla completa", shortLabel: "Grilla" },
-    ],
+    items: [{ href: "/productos", label: "Productos" }],
   },
 ];
 
+// Voz is not listed: on desktop it is the microphone button of the header, on mobile the "+" quick action.
 const TALLER_NAV: NavGroup[] = [
   {
     title: "Producción",
@@ -92,13 +85,16 @@ const TALLER_NAV: NavGroup[] = [
       { href: "/corte", label: "Corte" },
       { href: "/cueros", label: "Cueros" },
       { href: "/productos", label: "Productos" },
-      { href: "/voz", label: "Voz" },
     ],
   },
 ];
 
 /** Simpler, flatter menu for the desktop sidebar. Mobile keeps NAV_ITEMS. */
 const DESKTOP_NAV: NavGroup[] = [
+  {
+    title: "",
+    items: [{ href: "/admin", label: "Administración", adminOnly: true }],
+  },
   {
     title: "",
     items: [
@@ -138,17 +134,6 @@ const DESKTOP_NAV: NavGroup[] = [
       { href: "/admin/modelos", label: "Modelos", adminOnly: true },
       { href: "/fabricacion", label: "Lotes" },
       { href: "/talleres", label: "Talleres" },
-    ],
-  },
-  {
-    title: "Revisión",
-    items: [{ href: "/grilla", label: "Grilla completa" }],
-  },
-  {
-    title: "",
-    items: [
-      { href: "/voz", label: "Voz" },
-      { href: "/admin", label: "Administración", adminOnly: true },
     ],
   },
 ];

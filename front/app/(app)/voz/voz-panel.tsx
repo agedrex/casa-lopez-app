@@ -16,8 +16,15 @@ const NOT_CONFIGURED =
  * Text box, local audio recorder, and the proposal that comes back.
  * Nothing is saved from here: the card asks for an explicit confirmation.
  */
-export function VozPanel({ configured }: { configured: boolean }) {
-  const [text, setText] = useState("");
+export function VozPanel({
+  configured,
+  initialText = "",
+}: {
+  configured: boolean;
+  /** Text dictated from the header microphone; the person reviews it before interpreting. */
+  initialText?: string;
+}) {
+  const [text, setText] = useState(initialText);
   const [state, dispatch, pending] = useActionState(
     interpretarVoz,
     INTERPRETAR_IDLE,

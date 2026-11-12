@@ -9,7 +9,6 @@ import {
 } from "@/lib/parametros";
 import { requireRole } from "@/lib/session";
 import type { Parametro } from "@/lib/types";
-import { BackToAdmin } from "../back-link";
 import { ParametroForm } from "./parametro-form";
 
 export const metadata: Metadata = { title: "Parámetros" };
@@ -20,7 +19,6 @@ export default async function ParametrosPage() {
 
   return (
     <>
-      <BackToAdmin />
       <PageHeader
         eyebrow="Administración"
         title="Parámetros"

@@ -102,7 +102,7 @@ const ROLE_ACCESS: Record<
   { home: string; paths: readonly string[] | null; exact?: readonly string[] }
 > = {
   admin: { home: "/", paths: null },
-  gerente: { home: "/productos", paths: ["/productos", "/grilla"] },
+  gerente: { home: "/productos", paths: ["/productos"] },
   taller: {
     home: "/corte",
     paths: ["/corte", "/cueros", "/voz"],

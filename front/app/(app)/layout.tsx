@@ -4,10 +4,12 @@ import { Suspense } from "react";
 import { MainNav } from "@/components/main-nav";
 import { MobileNav } from "@/components/mobile-nav";
 import { UserMenu } from "@/components/user-menu";
+import { VozButton } from "@/components/voz-button";
 import { Wordmark } from "@/components/wordmark";
 import { desktopNavForRole, mobileTabs, navForRole } from "@/lib/nav";
 import {
   canAccessPath,
+  canUseVoice,
   canWrite,
   homePath,
   parseRoles,
@@ -43,11 +45,14 @@ async function AuthenticatedShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen">
       <header className="sticky top-0 z-20 flex items-center justify-between border-b border-line bg-surface px-4 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:px-8 sm:py-3">
         <Wordmark />
-        <UserMenu
-          name={user.name}
-          email={user.email}
-          roleLabel={role ? ROLE_LABELS[role] : "Sin rol"}
-        />
+        <div className="flex items-center gap-2">
+          {canUseVoice(user.role) ? <VozButton /> : null}
+          <UserMenu
+            name={user.name}
+            email={user.email}
+            roleLabel={role ? ROLE_LABELS[role] : "Sin rol"}
+          />
+        </div>
       </header>
       <div className="lg:grid lg:grid-cols-[16rem_1fr]">
         <aside className="hidden border-r border-line bg-surface lg:block lg:min-h-[calc(100vh-4.5rem)]">

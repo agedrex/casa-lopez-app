@@ -11,8 +11,19 @@ import { VozPanel } from "./voz-panel";
 
 export const metadata: Metadata = { title: "Voz" };
 
-export default async function VozPage() {
+type Search = Promise<{ texto?: string | string[] }>;
+
+export default async function VozPage({
+  searchParams,
+}: {
+  searchParams: Search;
+}) {
   const { user } = await requireSession();
+  // The header microphone hands over what it heard; the person still reviews it and presses Interpretar.
+  const { texto } = await searchParams;
+  const dictated = (Array.isArray(texto) ? texto[0] : texto)
+    ?.trim()
+    .slice(0, VOZ_MAX_CHARS);
   const writer = canUseVoice(user.role);
   const estado = writer ? await apiGet<VozEstado>("/voz/estado") : null;
 
@@ -50,7 +61,11 @@ export default async function VozPage() {
 
         {writer ? (
           estado?.ok ? (
-            <VozPanel configured={estado.data.configurado} />
+            <VozPanel
+              key={dictated ?? ""}
+              configured={estado.data.configurado}
+              initialText={dictated}
+            />
           ) : (
             <ErrorNotice
               message={estado?.ok === false ? estado.message : "Sin datos."}
