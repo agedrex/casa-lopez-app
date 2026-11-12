@@ -25,6 +25,7 @@ class RecordedOperations:
         self.dropped = []
         self.executed = []
         self.dropped_columns = []
+        self.altered_columns = []
         self.dropped_indexes = []
         self.dropped_constraints = []
 
@@ -61,6 +62,10 @@ class RecordedOperations:
     def drop_column(self, table_name, column_name, schema):
         self.dropped_columns.append((schema, table_name, column_name))
 
+    def alter_column(self, table_name, column_name, *, schema, nullable, existing_type):
+        self.altered_columns.append((schema, table_name, column_name, nullable))
+        self.metadata.tables[f"{schema}.{table_name}"].c[column_name].nullable = nullable
+
     def drop_table(self, name, schema):
         assert schema == "costos"
         self.dropped.append(name)
@@ -80,7 +85,7 @@ def test_revision_chain_replaces_v1_with_v3_then_seeds(monkeypatch):
     chain = {}
     for filename in ("0001_esquema_costos.py", "0002_semillas.py", "0003_der_v3.py", "0004_semillas_v3.py",
                      "0005_gasto_reemplaza_a.py", "0006_precio_venta.py", "0007_proveedores_documentos.py",
-                     "0008_reventa.py", "0009_gasto_anulado.py"):
+                     "0008_reventa.py", "0009_gasto_anulado.py", "0010_compra_sin_unidades.py"):
         _, revision = load_revision(monkeypatch, filename)
         chain[revision["revision"]] = revision["down_revision"]
     assert chain == {
@@ -88,20 +93,21 @@ def test_revision_chain_replaces_v1_with_v3_then_seeds(monkeypatch):
         "0003_der_v3": "0002_semillas", "0004_semillas_v3": "0003_der_v3",
         "0005_gasto_reemplaza_a": "0004_semillas_v3", "0006_precio_venta": "0005_gasto_reemplaza_a",
         "0007_proveedores_documentos": "0006_precio_venta", "0008_reventa": "0007_proveedores_documentos",
-        "0009_gasto_anulado": "0008_reventa",
+        "0009_gasto_anulado": "0008_reventa", "0010_compra_sin_unidades": "0009_gasto_anulado",
     }
 
 
 def test_der_v3_revision_matches_orm_and_reverses_dependencies(monkeypatch):
     operations, revision = load_revision(monkeypatch, "0003_der_v3.py")
     revision["upgrade"]()
-    # The ORM also carries what 0005 to 0009 add on top of DER v3 (gasto_periodo.reemplaza_a_id, precio_venta,
+    # The ORM also carries what 0005 to 0010 add on top of DER v3 (gasto_periodo.reemplaza_a_id, precio_venta,
     # proveedor, documento_proveedor, the resale tables and gasto_periodo.anulado).
     runpy.run_path(str(VERSIONS / "0005_gasto_reemplaza_a.py"))["upgrade"]()
     runpy.run_path(str(VERSIONS / "0006_precio_venta.py"))["upgrade"]()
     runpy.run_path(str(VERSIONS / "0007_proveedores_documentos.py"))["upgrade"]()
     runpy.run_path(str(VERSIONS / "0008_reventa.py"))["upgrade"]()
     runpy.run_path(str(VERSIONS / "0009_gasto_anulado.py"))["upgrade"]()
+    runpy.run_path(str(VERSIONS / "0010_compra_sin_unidades.py"))["upgrade"]()
     assert set(operations.metadata.tables) == set(Base.metadata.tables)
     dialect = postgresql.dialect()
     for key, declared in operations.metadata.tables.items():
@@ -317,3 +323,16 @@ def test_gasto_anulado_revision_adds_a_not_null_flag_defaulting_to_false_and_rev
     revision["downgrade"]()
     assert operations.dropped_columns == [("costos", "gasto_periodo", "anulado")]
     assert "annul" in revision["__doc__"]  # the downgrade warns that annulled rows count again
+
+
+def test_compra_sin_unidades_revision_makes_units_nullable_and_reverses_it(monkeypatch):
+    operations, base = load_revision(monkeypatch, "0003_der_v3.py")
+    base["upgrade"]()
+    runpy.run_path(str(VERSIONS / "0008_reventa.py"))["upgrade"]()
+    revision = runpy.run_path(str(VERSIONS / "0010_compra_sin_unidades.py"))
+    assert revision["revision"] == "0010_compra_sin_unidades" and revision["down_revision"] == "0009_gasto_anulado"
+    revision["upgrade"]()
+    assert operations.altered_columns == [("costos", "compra_reventa", "unidades", True)]
+    revision["downgrade"]()
+    assert operations.altered_columns[-1] == ("costos", "compra_reventa", "unidades", False)
+    assert "fails" in revision["__doc__"]  # the downgrade warns that price-only rows block it

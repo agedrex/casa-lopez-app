@@ -140,7 +140,7 @@ SOLO_ADMIN = {"/parametros/{codigo}", "/personas", "/personas/{codigo}/activo", 
               "/proveedores", "/proveedores/{codigo}", "/proveedores/{codigo}/activo",
               "/proveedores/{codigo}/documentos", "/documentos-proveedor/{id}/ocr", "/documentos-proveedor/{id}/datos",
               # Resale products (see test_reventa.py and test_roles.py).
-              "/reventa", "/reventa/{codigo}/activo", "/reventa/{codigo}/compras"}
+              "/reventa", "/reventa/lote", "/reventa/{codigo}/activo", "/reventa/{codigo}/compras"}
 # Admin and taller: cutting, the voice interpreter and the workshop price a taller loads by voice.
 SOLO_CORTE = {"/cueros/{codigo}/cortes", "/cueros/{codigo}/sobrante", "/voz/interpretar",
               "/ordenes/{codigo}/items/{item}/precios"}

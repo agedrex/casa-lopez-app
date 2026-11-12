@@ -121,3 +121,53 @@ def test_a_new_product_gets_a_mer_code():
     with pytest.raises(servicios.NoEncontrado):  # `detalle` reads the row back from the (mocked) database
         reventa.crear(session, nombre="Lapicera", categoria=None, proveedor=None, nota=None)
     assert session.add.call_args.args[0].codigo == "MER-0001"
+
+
+# --- Price updates and the grid batch ---------------------------------------------------------------------------
+
+def test_a_price_update_has_no_units_no_total_and_does_not_count_as_a_purchase():
+    nuevas_primero = [compra(date(2026, 11, 5), "1", "800", "1500", id=2), compra(date(2026, 10, 1), "10", "600", "1000")]
+    nuevas_primero[0].unidades = None
+    dato = reventa._a_dict(producto(), None, nuevas_primero)
+    assert dato["costo_unitario_ars"] == D("800") and dato["precio_venta_unitario_ars"] == D("1500")
+    assert dato["unidades_compradas"] == D("10") and dato["compras"] == 1
+    assert reventa._compra_a_dict(nuevas_primero[0])["costo_total_ars"] is None
+
+
+def test_an_empty_batch_is_rejected():
+    with pytest.raises(servicios.DatosInvalidos):
+        reventa.guardar_en_lote(MagicMock(), [], [])
+
+
+@pytest.mark.parametrize("nuevo", [
+    {"nombre": "Lapicera", "precio_venta": D("1000")},  # a sale price needs a cost
+    {"nombre": "Lapicera", "unidades": D("3")},  # units need a cost
+    {"nombre": "Lapicera", "costo": D("0")},
+    {"nombre": "Lapicera", "costo": D("10"), "unidades": D("-1")},
+    {"nombre": "  ", "costo": D("10")},
+])
+def test_invalid_new_rows_roll_back_the_whole_batch(nuevo):
+    session = MagicMock()
+    session.scalar.return_value = None
+    with pytest.raises(servicios.DatosInvalidos):
+        reventa.guardar_en_lote(session, [], [nuevo])
+    session.rollback.assert_called_once()
+    session.commit.assert_not_called()
+
+
+def test_the_same_product_twice_in_a_batch_is_rejected():
+    with pytest.raises(servicios.DatosInvalidos):
+        reventa.guardar_en_lote(MagicMock(), [{"codigo": "MER-0001"}, {"codigo": "MER-0001"}], [])
+
+
+def test_batch_endpoint_is_admin_only_and_answers_the_list(monkeypatch):
+    c = cliente("admin", monkeypatch)
+    llamadas = []
+    monkeypatch.setattr(reventa, "guardar_en_lote", lambda session, cambios, nuevos, quien=None: (
+        llamadas.append((cambios, nuevos, quien)) or [{k: v for k, v in FICHA.items() if k != "historial"}]))
+    respuesta = c.post("/reventa/lote", json={
+        "cambios": [{"codigo": "MER-0001", "costo": "700"}], "nuevos": [{"nombre": "Goma", "costo": "50", "precio_venta": "90"}]})
+    assert respuesta.status_code == 200 and respuesta.json()[0]["codigo"] == "MER-0001"
+    assert llamadas[0][0] == [{"codigo": "MER-0001", "costo": D("700")}] and llamadas[0][2] == "u1"
+    assert c.post("/reventa/lote", json={"cambios": [{"codigo": "MER-0001", "costo": "0"}]}).status_code == 422
+    assert cliente("gerente", monkeypatch).post("/reventa/lote", json={"nuevos": []}).status_code == 403
