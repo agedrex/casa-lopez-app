@@ -14,6 +14,7 @@ import {
   homePath,
   parseRoles,
   ROLE_LABELS,
+  ROLES,
 } from "@/lib/permissions";
 import { requireSession } from "@/lib/session";
 
@@ -28,7 +29,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 }
 
 async function AuthenticatedShell({ children }: { children: React.ReactNode }) {
-  const { user } = await requireSession();
+  const { user, previewAvailable } = await requireSession();
   // Second check after the proxy: deny by default, and send the role to its own home.
   if (
     !canAccessPath(user.role, (await headers()).get("x-app-pathname") ?? "")
@@ -51,6 +52,12 @@ async function AuthenticatedShell({ children }: { children: React.ReactNode }) {
             name={user.name}
             email={user.email}
             roleLabel={role ? ROLE_LABELS[role] : "Sin rol"}
+            previewRoles={
+              previewAvailable
+                ? ROLES.map((value) => ({ value, label: ROLE_LABELS[value] }))
+                : undefined
+            }
+            currentRole={role}
           />
         </div>
       </header>

@@ -2,6 +2,7 @@ import { getSessionCookie } from "better-auth/cookies";
 import { type NextRequest, NextResponse } from "next/server";
 import { auth } from "./lib/auth";
 import { canAccessPath, homePath } from "./lib/permissions";
+import { PREVIEW_COOKIE, withPreview } from "./lib/role-preview";
 
 // Optimistic gate: a missing session cookie sends the visitor to /login. The real
 // authorization happens close to the data (pages and the API verifier).
@@ -18,9 +19,10 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(login);
   }
 
-  const session = await auth.api.getSession({ headers: request.headers });
-  if (!session) return NextResponse.redirect(new URL("/login", request.url));
-  // Deny by default: each role opens only its own paths (/admin and the panel are admin only).
+  const real = await auth.api.getSession({ headers: request.headers });
+  if (!real) return NextResponse.redirect(new URL("/login", request.url));
+  const session = withPreview(real, request.cookies.get(PREVIEW_COOKIE)?.value);
+  // Deny by default: each role opens only its own paths (/admin is admin only, except the Panel for gerente).
   if (!canAccessPath(session.user.role, pathname)) {
     return NextResponse.redirect(
       new URL(homePath(session.user.role), request.url),

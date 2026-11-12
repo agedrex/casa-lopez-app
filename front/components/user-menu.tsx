@@ -3,15 +3,21 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { authClient } from "@/lib/auth-client";
+import { clearPreviewRole, setPreviewRole } from "@/lib/role-preview-action";
 
 export function UserMenu({
   name,
   email,
   roleLabel,
+  previewRoles,
+  currentRole,
 }: {
   name: string;
   email: string;
   roleLabel: string;
+  /** Staging only, for a real admin: the roles the interface can be previewed as. */
+  previewRoles?: { value: string; label: string }[];
+  currentRole?: string;
 }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
@@ -19,6 +25,8 @@ export function UserMenu({
   async function signOut() {
     setPending(true);
     try {
+      // A failure here (e.g. a stale action id after a deploy) must never keep the session alive.
+      await clearPreviewRole().catch(() => {});
       await authClient.signOut();
     } finally {
       router.replace("/login");
@@ -47,6 +55,37 @@ export function UserMenu({
         <p className="mt-1 text-xs uppercase tracking-caps-sm text-gold-deep">
           {roleLabel}
         </p>
+        {previewRoles ? (
+          <div className="mt-3 border-t border-line pt-3">
+            <p className="text-xs uppercase tracking-caps-sm text-muted">
+              Ver como (staging)
+            </p>
+            <ul className="mt-2 flex flex-col gap-1">
+              {previewRoles.map((option) => (
+                <li key={option.value}>
+                  <button
+                    type="button"
+                    disabled={pending || option.value === currentRole}
+                    aria-pressed={option.value === currentRole}
+                    onClick={() => {
+                      setPending(true);
+                      void setPreviewRole(option.value).finally(() =>
+                        setPending(false),
+                      );
+                    }}
+                    className={`min-h-11 w-full rounded-card border px-3 py-2 text-left text-sm disabled:opacity-60 ${
+                      option.value === currentRole
+                        ? "border-gold bg-parchment"
+                        : "border-line hover:bg-parchment"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         <button
           type="button"
           onClick={signOut}
