@@ -59,7 +59,7 @@ def test_a_legacy_role_passes_the_gates_of_its_new_name(leido, rutas):
 
 def test_legacy_consulta_and_corte_keep_no_more_than_their_new_role():
     assert _estado(_cliente("consulta"), "GET", "/costos-fijos") == 403
-    assert _estado(_cliente("consulta"), "GET", "/cueros") == 403
+    assert _estado(_cliente("consulta"), "GET", "/voz/estado") == 403
     assert _estado(_cliente("corte"), "GET", "/costos-fijos") == 403
     assert _estado(_cliente("corte"), "POST", "/productos") == 403
 
@@ -83,29 +83,29 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
     # Product and quote data: admin and gerente. /materiales has no prices, so every role reads it.
     ("GET", "/productos"): TODOS,  # taller: the "alcanza" selector of the cut pages and the product list
     ("GET", "/productos/conteo"): TODOS,  # taller: the pagination of that list (the sheet itself stays admin / gerente)
-    ("GET", "/productos/{codigo}"): PRODUCTOS,
-    ("GET", "/productos/{codigo}/rentabilidad"): PRODUCTOS,
-    ("GET", "/productos/{codigo}/precio-venta"): PRODUCTOS,
+    ("GET", "/productos/{codigo}"): TODOS,
+    ("GET", "/productos/{codigo}/rentabilidad"): TODOS,
+    ("GET", "/productos/{codigo}/precio-venta"): TODOS,
     ("GET", "/grilla"): PRODUCTOS,
-    ("GET", "/catalogos"): PRODUCTOS,
+    ("GET", "/catalogos"): TODOS,
     ("GET", "/materiales"): TODOS,
     # What the corte / cueros / voz pages read.
-    ("GET", "/cueros"): CORTE,
-    ("GET", "/cueros/alcanza"): CORTE,
-    ("GET", "/cueros/{codigo}"): CORTE,
-    ("GET", "/colores"): CORTE,
-    ("GET", "/ordenes"): CORTE,
-    ("GET", "/ordenes/{codigo}"): CORTE,
+    ("GET", "/cueros"): TODOS,
+    ("GET", "/cueros/alcanza"): TODOS,
+    ("GET", "/cueros/{codigo}"): TODOS,
+    ("GET", "/colores"): TODOS,
+    ("GET", "/ordenes"): TODOS,
+    ("GET", "/ordenes/{codigo}"): TODOS,
     ("GET", "/ordenes/unidades-por-producto"): ADMIN,
     ("GET", "/voz/estado"): CORTE,
     # Admin only reads.
     ("GET", "/db/estado"): ADMIN,
     ("GET", "/productos/{codigo}/precios-talleres"): ADMIN,
-    ("GET", "/modelos"): ADMIN, ("GET", "/modelos/{codigo}"): ADMIN,
-    ("GET", "/precios"): ADMIN, ("GET", "/precios/chequeo"): ADMIN,
-    ("GET", "/categorias"): ADMIN, ("GET", "/impuestos"): ADMIN, ("GET", "/dolar"): PRODUCTOS, ("GET", "/parametros"): ADMIN,
-    ("GET", "/talleres"): ADMIN, ("GET", "/talleres/{codigo}"): ADMIN, ("GET", "/personas"): ADMIN,
-    ("GET", "/talleres/{codigo}/historial"): ADMIN,
+    ("GET", "/modelos"): TODOS, ("GET", "/modelos/{codigo}"): TODOS,
+    ("GET", "/precios"): TODOS, ("GET", "/precios/chequeo"): ADMIN,
+    ("GET", "/categorias"): TODOS, ("GET", "/impuestos"): ADMIN, ("GET", "/dolar"): TODOS, ("GET", "/parametros"): ADMIN,
+    ("GET", "/talleres"): PRODUCTOS, ("GET", "/talleres/{codigo}"): PRODUCTOS, ("GET", "/personas"): ADMIN,
+    ("GET", "/talleres/{codigo}/historial"): PRODUCTOS,
     ("GET", "/costos-fijos"): ADMIN, ("GET", "/costos-fijos/periodos"): ADMIN,
     ("GET", "/panel/costos"): PRODUCTOS, ("GET", "/panel/tendencia"): ADMIN,
     ("GET", "/fabricacion/casa-vs-taller"): ADMIN, ("GET", "/calidad"): PRODUCTOS,
@@ -124,11 +124,11 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
         "/personas", "/personas/{codigo}/activo", "/colores", "/categorias", "/modelos", "/modelos/{codigo}/validado",
         "/impuestos", "/impuestos/{codigo}/alicuota", "/impuestos/{codigo}/activo",
         "/modelos/{codigo}/consumos", "/sync/sheets", "/costos-fijos/lote", "/modelos/consumos/lote")},
-    # Suppliers and their invoices / images: admin only, reads and writes alike.
+    # Suppliers: gerente reads (Abastecimiento), the invoice file and every write stay admin only.
     ("GET", "/reventa"): ADMIN, ("GET", "/reventa/{codigo}"): ADMIN,
-    ("GET", "/proveedores"): ADMIN, ("GET", "/proveedores/{codigo}"): ADMIN,
-    ("GET", "/proveedores/{codigo}/documentos"): ADMIN, ("GET", "/documentos-proveedor/{id}/archivo"): ADMIN,
-    ("GET", "/proveedores/{codigo}/materiales"): ADMIN,
+    ("GET", "/proveedores"): PRODUCTOS, ("GET", "/proveedores/{codigo}"): PRODUCTOS,
+    ("GET", "/proveedores/{codigo}/documentos"): PRODUCTOS, ("GET", "/documentos-proveedor/{id}/archivo"): ADMIN,
+    ("GET", "/proveedores/{codigo}/materiales"): PRODUCTOS,
     **{("POST", ruta): ADMIN for ruta in (
         "/reventa", "/reventa/lote", "/reventa/{codigo}/activo", "/reventa/{codigo}/compras",
         "/proveedores", "/proveedores/{codigo}", "/proveedores/{codigo}/activo", "/proveedores/{codigo}/documentos",
@@ -211,10 +211,14 @@ def test_admin_only_routes_refuse_everyone_else_without_calling_the_service(monk
     ("gerente", [("GET", "/productos"), ("GET", "/productos/conteo"), ("GET", "/productos/X-1"),
                  ("GET", "/productos/X-1/rentabilidad"), ("GET", "/productos/X-1/precio-venta"), ("GET", "/grilla"),
                  ("GET", "/catalogos"), ("GET", "/materiales"),
-                 ("GET", "/panel/costos"), ("GET", "/calidad"), ("GET", "/dolar")]),
+                 ("GET", "/panel/costos"), ("GET", "/calidad"), ("GET", "/dolar"),
+                 ("GET", "/ordenes"), ("GET", "/ordenes/LOT-1"), ("GET", "/cueros"), ("GET", "/cueros/PZC-1"),
+                 ("GET", "/talleres"), ("GET", "/talleres/T-1"), ("GET", "/proveedores"), ("GET", "/proveedores/PRV-1")]),
     ("taller", [("GET", "/productos"), ("GET", "/productos/conteo"), ("GET", "/materiales"), ("GET", "/cueros"), ("GET", "/cueros/PZC-1"),
                 ("GET", "/cueros/alcanza?producto=P&cantidad=1"), ("GET", "/colores"), ("GET", "/ordenes"),
                 ("GET", "/ordenes/LOT-1"), ("GET", "/voz/estado"),
+                ("GET", "/productos/X-1"), ("GET", "/productos/X-1/rentabilidad"), ("GET", "/productos/X-1/precio-venta"),
+                ("GET", "/modelos"), ("GET", "/modelos/MOD-1"), ("GET", "/precios"), ("GET", "/categorias"), ("GET", "/catalogos"), ("GET", "/dolar"),
                 ("POST", "/cueros/PZC-1/cortes"), ("POST", "/cueros/PZC-1/sobrante"), ("POST", "/voz/interpretar")]),
     ("admin", [("GET", "/panel/costos"), ("GET", "/costos-fijos"), ("GET", "/ordenes"), ("GET", "/productos"),
                ("GET", "/cueros"), ("GET", "/voz/estado"), ("POST", "/cvu/escenario"), ("POST", "/ordenes"),
@@ -229,31 +233,27 @@ def test_each_role_passes_the_gate_of_its_allowed_set(role, rutas):
 
 def test_taller_is_still_refused_on_the_panel_reads_that_gerente_now_has():
     cliente = _cliente("taller")
-    for ruta in ("/panel/costos", "/calidad", "/dolar"):
+    for ruta in ("/panel/costos", "/calidad"):
         respuesta = cliente.get(ruta)
         assert respuesta.status_code == 403 and respuesta.json() == SIN_PERMISO, ruta
 
 
 @pytest.mark.parametrize("metodo, ruta", [
-    ("GET", "/panel/tendencia"), ("GET", "/costos-fijos"), ("POST", "/cvu/escenario"), ("GET", "/ordenes"),
-    ("POST", "/productos"),
+    ("GET", "/panel/tendencia"), ("GET", "/costos-fijos"), ("POST", "/cvu/escenario"), ("POST", "/productos"),
 ])
 @pytest.mark.parametrize("role", ["gerente", "taller"])
 def test_gerente_and_taller_are_refused_on_the_representative_admin_routes(metodo, ruta, role):
     cliente = _cliente(role)
-    if (metodo, ruta) == ("GET", "/ordenes") and role == "taller":
-        assert cliente.get(ruta).status_code != 403  # taller reads the lots of the cut flow
-        return
     respuesta = cliente.request(metodo, ruta, json={} if metodo == "POST" else None)
     assert respuesta.status_code == 403 and respuesta.json() == SIN_PERMISO
 
 
 @pytest.mark.parametrize("metodo, ruta", [
-    ("GET", "/productos/X-1"), ("GET", "/productos/X-1/rentabilidad"), ("GET", "/productos/X-1/precio-venta"),
-    ("GET", "/productos/X-1/precios-talleres"), ("GET", "/catalogos"), ("GET", "/grilla"), ("POST", "/productos"),
+    ("GET", "/productos/X-1/precios-talleres"), ("GET", "/grilla"), ("POST", "/productos"),
+    ("POST", "/productos/X-1/cotizaciones"), ("POST", "/modelos"), ("GET", "/proveedores"), ("GET", "/talleres"),
 ])
-def test_taller_reads_the_product_list_and_count_but_nothing_else_of_the_products(monkeypatch, metodo, ruta):
-    # The list (with costs) and its count are open to taller on purpose; the sheet and the rest stay closed.
+def test_taller_quotes_read_only_and_stays_out_of_the_rest_of_the_products(monkeypatch, metodo, ruta):
+    # Taller reads what it needs to quote or assemble a product; writes, the grid and supplier data stay closed.
     for nombre in dir(servicios):
         if callable(getattr(servicios, nombre)) and not nombre.startswith("_") and nombre.islower():
             monkeypatch.setattr(servicios, nombre, lambda *a, **k: pytest.fail("the service must not be called"))

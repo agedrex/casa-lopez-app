@@ -85,6 +85,21 @@ const GERENTE_NAV: NavGroup[] = [
     items: [
       { href: "/admin/panel", label: "Panel", icon: "/" },
       { href: "/productos", label: "Productos" },
+      { href: "/productos/modelos", label: "Modelos" },
+    ],
+  },
+  {
+    title: "Producción",
+    items: [
+      { href: "/fabricacion", label: "Lotes" },
+      { href: "/cueros", label: "Inventario de cuero" },
+    ],
+  },
+  {
+    title: "Abastecimiento",
+    items: [
+      { href: "/proveedores", label: "Proveedores" },
+      { href: "/talleres", label: "Talleres" },
     ],
   },
 ];
@@ -96,7 +111,14 @@ const TALLER_NAV: NavGroup[] = [
     items: [
       { href: "/corte", label: "Corte" },
       { href: "/cueros", label: "Cueros" },
+    ],
+  },
+  {
+    title: "Cotizar",
+    items: [
       { href: "/productos", label: "Productos" },
+      { href: "/productos/modelos", label: "Modelos" },
+      { href: "/materiales", label: "Materiales y precios" },
     ],
   },
 ];

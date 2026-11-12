@@ -122,10 +122,12 @@ def test_colors_make_separate_series_for_the_same_material(api):
     assert [s["color"] for s in api.get("/proveedores/PRV-0001/materiales").json()["materiales"]] == [None, "Negro"]
 
 
-def test_only_an_admin_reads_or_writes_the_supplier_prices(api):
+def test_only_an_admin_writes_the_supplier_prices_and_a_taller_does_not_read_them(api):
     proveedor_nuevo(api)
-    app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="g", role="gerente"))
+    app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="t", role="taller"))
     assert api.get("/proveedores/PRV-0001/materiales").status_code == 403
+    app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="g", role="gerente"))
+    assert api.get("/proveedores/PRV-0001/materiales").status_code == 200  # Abastecimiento is read only for a gerente
     assert precio_de(api, "PRV-0001").status_code == 403
 
 
@@ -192,8 +194,8 @@ def test_the_history_total_matches_what_the_workshop_list_says_it_charged(api):
     assert sum(D(l["total_pagado"]) for l in historial["lotes"]) == D(cobro)
 
 
-def test_only_an_admin_reads_the_workshop_history(api):
+def test_gerente_and_admin_read_the_workshop_history_but_taller_does_not(api):
     app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="g", role="gerente"))
-    assert api.get("/talleres/TAL-0001/historial").status_code == 403
+    assert api.get("/talleres/TAL-0001/historial").status_code == 200
     app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="t", role="taller"))
     assert api.get("/talleres/TAL-0001/historial").status_code == 403

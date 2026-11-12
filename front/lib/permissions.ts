@@ -102,16 +102,23 @@ const ROLE_ACCESS: Record<
   { home: string; paths: readonly string[] | null; exact?: readonly string[] }
 > = {
   admin: { home: "/admin/panel", paths: null },
-  // The Panel is the only page of /admin a gerente opens (exact: the other admin pages stay closed).
+  // Gerente reads Producción and Abastecimiento. The Panel is the only page of /admin it opens
+  // (exact: the other admin pages stay closed).
   gerente: {
     home: "/productos",
-    paths: ["/productos"],
+    paths: [
+      "/productos",
+      "/fabricacion",
+      "/cueros",
+      "/talleres",
+      "/proveedores",
+    ],
     exact: ["/admin/panel"],
   },
+  // Taller keeps Corte, Cueros and Voz, and reads everything needed to quote or assemble a product.
   taller: {
     home: "/corte",
-    paths: ["/corte", "/cueros", "/voz"],
-    exact: ["/productos"],
+    paths: ["/corte", "/cueros", "/voz", "/productos", "/materiales"],
   },
 };
 
@@ -121,10 +128,13 @@ export const NO_ROLE_HOME = "/sin-acceso";
 const matchesPath = (pathname: string, route: string) =>
   pathname === route || pathname.startsWith(`${route}/`);
 
-/** Parts of Productos only an admin opens (models and catalogs); gerente still reads the list and the sheet. */
+/** Catalogs and every "new" form: only an admin opens them (the other roles read, they do not write). */
 const ADMIN_ONLY_PATHS = [
-  "/productos/modelos",
   "/productos/catalogos",
+  "/productos/nuevo",
+  "/productos/modelos/nuevo",
+  "/fabricacion/nuevo",
+  "/talleres/nuevo",
 ] as const;
 
 /** First role in ROLES order decides the landing page. */
@@ -156,7 +166,7 @@ export function canAccessPath(
   });
 }
 
-/** The product sheet (and anything below /productos) is for admin and gerente; taller only reads the list. */
+/** The product sheet (and anything below /productos) is read by every role that opens /productos. */
 export function canOpenProductSheet(value: string | null | undefined): boolean {
   return canAccessPath(value, "/productos/ficha");
 }
