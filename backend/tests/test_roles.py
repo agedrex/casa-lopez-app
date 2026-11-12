@@ -84,8 +84,8 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
     ("GET", "/productos"): TODOS,  # taller: the "alcanza" selector of the cut pages and the product list
     ("GET", "/productos/conteo"): TODOS,  # taller: the pagination of that list (the sheet itself stays admin / gerente)
     ("GET", "/productos/{codigo}"): TODOS,
-    ("GET", "/productos/{codigo}/rentabilidad"): TODOS,
-    ("GET", "/productos/{codigo}/precio-venta"): TODOS,
+    ("GET", "/productos/{codigo}/rentabilidad"): PRODUCTOS,
+    ("GET", "/productos/{codigo}/precio-venta"): PRODUCTOS,
     ("GET", "/grilla"): PRODUCTOS,
     ("GET", "/catalogos"): TODOS,
     ("GET", "/materiales"): TODOS,
@@ -105,7 +105,7 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
     ("GET", "/precios"): TODOS, ("GET", "/precios/chequeo"): ADMIN,
     ("GET", "/categorias"): TODOS, ("GET", "/impuestos"): ADMIN, ("GET", "/dolar"): TODOS, ("GET", "/parametros"): ADMIN,
     ("GET", "/talleres"): PRODUCTOS, ("GET", "/talleres/{codigo}"): PRODUCTOS, ("GET", "/personas"): ADMIN,
-    ("GET", "/talleres/{codigo}/historial"): PRODUCTOS,
+    ("GET", "/talleres/{codigo}/historial"): ADMIN,
     ("GET", "/costos-fijos"): ADMIN, ("GET", "/costos-fijos/periodos"): ADMIN,
     ("GET", "/panel/costos"): PRODUCTOS, ("GET", "/panel/tendencia"): ADMIN,
     ("GET", "/fabricacion/casa-vs-taller"): ADMIN, ("GET", "/calidad"): PRODUCTOS,
@@ -217,7 +217,7 @@ def test_admin_only_routes_refuse_everyone_else_without_calling_the_service(monk
     ("taller", [("GET", "/productos"), ("GET", "/productos/conteo"), ("GET", "/materiales"), ("GET", "/cueros"), ("GET", "/cueros/PZC-1"),
                 ("GET", "/cueros/alcanza?producto=P&cantidad=1"), ("GET", "/colores"), ("GET", "/ordenes"),
                 ("GET", "/ordenes/LOT-1"), ("GET", "/voz/estado"),
-                ("GET", "/productos/X-1"), ("GET", "/productos/X-1/rentabilidad"), ("GET", "/productos/X-1/precio-venta"),
+                ("GET", "/productos/X-1"),
                 ("GET", "/modelos"), ("GET", "/modelos/MOD-1"), ("GET", "/precios"), ("GET", "/categorias"), ("GET", "/catalogos"), ("GET", "/dolar"),
                 ("POST", "/cueros/PZC-1/cortes"), ("POST", "/cueros/PZC-1/sobrante"), ("POST", "/voz/interpretar")]),
     ("admin", [("GET", "/panel/costos"), ("GET", "/costos-fijos"), ("GET", "/ordenes"), ("GET", "/productos"),
@@ -250,6 +250,7 @@ def test_gerente_and_taller_are_refused_on_the_representative_admin_routes(metod
 
 @pytest.mark.parametrize("metodo, ruta", [
     ("GET", "/productos/X-1/precios-talleres"), ("GET", "/grilla"), ("POST", "/productos"),
+    ("GET", "/productos/X-1/rentabilidad"), ("GET", "/productos/X-1/precio-venta"), ("GET", "/talleres/TAL-1/historial"),
     ("POST", "/productos/X-1/cotizaciones"), ("POST", "/modelos"), ("GET", "/proveedores"), ("GET", "/talleres"),
 ])
 def test_taller_quotes_read_only_and_stays_out_of_the_rest_of_the_products(monkeypatch, metodo, ruta):

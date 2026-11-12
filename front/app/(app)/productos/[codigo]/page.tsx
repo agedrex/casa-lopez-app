@@ -30,7 +30,7 @@ import {
   stageLabel,
 } from "@/lib/format";
 import { parseNota } from "@/lib/notas";
-import { canWrite } from "@/lib/permissions";
+import { canWrite, isTallerOnly } from "@/lib/permissions";
 import { collapseSpaces, costoFaltante } from "@/lib/productos";
 import { requireSession } from "@/lib/session";
 import type {
@@ -110,11 +110,13 @@ export default async function FichaPage({
       <div className="space-y-10">
         <Details ficha={ficha} />
         <CostToday ficha={ficha} />
-        <RentabilidadBlock
-          codigo={ficha.codigo}
-          writer={canWrite(user.role)}
-          typedPrice={typedPriceOf((await searchParams).precio)}
-        />
+        {isTallerOnly(user.role) ? null : (
+          <RentabilidadBlock
+            codigo={ficha.codigo}
+            writer={canWrite(user.role)}
+            typedPrice={typedPriceOf((await searchParams).precio)}
+          />
+        )}
         {canWrite(user.role) ? (
           <NegotiationReference codigo={ficha.codigo} />
         ) : null}

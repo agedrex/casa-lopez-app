@@ -38,7 +38,8 @@ router = APIRouter(dependencies=[Depends(require_user)])
 #   gerente  read only: Producción and Abastecimiento (lots, leather stock, workshops, suppliers), product and quote
 #            data (LECTURA_PRODUCTOS) and the plain catalogs (LECTURA_GENERAL).
 #   taller   voice, cutting and leather stock (CORTES, LECTURA_CORTE), plus, read only, everything needed to quote or
-#            assemble a new product: products and their sheet, models, materials, prices, catalogs, dollar (LECTURA_GENERAL).
+#            assemble a new product: products and their sheet, models, materials, prices, catalogs, dollar (LECTURA_GENERAL),
+#            but not profitability / sale prices (gerente + admin) nor the workshop history (admin only).
 # Every write is admin only (ESCRITURA) except cutting and the voice interpreter (CORTES).
 ESCRITURA = [Depends(SOLO_ADMIN)]
 CORTES = [Depends(CORTE)]
@@ -1316,7 +1317,7 @@ def taller(codigo: str, session: Sesion):
     return servicios.detalle_taller(session, codigo)
 
 
-@router.get("/talleres/{codigo}/historial", dependencies=LECTURA_PRODUCTOS, response_model=HistorialDeTallerOut)
+@router.get("/talleres/{codigo}/historial", dependencies=LECTURA_ADMIN, response_model=HistorialDeTallerOut)
 def historial_de_taller(codigo: str, session: Sesion):
     """Lots given to the workshop (units, total paid) and, per product, what was paid each time and how it changed."""
     return servicios.historial_taller(session, codigo)
@@ -1336,13 +1337,13 @@ def panel_de_costos(
     return servicios.panel_de_costos(session, periodo, precio)
 
 
-@router.get("/productos/{codigo}/precio-venta", dependencies=LECTURA_GENERAL, response_model=list[PrecioVentaOut])
+@router.get("/productos/{codigo}/precio-venta", dependencies=LECTURA_PRODUCTOS, response_model=list[PrecioVentaOut])
 def historial_de_precio_de_venta(codigo: str, session: Sesion):
     """Saved sale prices of the product, newest first."""
     return servicios.listar_precios_de_venta(session, codigo)
 
 
-@router.get("/productos/{codigo}/rentabilidad", dependencies=LECTURA_GENERAL, response_model=RentabilidadOut)
+@router.get("/productos/{codigo}/rentabilidad", dependencies=LECTURA_PRODUCTOS, response_model=RentabilidadOut)
 def rentabilidad_de_producto(
     codigo: str, session: Sesion,
     precio: Annotated[Decimal | None, Query(gt=0, max_digits=14, decimal_places=4)] = None,

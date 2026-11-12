@@ -57,9 +57,12 @@ export default async function TallerPage({
     );
   }
   const path = `/talleres/${encodeURIComponent(code)}`;
+  // The workshop history carries the prices paid: admin only (the API answers 403 to the others).
   const [result, historial] = await Promise.all([
     apiGet<TallerDetalle>(path),
-    apiGet<HistorialDeTaller>(`${path}/historial`),
+    canWrite(user.role)
+      ? apiGet<HistorialDeTaller>(`${path}/historial`)
+      : Promise.resolve(null),
   ]);
   if (!result.ok) {
     return (
@@ -113,7 +116,7 @@ export default async function TallerPage({
             </dl>
           </Card>
         </section>
-        {historial.ok ? (
+        {historial === null ? null : historial.ok ? (
           historial.data.lotes.length === 0 ? null : (
             <HistorialDelTaller historial={historial.data} />
           )
