@@ -49,6 +49,7 @@ def _margen(costo: Decimal, precio: Decimal | None) -> tuple[Decimal | None, Dec
 
 def _a_dict(p: ProductoReventa, categoria: str | None, compras: list[CompraReventa]) -> dict:
     ultima = compras[0] if compras else None
+    ultima_real = next((c for c in compras if c.unidades is not None), None)
     con_precio = next((c for c in compras if c.precio_venta_unitario_ars is not None), None)
     costo = ultima.costo_unitario_ars if ultima else None
     precio = con_precio.precio_venta_unitario_ars if con_precio else None
@@ -56,7 +57,7 @@ def _a_dict(p: ProductoReventa, categoria: str | None, compras: list[CompraReven
     return {
         "codigo": p.codigo, "nombre": p.nombre, "categoria": categoria, "proveedor": p.proveedor, "nota": p.nota,
         "activo": p.activo, "costo_unitario_ars": costo, "precio_venta_unitario_ars": precio,
-        "margen_unitario_ars": margen, "margen_pct": margen_pct, "ultima_compra": ultima.fecha if ultima else None,
+        "margen_unitario_ars": margen, "margen_pct": margen_pct, "ultima_compra": ultima_real.fecha if ultima_real else None,
         "compras": len([c for c in compras if c.unidades is not None]), "unidades_compradas": sum((c.unidades for c in compras if c.unidades is not None), Decimal(0)),
     }
 

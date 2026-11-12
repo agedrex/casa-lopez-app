@@ -171,3 +171,13 @@ def test_batch_endpoint_is_admin_only_and_answers_the_list(monkeypatch):
     assert llamadas[0][0] == [{"codigo": "MER-0001", "costo": D("700")}] and llamadas[0][2] == "u1"
     assert c.post("/reventa/lote", json={"cambios": [{"codigo": "MER-0001", "costo": "0"}]}).status_code == 422
     assert cliente("gerente", monkeypatch).post("/reventa/lote", json={"nuevos": []}).status_code == 403
+
+
+def test_last_purchase_date_ignores_price_updates_without_units():
+    actualizacion = compra(date(2026, 11, 5), "1", "800", "1500", id=2)
+    actualizacion.unidades = None
+    real = compra(date(2026, 10, 1), "10", "600", "1000")
+    dato = reventa._a_dict(producto(), None, [actualizacion, real])
+    assert dato["ultima_compra"] == date(2026, 10, 1) and dato["costo_unitario_ars"] == D("800")
+    solo_precio = reventa._a_dict(producto(), None, [actualizacion])
+    assert solo_precio["ultima_compra"] is None and solo_precio["costo_unitario_ars"] == D("800")
