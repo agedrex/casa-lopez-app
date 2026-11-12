@@ -132,17 +132,15 @@ export function PiezaFila({
   );
 }
 
-/** One leather and color: totals, the measured threshold and (optionally) its skins. */
+/** One leather and color: totals and the measured threshold. */
 export function GrupoCard({
   grupo,
   titulo,
   showMoney,
-  conPiezas,
 }: {
   grupo: GrupoCuero;
   titulo: string;
   showMoney: boolean;
-  conPiezas: boolean;
 }) {
   return (
     <CardItem>
@@ -157,22 +155,6 @@ export function GrupoCard({
             <li key={aviso}>{aviso}</li>
           ))}
         </ul>
-      ) : null}
-      {conPiezas ? (
-        <div className="mt-4 space-y-2">
-          <h4 className="text-base font-bold">Pieles</h4>
-          {grupo.piezas.length === 0 ? (
-            <p className="text-sm text-muted">No hay pieles para mostrar.</p>
-          ) : (
-            grupo.piezas.map((pieza) => (
-              <PiezaFila
-                key={pieza.codigo}
-                pieza={pieza}
-                showMoney={showMoney}
-              />
-            ))
-          )}
-        </div>
       ) : null}
     </CardItem>
   );
