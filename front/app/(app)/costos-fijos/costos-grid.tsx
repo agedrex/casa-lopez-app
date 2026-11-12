@@ -215,6 +215,8 @@ export function CostosGrid({
       rows={rows}
       noun={NOUN[bloque]}
       allowNew={bloque !== "otros"}
+      startWithDraft={false}
+      addLabel="Agregar item"
       newRowDefaults={defaults}
       newRowLabel={NUEVO[bloque]}
       allowDelete
