@@ -5,8 +5,19 @@ import { redirect } from "next/navigation";
 import { error, type FormState, ok } from "@/lib/action-state";
 import { apiGet, apiPost } from "@/lib/api";
 import { LOT_STATES, lotStateLabel, parseDecimalInput } from "@/lib/format";
+import {
+  consultaDeBusqueda,
+  type ResultadoDeBusqueda,
+  resultadosDeBusqueda,
+  rutaDeBusqueda,
+} from "@/lib/lote-buscador";
+import { readItems } from "@/lib/lote-items";
 import { type UltimoLote, ultimoLote } from "@/lib/lotes";
-import type { HistorialDeTaller, OrdenDetalle } from "@/lib/types";
+import type {
+  HistorialDeTaller,
+  OrdenDetalle,
+  ProductoResumen,
+} from "@/lib/types";
 import {
   denyUnlessVoice,
   denyUnlessWriter,
@@ -17,55 +28,6 @@ import {
 
 const DONDE = ["EXTERNA", "INTERNA"];
 
-function positive(value: string | null): value is string {
-  return value !== null && /[1-9]/.test(value);
-}
-
-type ItemBody = {
-  producto: string;
-  cantidad: string;
-  taller_precio_pagado_por_unidad_ars: string | null;
-  taller_precio_cotizado_por_unidad_ars: string | null;
-};
-
-/** The rows of the dynamic product list arrive as parallel fields; a row with nothing typed is skipped. */
-function readItems(formData: FormData): ItemBody[] | FormState {
-  const productos = formData.getAll("producto");
-  const cantidades = formData.getAll("cantidad");
-  const pagados = formData.getAll("pagado");
-  const cotizados = formData.getAll("cotizado");
-  const items: ItemBody[] = [];
-  for (let i = 0; i < productos.length; i++) {
-    const producto = String(productos[i] ?? "").trim();
-    const rawCantidad = String(cantidades[i] ?? "").trim();
-    const rawPagado = String(pagados[i] ?? "").trim();
-    const rawCotizado = String(cotizados[i] ?? "").trim();
-    if (!producto && !rawCantidad && !rawPagado && !rawCotizado) continue;
-    const fila = `Producto ${i + 1}`;
-    if (!producto) return error(`${fila}: indique el código del producto.`);
-    const cantidad = parseDecimalInput(rawCantidad);
-    if (!positive(cantidad)) {
-      return error(`${fila}: ingrese una cantidad mayor que cero.`);
-    }
-    const pagado = rawPagado ? parseDecimalInput(rawPagado) : null;
-    if (rawPagado && pagado === null) {
-      return error(`${fila}: el precio pagado no es un número válido.`);
-    }
-    const cotizado = rawCotizado ? parseDecimalInput(rawCotizado) : null;
-    if (rawCotizado && cotizado === null) {
-      return error(`${fila}: el precio cotizado no es un número válido.`);
-    }
-    items.push({
-      producto,
-      cantidad,
-      taller_precio_pagado_por_unidad_ars: pagado,
-      taller_precio_cotizado_por_unidad_ars: cotizado,
-    });
-  }
-  if (items.length === 0) return error("Agregue al menos un producto al lote.");
-  return items;
-}
-
 export async function createOrden(
   _previous: FormState,
   formData: FormData,
@@ -73,12 +35,12 @@ export async function createOrden(
   const denied = await denyUnlessWriter();
   if (denied) return denied;
 
-  // The simple form does not send the place: a lot is made at a workshop unless "Más opciones" says otherwise.
+  // The form sends the place with the "who makes it" choice (INTERNA for the factory); with none, it is a workshop.
   const donde = text(formData, "donde_se_hace") || "EXTERNA";
   if (!DONDE.includes(donde)) return error("Indique dónde se hace el lote.");
   const taller = donde === "EXTERNA" ? optional(formData, "taller") : null;
   if (donde === "EXTERNA" && taller === null) {
-    return error("Elija el taller del lote.");
+    return error("Elija quién hace el lote: la fábrica o un taller.");
   }
   const items = readItems(formData);
   if (!Array.isArray(items)) return items;
@@ -114,6 +76,28 @@ export async function cargarUltimoLote(
   );
   if (!result.ok) return { status: "hidden" };
   return { status: "ok", ultimo: ultimoLote(result.data) };
+}
+
+export type BusquedaDeProductos =
+  | { status: "ok"; resultados: ResultadoDeBusqueda[]; hayMas: boolean }
+  | { status: "error"; message: string };
+
+/**
+ * Finds products in the whole catalog for the new-lot form (`GET /productos?q=`, matched by the API on code,
+ * name, model, leather and color). Only the admin builds lots, so anyone else is refused. Nothing is saved
+ * and the answer carries no costs or prices.
+ */
+export async function buscarProductos(
+  texto: string,
+): Promise<BusquedaDeProductos> {
+  const denied = await denyUnlessWriter();
+  if (denied)
+    return { status: "error", message: "No tiene permiso para esta acción." };
+  const consulta = consultaDeBusqueda(texto);
+  if (consulta === null) return { status: "ok", resultados: [], hayMas: false };
+  const result = await apiGet<ProductoResumen[]>(rutaDeBusqueda(consulta));
+  if (!result.ok) return { status: "error", message: result.message };
+  return { status: "ok", ...resultadosDeBusqueda(result.data) };
 }
 
 export async function changeEstado(
