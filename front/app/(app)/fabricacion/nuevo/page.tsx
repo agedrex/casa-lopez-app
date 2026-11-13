@@ -29,7 +29,7 @@ export default async function NuevoLotePage() {
       <PageHeader
         eyebrow="Lotes"
         title="Nuevo lote"
-        description="Elija dónde se hace, a quién se le manda y qué productos lleva. Los costos los calcula la aplicación."
+        description="Elija el taller, la fecha de envío y los productos. Lo demás está en «Más opciones». Los costos los calcula la aplicación."
       />
     </>
   );

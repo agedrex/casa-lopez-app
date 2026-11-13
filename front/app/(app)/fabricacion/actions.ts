@@ -3,9 +3,10 @@
 import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { error, type FormState, ok } from "@/lib/action-state";
-import { apiPost } from "@/lib/api";
+import { apiGet, apiPost } from "@/lib/api";
 import { LOT_STATES, lotStateLabel, parseDecimalInput } from "@/lib/format";
-import type { OrdenDetalle } from "@/lib/types";
+import { type UltimoLote, ultimoLote } from "@/lib/lotes";
+import type { HistorialDeTaller, OrdenDetalle } from "@/lib/types";
 import {
   denyUnlessVoice,
   denyUnlessWriter,
@@ -72,15 +73,20 @@ export async function createOrden(
   const denied = await denyUnlessWriter();
   if (denied) return denied;
 
-  const donde = text(formData, "donde_se_hace");
+  // The simple form does not send the place: a lot is made at a workshop unless "Más opciones" says otherwise.
+  const donde = text(formData, "donde_se_hace") || "EXTERNA";
   if (!DONDE.includes(donde)) return error("Indique dónde se hace el lote.");
+  const taller = donde === "EXTERNA" ? optional(formData, "taller") : null;
+  if (donde === "EXTERNA" && taller === null) {
+    return error("Elija el taller del lote.");
+  }
   const items = readItems(formData);
   if (!Array.isArray(items)) return items;
 
   const result = await apiPost<{ codigo: string }>("/ordenes", {
     donde_se_hace: donde,
     // Only the field that matches the place travels: a workshop for EXTERNA, a person for INTERNA.
-    taller: donde === "EXTERNA" ? optional(formData, "taller") : null,
+    taller,
     persona: donde === "INTERNA" ? optional(formData, "persona") : null,
     fecha_de_envio: optional(formData, "fecha_de_envio"),
     nota: optional(formData, "nota"),
@@ -88,6 +94,26 @@ export async function createOrden(
   });
   if (!result.ok) return fromFailure(result);
   redirect(`/fabricacion/${encodeURIComponent(result.data.codigo)}`);
+}
+
+export type UltimoLoteResult =
+  | { status: "ok"; ultimo: UltimoLote | null }
+  | { status: "hidden" };
+
+/**
+ * Last lot of a workshop, for the comparison panel of the new-lot form. The history carries the prices
+ * paid and is admin only: for anyone else, or on any failure, the panel is simply hidden.
+ */
+export async function cargarUltimoLote(
+  taller: string,
+): Promise<UltimoLoteResult> {
+  const denied = await denyUnlessWriter();
+  if (denied || !taller) return { status: "hidden" };
+  const result = await apiGet<HistorialDeTaller>(
+    `/talleres/${encodeURIComponent(taller)}/historial`,
+  );
+  if (!result.ok) return { status: "hidden" };
+  return { status: "ok", ultimo: ultimoLote(result.data) };
 }
 
 export async function changeEstado(

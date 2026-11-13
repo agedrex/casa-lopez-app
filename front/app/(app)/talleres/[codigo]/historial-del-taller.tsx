@@ -11,6 +11,7 @@ import {
   thClass,
 } from "@/components/ui";
 import { formatArs, formatDate, formatQuantity } from "@/lib/format";
+import { ordenarLotes } from "@/lib/lotes";
 import type { HistorialDeTaller } from "@/lib/types";
 import { MiniBar, VariationBadge } from "../../proveedores/historial-ui";
 
@@ -54,7 +55,7 @@ export function HistorialDelTaller({
               </tr>
             </thead>
             <tbody>
-              {historial.lotes.map((lote) => (
+              {ordenarLotes(historial.lotes).map((lote) => (
                 <tr key={lote.lote}>
                   <td className={tdClass}>
                     <Link
