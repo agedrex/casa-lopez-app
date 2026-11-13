@@ -3,6 +3,7 @@
 import {
   type ClipboardEvent,
   type FocusEvent,
+  Fragment,
   type KeyboardEvent,
   memo,
   type ReactNode,
@@ -53,6 +54,10 @@ export type GridRow = {
   warn?: boolean;
   /** Read-only cells after the editable ones, one per `extraHeaders` entry. */
   extras?: ReactNode[];
+  /** Rows are listed in the order given; a heading row is shown whenever this changes from the previous row. */
+  group?: string;
+  /** Every cell of a saved row is plain text (for example, a blocked item). */
+  readOnly?: boolean;
 };
 
 export type GridChange = {
@@ -208,7 +213,11 @@ const RowView = memo(function RowView({
         const base = original[column.key] ?? "";
         const value = edit?.[column.key] ?? base;
         const cellClass = `border-b border-line/70 px-1.5 py-1.5 align-top ${column.width ?? ""}`;
-        if ((column.newOnly && !draft) || (deleting && !draft)) {
+        if (
+          (column.newOnly && !draft) ||
+          (deleting && !draft) ||
+          (row.readOnly && !draft)
+        ) {
           const shown =
             column.kind === "select"
               ? (column.options?.find((option) => option.value === value)
@@ -300,6 +309,20 @@ const RowView = memo(function RowView({
   );
 });
 
+function GroupHeading({ label, span }: { label: string; span: number }) {
+  return (
+    <tr>
+      <th
+        scope="colgroup"
+        colSpan={span}
+        className="sticky left-0 border-b border-line bg-paper-mid px-3 py-2 text-left text-sm font-bold uppercase tracking-caps-sm text-ink-soft sm:px-4 sm:text-xs"
+      >
+        {label}
+      </th>
+    </tr>
+  );
+}
+
 function plural(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`;
 }
@@ -323,6 +346,7 @@ export function EditableGrid({
   allowNew = false,
   startWithDraft = true,
   addLabel = "Agregar fila",
+  draftGroup,
   allowDelete = false,
   newRowDefaults,
   newRowLabel = "Fila nueva",
@@ -349,6 +373,8 @@ export function EditableGrid({
   startWithDraft?: boolean;
   /** Text of the add button (needs `allowNew`). */
   addLabel?: string;
+  /** With grouped rows, the heading shown above the rows being added. */
+  draftGroup?: string;
   /** Lets a saved row be marked for deletion; the parent decides what deleting means. */
   allowDelete?: boolean;
   newRowDefaults?: Record<string, string>;
@@ -950,29 +976,43 @@ export function EditableGrid({
             onBlur={onBlurSave}
           >
             {rows.map((row, index) => (
-              <RowView
-                key={row.id}
-                row={row}
-                rowIndex={index}
-                draft={false}
-                columns={columns}
-                original={row.cells}
-                edit={edits[row.id]}
-                dirty={analysis.dirtyIds.has(row.id)}
-                errors={analysis.errors[row.id] ?? NO_ERRORS}
-                showAllErrors={attempted}
-                onChange={handleChange}
-                onToggleDelete={
-                  allowDelete && !autoSave ? toggleDelete : undefined
-                }
-                deleting={deleted.includes(row.id)}
-                onToggleSelect={
-                  allowDelete && autoSave ? toggleSelect : undefined
-                }
-                selected={selected.includes(row.id)}
-                extraHeaders={extraHeaders}
-              />
+              <Fragment key={row.id}>
+                {row.group !== undefined &&
+                row.group !== rows[index - 1]?.group ? (
+                  <GroupHeading
+                    label={row.group}
+                    span={1 + columns.length + extraHeaders.length}
+                  />
+                ) : null}
+                <RowView
+                  row={row}
+                  rowIndex={index}
+                  draft={false}
+                  columns={columns}
+                  original={row.cells}
+                  edit={edits[row.id]}
+                  dirty={analysis.dirtyIds.has(row.id)}
+                  errors={analysis.errors[row.id] ?? NO_ERRORS}
+                  showAllErrors={attempted}
+                  onChange={handleChange}
+                  onToggleDelete={
+                    allowDelete && !autoSave ? toggleDelete : undefined
+                  }
+                  deleting={deleted.includes(row.id)}
+                  onToggleSelect={
+                    allowDelete && autoSave ? toggleSelect : undefined
+                  }
+                  selected={selected.includes(row.id)}
+                  extraHeaders={extraHeaders}
+                />
+              </Fragment>
             ))}
+            {draftGroup && drafts.length > 0 ? (
+              <GroupHeading
+                label={draftGroup}
+                span={1 + columns.length + extraHeaders.length}
+              />
+            ) : null}
             {drafts.map((draft, index) => (
               <RowView
                 key={draft.id}
