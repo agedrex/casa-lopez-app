@@ -11,7 +11,7 @@ import {
 } from "@/components/ui";
 import { formatArs, formatDate, formatQuantity } from "@/lib/format";
 import type { UltimoLote } from "@/lib/lotes";
-import type { Fila, ProductoOption } from "./lote-product-rows";
+import type { Fila } from "./lote-product-rows";
 
 export type PanelState =
   | { status: "idle" }
@@ -22,11 +22,9 @@ export type PanelState =
 export function UltimoLotePanel({
   state,
   filas,
-  productos,
 }: {
   state: PanelState;
   filas: Fila[];
-  productos: ProductoOption[];
 }) {
   if (state.status === "idle") return null;
   if (state.status === "loading") {
@@ -45,7 +43,6 @@ export function UltimoLotePanel({
   }
 
   const { lote, productos: enElUltimo } = state.ultimo;
-  const nombres = new Map(productos.map((p) => [p.codigo, p.label]));
   const cargados = filas.filter((fila) => fila.producto.trim() !== "");
   const comparables = cargados.filter(
     (fila) => enElUltimo[fila.producto.trim()] !== undefined,
@@ -104,7 +101,7 @@ export function UltimoLotePanel({
                 return (
                   <tr key={fila.id}>
                     <td className={tdClass}>
-                      {nombres.get(codigo) ?? codigo}
+                      {fila.nombre}
                       <span className="block text-xs text-muted">{codigo}</span>
                     </td>
                     <td className={`${tdClass} ${numClass}`}>

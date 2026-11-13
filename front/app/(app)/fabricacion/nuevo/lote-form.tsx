@@ -7,13 +7,19 @@ import {
   inputClass,
   PrimaryButton,
 } from "@/components/form";
+import {
+  agregarProducto,
+  FABRICA,
+  quitarProducto,
+  responsableDelLote,
+} from "@/lib/lote-buscador";
 import { useActionForm } from "@/lib/use-action-form";
 import { cargarUltimoLote, createOrden } from "../actions";
+import { BuscadorDeProductos } from "./lote-buscador";
 import {
   type Fila,
   FilasDeProductos,
   PreciosPorFila,
-  type ProductoOption,
 } from "./lote-product-rows";
 import { type PanelState, UltimoLotePanel } from "./ultimo-lote-panel";
 
@@ -22,21 +28,18 @@ export type Option = { codigo: string; label: string };
 export function LoteForm({
   talleres,
   personas,
-  productos,
   today,
 }: {
   talleres: Option[];
   personas: Option[];
-  productos: ProductoOption[];
   today: string;
 }) {
   const { state, pending, onSubmit } = useActionForm(createOrden);
-  const [donde, setDonde] = useState("EXTERNA");
-  const [taller, setTaller] = useState("");
-  const [filas, setFilas] = useState<Fila[]>([
-    { id: 0, producto: "", cantidad: "" },
-  ]);
-  const nextId = useRef(1);
+  // One choice: the factory (a lot made at home) or one workshop. The API takes it as place + workshop.
+  const [responsable, setResponsable] = useState("");
+  const { donde, taller } = responsableDelLote(responsable);
+  const [filas, setFilas] = useState<Fila[]>([]);
+  const nextId = useRef(0);
   const [panel, setPanel] = useState<PanelState>({ status: "idle" });
 
   // Last lot of the chosen workshop. The history is admin only: when it is refused the panel stays hidden.
@@ -64,41 +67,45 @@ export function LoteForm({
     };
   }, [taller, donde]);
 
-  function changeFila(
-    id: number,
-    campo: "producto" | "cantidad",
-    valor: string,
-  ) {
+  function changeCantidad(id: number, cantidad: string) {
     setFilas((actuales) =>
-      actuales.map((fila) =>
-        fila.id === id ? { ...fila, [campo]: valor } : fila,
-      ),
+      actuales.map((fila) => (fila.id === id ? { ...fila, cantidad } : fila)),
     );
   }
 
   // No form key: on success the action redirects to the new lot.
   return (
     <form onSubmit={onSubmit} className="space-y-6">
+      {/* The place and the workshop travel as hidden fields derived from the single choice below. */}
+      <input type="hidden" name="donde_se_hace" value={donde} />
+      <input type="hidden" name="taller" value={taller} />
       <div className="grid gap-5 sm:grid-cols-2">
         <Field
-          id="lote-taller"
-          label="Taller"
-          hint={donde === "INTERNA" ? "El lote se hace en casa." : undefined}
+          id="lote-responsable"
+          label="Quién lo hace"
+          hint={
+            responsable === FABRICA
+              ? "El lote se hace en la fábrica."
+              : undefined
+          }
         >
           <select
-            id="lote-taller"
-            name="taller"
-            value={taller}
-            onChange={(event) => setTaller(event.target.value)}
-            disabled={donde === "INTERNA"}
+            id="lote-responsable"
+            value={responsable}
+            onChange={(event) => setResponsable(event.target.value)}
             className={inputClass}
           >
             <option value="">Elegir…</option>
-            {talleres.map((option) => (
-              <option key={option.codigo} value={option.codigo}>
-                {option.label}
-              </option>
-            ))}
+            <option value={FABRICA}>Fábrica (en casa)</option>
+            {talleres.length > 0 ? (
+              <optgroup label="Talleres">
+                {talleres.map((option) => (
+                  <option key={option.codigo} value={option.codigo}>
+                    {option.label}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
           </select>
         </Field>
         <Field id="lote-envio" label="Fecha de envío">
@@ -111,41 +118,40 @@ export function LoteForm({
           />
         </Field>
       </div>
-      <UltimoLotePanel state={panel} filas={filas} productos={productos} />
-      <FilasDeProductos
-        productos={productos}
-        filas={filas}
-        onChange={changeFila}
-        onAdd={() => {
-          setFilas((actuales) => [
-            ...actuales,
-            { id: nextId.current, producto: "", cantidad: "" },
-          ]);
-          nextId.current += 1;
-        }}
-        onRemove={(id) =>
-          setFilas((actuales) => actuales.filter((fila) => fila.id !== id))
-        }
-      />
-      {/* Closed fields still travel with the form: without opening it the lot is EXTERNA at the chosen workshop. */}
+      <UltimoLotePanel state={panel} filas={filas} />
+      <fieldset className="space-y-4">
+        <legend className="mb-2 text-xs uppercase tracking-caps-sm text-muted">
+          Productos del lote
+        </legend>
+        <BuscadorDeProductos
+          filas={filas}
+          onAdd={(resultado) => {
+            setFilas((actuales) => {
+              const nuevas = agregarProducto(
+                actuales,
+                resultado,
+                nextId.current,
+              );
+              if (nuevas !== actuales) nextId.current += 1;
+              return nuevas;
+            });
+          }}
+        />
+        <FilasDeProductos
+          filas={filas}
+          onChange={changeCantidad}
+          onRemove={(id) =>
+            setFilas((actuales) => quitarProducto(actuales, id))
+          }
+        />
+      </fieldset>
+      {/* Closed fields still travel with the form: without opening it the lot goes as chosen above, with no person. */}
       <details className="rounded-card border border-line px-4">
         <summary className="min-h-11 cursor-pointer py-3 text-base text-muted">
           Más opciones
         </summary>
         <div className="space-y-6 pb-4">
           <div className="grid gap-5 sm:grid-cols-2">
-            <Field id="lote-donde" label="Dónde se hace">
-              <select
-                id="lote-donde"
-                name="donde_se_hace"
-                value={donde}
-                onChange={(event) => setDonde(event.target.value)}
-                className={inputClass}
-              >
-                <option value="EXTERNA">En taller</option>
-                <option value="INTERNA">En casa</option>
-              </select>
-            </Field>
             {donde === "INTERNA" ? (
               <Field id="lote-persona" label="Persona (opcional)">
                 <select

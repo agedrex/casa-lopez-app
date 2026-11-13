@@ -5,9 +5,19 @@ import { redirect } from "next/navigation";
 import { error, type FormState, ok } from "@/lib/action-state";
 import { apiGet, apiPost } from "@/lib/api";
 import { LOT_STATES, lotStateLabel, parseDecimalInput } from "@/lib/format";
+import {
+  consultaDeBusqueda,
+  type ResultadoDeBusqueda,
+  resultadosDeBusqueda,
+  rutaDeBusqueda,
+} from "@/lib/lote-buscador";
 import { readItems } from "@/lib/lote-items";
 import { type UltimoLote, ultimoLote } from "@/lib/lotes";
-import type { HistorialDeTaller, OrdenDetalle } from "@/lib/types";
+import type {
+  HistorialDeTaller,
+  OrdenDetalle,
+  ProductoResumen,
+} from "@/lib/types";
 import {
   denyUnlessVoice,
   denyUnlessWriter,
@@ -25,12 +35,12 @@ export async function createOrden(
   const denied = await denyUnlessWriter();
   if (denied) return denied;
 
-  // The simple form does not send the place: a lot is made at a workshop unless "Más opciones" says otherwise.
+  // The form sends the place with the "who makes it" choice (INTERNA for the factory); with none, it is a workshop.
   const donde = text(formData, "donde_se_hace") || "EXTERNA";
   if (!DONDE.includes(donde)) return error("Indique dónde se hace el lote.");
   const taller = donde === "EXTERNA" ? optional(formData, "taller") : null;
   if (donde === "EXTERNA" && taller === null) {
-    return error("Elija el taller del lote.");
+    return error("Elija quién hace el lote: la fábrica o un taller.");
   }
   const items = readItems(formData);
   if (!Array.isArray(items)) return items;
@@ -66,6 +76,28 @@ export async function cargarUltimoLote(
   );
   if (!result.ok) return { status: "hidden" };
   return { status: "ok", ultimo: ultimoLote(result.data) };
+}
+
+export type BusquedaDeProductos =
+  | { status: "ok"; resultados: ResultadoDeBusqueda[]; hayMas: boolean }
+  | { status: "error"; message: string };
+
+/**
+ * Finds products in the whole catalog for the new-lot form (`GET /productos?q=`, matched by the API on code,
+ * name, model, leather and color). Only the admin builds lots, so anyone else is refused. Nothing is saved
+ * and the answer carries no costs or prices.
+ */
+export async function buscarProductos(
+  texto: string,
+): Promise<BusquedaDeProductos> {
+  const denied = await denyUnlessWriter();
+  if (denied)
+    return { status: "error", message: "No tiene permiso para esta acción." };
+  const consulta = consultaDeBusqueda(texto);
+  if (consulta === null) return { status: "ok", resultados: [], hayMas: false };
+  const result = await apiGet<ProductoResumen[]>(rutaDeBusqueda(consulta));
+  if (!result.ok) return { status: "error", message: result.message };
+  return { status: "ok", ...resultadosDeBusqueda(result.data) };
 }
 
 export async function changeEstado(

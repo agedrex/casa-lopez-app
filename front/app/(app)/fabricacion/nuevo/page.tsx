@@ -6,13 +6,10 @@ import { apiGet } from "@/lib/api";
 import { todayIso } from "@/lib/format";
 import { canWrite } from "@/lib/permissions";
 import { requireSession } from "@/lib/session";
-import type { Persona, ProductoResumen, Taller } from "@/lib/types";
+import type { Persona, Taller } from "@/lib/types";
 import { LoteForm } from "./lote-form";
 
 export const metadata: Metadata = { title: "Nuevo lote" };
-
-// The API caps a page at 500 products; the picker offers what it receives.
-const PRODUCT_LIMIT = 500;
 
 export default async function NuevoLotePage() {
   const { user } = await requireSession();
@@ -29,7 +26,7 @@ export default async function NuevoLotePage() {
       <PageHeader
         eyebrow="Lotes"
         title="Nuevo lote"
-        description="Elija el taller, la fecha de envío y los productos. Lo demás está en «Más opciones». Los costos los calcula la aplicación."
+        description="Elija quién lo hace (la fábrica o un taller), la fecha de envío y busque los productos. Lo demás está en «Más opciones». Los costos los calcula la aplicación."
       />
     </>
   );
@@ -42,12 +39,12 @@ export default async function NuevoLotePage() {
     );
   }
 
-  const [talleres, personas, productos] = await Promise.all([
+  // Products are not loaded here: the form searches the whole catalog while the person types.
+  const [talleres, personas] = await Promise.all([
     apiGet<Taller[]>("/talleres"),
     apiGet<Persona[]>("/personas"),
-    apiGet<ProductoResumen[]>(`/productos?limit=${PRODUCT_LIMIT}`),
   ]);
-  const failed = [talleres, personas, productos].find((r) => !r.ok);
+  const failed = [talleres, personas].find((r) => !r.ok);
   if (failed && !failed.ok) {
     return (
       <>
@@ -56,7 +53,7 @@ export default async function NuevoLotePage() {
       </>
     );
   }
-  if (!talleres.ok || !personas.ok || !productos.ok) return header;
+  if (!talleres.ok || !personas.ok) return header;
 
   return (
     <>
@@ -72,10 +69,6 @@ export default async function NuevoLotePage() {
           personas={personas.data
             .filter((p) => p.activo)
             .map((p) => ({ codigo: p.codigo, label: p.nombre }))}
-          productos={productos.data.map((p) => ({
-            codigo: p.codigo,
-            label: p.nombre,
-          }))}
           today={todayIso()}
         />
       </Card>
