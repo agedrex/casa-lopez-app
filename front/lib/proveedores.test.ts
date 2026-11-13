@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { leerProductoDeProveedor, UNIDADES } from "./proveedores";
+import {
+  filasParaGuardar,
+  leerProductoDeProveedor,
+  UNIDADES,
+} from "./proveedores";
 
 const fila = {
   nombre: " Flex 1 × 1,40 ",
@@ -66,4 +70,79 @@ test("the unit list is the closed list of the backend", () => {
     UNIDADES.map((unidad) => unidad.value).sort(),
     ["USD", "cm", "juego", "m", "m2", "unidad"].sort(),
   );
+});
+
+test("a changed saved row gets back the name and the note the grid does not send", () => {
+  const filas = filasParaGuardar(
+    {
+      changes: [
+        {
+          id: "PPR-0001",
+          cells: {
+            unidad: "m2",
+            cantidad: "1,4",
+            precio_referencial: "16000",
+            moneda: "ARS",
+            iva: "no",
+            material: "",
+          },
+          changed: ["precio_referencial"],
+        },
+      ],
+      added: [],
+    },
+    [
+      { codigo: "PPR-0001", nombre: "Flex 1 × 1,40", nota: null },
+      { codigo: "PPR-0002", nombre: "Goma EVA", nota: "Rollo" },
+    ],
+  );
+  assert.equal(filas.length, 1);
+  const result = leerProductoDeProveedor(filas[0], 1);
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.body.nombre, "Flex 1 × 1,40");
+    assert.equal(result.body.precio_referencial, "16000");
+    assert.equal(result.body.nota, null);
+  }
+});
+
+test("the note of the saved product travels with the changed row", () => {
+  const [fila] = filasParaGuardar(
+    {
+      changes: [
+        {
+          id: "PPR-0002",
+          cells: { unidad: "m2", precio_referencial: "9000", moneda: "ARS" },
+          changed: ["precio_referencial"],
+        },
+      ],
+      added: [],
+    },
+    [{ codigo: "PPR-0002", nombre: "Goma EVA", nota: "Rollo" }],
+  );
+  assert.equal(fila.nombre, "Goma EVA");
+  assert.equal(fila.nota, "Rollo");
+});
+
+test("a new row keeps its own name and goes after the changed ones", () => {
+  const nueva = { ...fila, nombre: "Tela forro" };
+  const filas = filasParaGuardar(
+    {
+      changes: [
+        {
+          id: "PPR-0001",
+          cells: { unidad: "m2", precio_referencial: "16000", moneda: "ARS" },
+          changed: ["precio_referencial"],
+        },
+      ],
+      added: [nueva],
+    },
+    [{ codigo: "PPR-0001", nombre: "Flex 1 × 1,40", nota: null }],
+  );
+  assert.equal(filas.length, 2);
+  assert.equal(filas[0].nombre, "Flex 1 × 1,40");
+  assert.deepEqual(filas[1], nueva);
+  const result = leerProductoDeProveedor(filas[1], 2);
+  assert.equal(result.ok, true);
+  if (result.ok) assert.equal(result.body.nombre, "Tela forro");
 });

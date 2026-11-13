@@ -162,3 +162,30 @@ export function leerProductoDeProveedor(
     },
   };
 }
+
+/**
+ * Rows of a grid save as they go to the API. The grid leaves the name (a `newOnly` column) out of a
+ * saved row and does not show the note, so both come back from the saved product: a changed row
+ * is a complete new version. New rows already carry their own name.
+ */
+export function filasParaGuardar(
+  save: {
+    changes: {
+      id: string;
+      cells: ProductoDeProveedorFila;
+      changed: string[];
+    }[];
+    added: ProductoDeProveedorFila[];
+  },
+  productos: { codigo: string; nombre: string; nota: string | null }[],
+): ProductoDeProveedorFila[] {
+  const changed = save.changes.map((change) => {
+    const original = productos.find((p) => p.codigo === change.id);
+    return {
+      ...change.cells,
+      nombre: original?.nombre ?? "",
+      nota: original?.nota ?? "",
+    };
+  });
+  return [...changed, ...save.added];
+}

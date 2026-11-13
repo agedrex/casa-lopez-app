@@ -9,7 +9,7 @@ import {
 } from "@/components/editable-grid";
 import { Badge } from "@/components/ui";
 import { decimalInputText, formatDate, formatMoney } from "@/lib/format";
-import { MONEDAS, UNIDADES } from "@/lib/proveedores";
+import { filasParaGuardar, MONEDAS, UNIDADES } from "@/lib/proveedores";
 import type { ProveedorProducto } from "@/lib/types";
 import { guardarProductosDeProveedor } from "./productos-actions";
 
@@ -135,12 +135,10 @@ export function ProductosQueVende({
   );
 
   function onSave(save: GridSave) {
-    // A changed saved row goes complete (the API stores a new version); what the grid does not show is carried over.
-    const changed = save.changes.map((change) => ({
-      ...change.cells,
-      nota: productos.find((p) => p.codigo === change.id)?.nota ?? "",
-    }));
-    return guardarProductosDeProveedor(codigo, [...changed, ...save.added]);
+    return guardarProductosDeProveedor(
+      codigo,
+      filasParaGuardar(save, productos),
+    );
   }
 
   return (
