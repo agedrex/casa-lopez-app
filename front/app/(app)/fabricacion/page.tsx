@@ -4,7 +4,6 @@ import { Suspense } from "react";
 import { inputClass } from "@/components/form";
 import {
   LotStateBadge,
-  OrdersTable,
   whereText,
 } from "@/components/orders-table";
 import {
