@@ -141,10 +141,11 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
     ("GET", "/proveedores"): ADMIN, ("GET", "/proveedores/{codigo}"): ADMIN,
     ("GET", "/proveedores/{codigo}/documentos"): ADMIN, ("GET", "/documentos-proveedor/{id}/archivo"): ADMIN,
     ("GET", "/proveedores/{codigo}/materiales"): ADMIN, ("GET", "/proveedores/{codigo}/pedidos"): ADMIN,
+    ("GET", "/proveedores/{codigo}/productos"): ADMIN,
     **{("POST", ruta): ADMIN for ruta in (
         "/reventa", "/reventa/lote", "/reventa/{codigo}/activo", "/reventa/{codigo}/compras",
         "/proveedores", "/proveedores/{codigo}", "/proveedores/{codigo}/activo", "/proveedores/{codigo}/documentos",
-        "/proveedores/{codigo}/precios", "/proveedores/{codigo}/pedidos",
+        "/proveedores/{codigo}/precios", "/proveedores/{codigo}/pedidos", "/proveedores/{codigo}/productos",
         "/documentos-proveedor/{id}/ocr", "/documentos-proveedor/{id}/datos")},
 }
 # Open on purpose: the health check of the deploy and the stage catalog of routers.py, which carries no business data
@@ -238,7 +239,8 @@ def test_admin_only_routes_refuse_everyone_else_without_calling_the_service(monk
     ("admin", [("GET", "/panel/costos"), ("GET", "/costos-fijos"), ("GET", "/ordenes"), ("GET", "/productos"),
                ("GET", "/cueros"), ("GET", "/voz/estado"), ("POST", "/cvu/escenario"), ("POST", "/ordenes"),
                ("POST", "/productos"), ("POST", "/cueros/PZC-1/cortes"), ("POST", "/formularios"),
-               ("POST", "/proveedores/PRV-1/pedidos"), ("GET", "/proveedores/PRV-1/pedidos"), ("PUT", "/formularios/FCO-0001"), ("POST", "/formularios/FCO-0001/validar")]),
+               ("POST", "/proveedores/PRV-1/pedidos"), ("GET", "/proveedores/PRV-1/pedidos"),
+               ("GET", "/proveedores/PRV-1/productos"), ("POST", "/proveedores/PRV-1/productos"), ("PUT", "/formularios/FCO-0001"), ("POST", "/formularios/FCO-0001/validar")]),
 ])
 def test_each_role_passes_the_gate_of_its_allowed_set(role, rutas):
     cliente = _cliente(role)
@@ -282,7 +284,8 @@ CERRADO_PARA_GERENTE = {
                ("POST", "/cueros/PZC-1/cortes")],
     "proveedores": [("GET", "/proveedores"), ("GET", "/proveedores/PRV-1"), ("GET", "/proveedores/PRV-1/materiales"),
                     ("GET", "/proveedores/PRV-1/pedidos"), ("GET", "/proveedores/PRV-1/documentos"),
-                    ("POST", "/proveedores"), ("POST", "/proveedores/PRV-1/pedidos")],
+                    ("POST", "/proveedores"), ("POST", "/proveedores/PRV-1/pedidos"),
+                    ("GET", "/proveedores/PRV-1/productos"), ("POST", "/proveedores/PRV-1/productos")],
     "talleres": [("GET", "/talleres"), ("GET", "/talleres/TAL-1"), ("GET", "/talleres/TAL-1/historial"), ("POST", "/talleres")],
 }
 
