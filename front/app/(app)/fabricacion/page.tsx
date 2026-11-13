@@ -55,7 +55,6 @@ export default async function FabricacionPage({
       <PageHeader
         eyebrow="Producción"
         title="Lotes"
-        description="Lotes en casa o en taller con sus cantidades, fechas y precios. El costo de cada lote lo calcula la aplicación: materiales de hoy más lo que cobra el taller."
         actions={
           canWrite(user.role) ? (
             <Link

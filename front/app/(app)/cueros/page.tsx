@@ -108,7 +108,6 @@ export default async function CuerosPage({
       <PageHeader
         eyebrow="Datos de base"
         title="Cueros"
-        description="Cuánto cuero hay, cuánto se cortó y cuánto se perdió. Los m² y los montos los calcula la aplicación."
         actions={
           writer ? (
             <a href="#cargar" className={buttonClass}>

@@ -60,11 +60,7 @@ export default async function FormulariosPage({
 
   return (
     <>
-      <PageHeader
-        eyebrow="Producción"
-        title="Formularios de consumos"
-        description="La planilla de consumos y herrajes de cada artículo nuevo: el taller la completa y el administrador la valida."
-      />
+      <PageHeader eyebrow="Producción" title="Formularios de consumos" />
       {writer ? (
         <details className="mb-8 rounded-card border border-line bg-surface p-4 sm:p-6">
           <summary className="cursor-pointer text-sm uppercase tracking-caps-sm">

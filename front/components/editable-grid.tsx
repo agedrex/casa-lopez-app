@@ -864,7 +864,6 @@ export function EditableGrid({
         deleted,
       })
     : null;
-  const helpId = "grid-help";
 
   return (
     <div className="space-y-4">
@@ -928,22 +927,10 @@ export function EditableGrid({
       <p aria-live="polite" className="text-sm text-muted empty:hidden">
         {pasteInfo}
       </p>
-      {note}
-      {compact ? null : (
-        <p id={helpId} className="text-sm text-muted sm:text-xs">
-          Escriba en la celda. Tab pasa a la celda de al lado, Enter a la de
-          abajo (Mayús + Enter, a la de arriba) y las flechas se mueven por la
-          grilla. También puede copiar varias celdas de Excel y pegarlas acá.{" "}
-          {autoSave
-            ? "Cada cambio se guarda solo al salir de la celda; una fila nueva se guarda cuando tiene todo completo. Para borrar, tilde las filas y use «Borrar»."
-            : "Los cambios se resaltan y recién se guardan con «Guardar cambios»."}
-        </p>
-      )}
       <div className="max-h-[75vh] overflow-auto overscroll-x-contain rounded-card border border-line bg-surface">
         <table
           ref={tableRef}
           aria-label={label}
-          aria-describedby={compact ? undefined : helpId}
           className="w-full min-w-max border-collapse text-left text-sm"
         >
           <thead>

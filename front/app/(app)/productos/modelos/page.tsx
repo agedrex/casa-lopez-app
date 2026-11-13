@@ -82,7 +82,6 @@ export default async function ModelosPage({
       <PageHeader
         eyebrow="Productos"
         title="Modelos"
-        description="Una fila por modelo, como una planilla: edite los consumos en la celda y guarde todo junto. Un modelo se valida cuando una persona confirma que sus números son razonables; editar los consumos le quita esa marca."
         actions={
           <Link
             href="/productos/modelos/nuevo"

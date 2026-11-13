@@ -28,11 +28,7 @@ export default async function CatalogosPage() {
   return (
     <>
       <ProductosNav />
-      <PageHeader
-        eyebrow="Productos"
-        title="Catálogos"
-        description="Las listas que se eligen al cargar productos y modelos. El código lo asigna la aplicación y nunca cambia. Nada se borra."
-      />
+      <PageHeader eyebrow="Productos" title="Catálogos" />
       <div className="grid gap-12 lg:grid-cols-2">
         <Section
           title="Colores"

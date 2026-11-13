@@ -108,7 +108,6 @@ export function ProductosGrid({
       ]}
       rows={rows}
       noun={NOUN}
-      note="El margen es sobre el precio de venta: el precio neto es el costo de hoy dividido por (1 − margen). Guardar agrega un precio con la fecha de hoy y no pisa los anteriores; el precio final suma los impuestos activos."
       onSave={onSave}
     />
   );

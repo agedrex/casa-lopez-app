@@ -97,11 +97,6 @@ export default async function ProductosPage({
       <PageHeader
         eyebrow="Catálogo"
         title="Productos"
-        description={
-          canWrite(user.role)
-            ? "Costo de hoy de cada producto, calculado con el dólar y los precios vigentes. Escriba el margen que quiere ganar y la grilla calcula el precio de venta."
-            : "Costo de hoy de cada producto, calculado con el dólar y los precios vigentes."
-        }
         actions={
           canWrite(user.role) ? (
             <Link
