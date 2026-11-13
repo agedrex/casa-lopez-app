@@ -1045,3 +1045,23 @@ export type Formulario = FormularioResumen & {
   // Only the answer of `validar` fills it: rows with a quantity that matched no material (not saved as supplies).
   sin_material?: string[] | null;
 };
+
+// What a supplier sells. Mirror ProveedorProductoOut. A change is a new row of the same product, never an edit.
+export type ProveedorProducto = {
+  codigo: string;
+  proveedor: string;
+  nombre: string;
+  material: string | null;
+  material_nombre: string | null;
+  unidad: string;
+  cantidad: string | null;
+  // Price of one presentation of `cantidad` `unidad`; the API calculates `precio_por_unidad`.
+  precio_referencial: string;
+  precio_por_unidad: string;
+  moneda: "ARS" | "USD";
+  iva_incluido: boolean;
+  vigente_desde: string;
+  nota: string | null;
+  cargas: number;
+  precio_anterior: string | null;
+};
