@@ -1045,3 +1045,9 @@ export type Formulario = FormularioResumen & {
   // Only the answer of `validar` fills it: rows with a quantity that matched no material (not saved as supplies).
   sin_material?: string[] | null;
 };
+
+/** Answer of `POST /materiales/lote`: the prices the save added and the codes of the new materials. */
+export type MaterialesLote = {
+  precios: Precio[];
+  materiales_nuevos: string[];
+};

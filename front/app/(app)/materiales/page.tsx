@@ -1,49 +1,34 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { ReadOnlyNote } from "@/components/form";
+import { Fragment } from "react";
 import {
   Badge,
-  Card,
   ErrorNotice,
   Notice,
   numClass,
   PageHeader,
-  SectionTitle,
   TableWrap,
   tableClass,
   tdClass,
   thClass,
 } from "@/components/ui";
 import { apiGet } from "@/lib/api";
-import { formatDate, formatMoney, stageLabel, todayIso } from "@/lib/format";
+import { formatDate, formatMoney, STAGE_ORDER, stageLabel } from "@/lib/format";
+import { agruparMateriales, type GrupoDeMateriales } from "@/lib/materiales";
 import { canWrite } from "@/lib/permissions";
 import { requireSession } from "@/lib/session";
-import type { Catalogos, Material, Precio } from "@/lib/types";
-import { type MaterialOption, PrecioForm } from "./precio-form";
+import type { EtapaCatalogo, Material, Precio } from "@/lib/types";
+import { MaterialesGrid } from "./materiales-grid";
 
 export const metadata: Metadata = { title: "Materiales y precios" };
 
-export default async function MaterialesPage({
-  searchParams,
-}: {
-  searchParams: Promise<{
-    material?: string | string[];
-    orden?: string | string[];
-    dir?: string | string[];
-  }>;
-}) {
+export default async function MaterialesPage() {
   const { user } = await requireSession();
-  const { material, orden, dir } = await searchParams;
-  const preselected = Array.isArray(material) ? material[0] : material;
-  const sort = ["etapa", "material", "fecha"].includes(String(orden))
-    ? String(orden)
-    : "material";
-  const direction = dir === "desc" ? "desc" : "asc";
+  const writer = canWrite(user.role);
 
-  const [materiales, precios, catalogos] = await Promise.all([
+  const [materiales, precios, etapas] = await Promise.all([
     apiGet<Material[]>("/materiales"),
     apiGet<Precio[]>("/precios"),
-    apiGet<Catalogos>("/catalogos"),
+    writer ? apiGet<EtapaCatalogo[]>("/catalogo/etapas") : null,
   ]);
 
   return (
@@ -51,149 +36,86 @@ export default async function MaterialesPage({
       <PageHeader
         eyebrow="Costos"
         title="Materiales y precios"
-        description="Cada precio queda con su fecha, moneda y unidad. Un precio nuevo no reemplaza al anterior: se suma a la historia."
+        description="Los materiales que se compran, por etapa. Cambiar un precio agrega uno nuevo con la fecha de hoy: el anterior queda en la historia. Un material nuevo se agrega al final de la grilla."
       />
       {!materiales.ok ? (
         <ErrorNotice message={materiales.message} />
       ) : !precios.ok ? (
         <ErrorNotice message={precios.message} />
+      ) : materiales.data.length === 0 && !writer ? (
+        <Notice tone="info" title="Todavía no hay materiales." />
+      ) : writer ? (
+        <MaterialesGrid
+          grupos={agruparMateriales(materiales.data, precios.data)}
+          etapas={materialStages(etapas?.ok ? etapas.data : null)}
+        />
       ) : (
-        <div className="space-y-10">
-          <section id="cargar">
-            <SectionTitle>Cargar precio nuevo</SectionTitle>
-            {canWrite(user.role) ? (
-              <Card>
-                <PrecioForm
-                  key={preselected ?? ""}
-                  materials={optionsOf(materiales.data)}
-                  colores={catalogos.ok ? catalogos.data.colores : []}
-                  today={todayIso()}
-                  defaultMaterial={
-                    materiales.data.some(
-                      (m) => m.codigo === preselected && m.cotizable,
-                    )
-                      ? (preselected ?? "")
-                      : ""
-                  }
-                />
-              </Card>
-            ) : (
-              <ReadOnlyNote />
-            )}
-          </section>
-          <section className="space-y-5">
-            <AllMaterials
-              materiales={materiales.data}
-              precios={precios.data}
-              sort={sort}
-              direction={direction}
-              canWrite={canWrite(user.role)}
-            />
-          </section>
-        </div>
+        <ReadOnlyMateriales
+          grupos={agruparMateriales(materiales.data, precios.data)}
+        />
       )}
     </>
   );
 }
 
-function AllMaterials({
-  materiales,
-  precios,
-  sort,
-  direction,
-  canWrite: writable,
-}: {
-  materiales: Material[];
-  precios: Precio[];
-  sort: string;
-  direction: "asc" | "desc";
-  canWrite: boolean;
-}) {
-  const entries = materiales.flatMap((material) => {
-    const history = precios.filter(
-      (price) => price.material === material.codigo,
-    );
-    return (history.length ? history : [null]).map((price) => ({
-      material,
-      price,
-    }));
-  });
-  entries.sort((a, b) => {
-    const value = (entry: (typeof entries)[number]) =>
-      sort === "etapa"
-        ? stageLabel(entry.material.etapa)
-        : sort === "fecha"
-          ? (entry.price?.vigente_desde ?? "")
-          : entry.material.nombre;
-    const result = value(a).localeCompare(value(b), "es-AR");
-    return direction === "desc" ? -result : result;
-  });
-  const sortLink = (key: string) =>
-    `/materiales?orden=${key}&dir=${sort === key && direction === "asc" ? "desc" : "asc"}`;
-  const heading = (key: string, label: string) => (
-    <Link
-      href={sortLink(key)}
-      className="underline decoration-gold underline-offset-4"
-    >
-      {label}
-      {sort === key ? (direction === "asc" ? " ↑" : " ↓") : ""}
-    </Link>
-  );
+/** Stages that hold materials (the others are tasks); the quote order if the catalog cannot be read. */
+function materialStages(catalogo: EtapaCatalogo[] | null): string[] {
+  if (!catalogo) return STAGE_ORDER.slice(0, 6);
+  return [...catalogo]
+    .filter((etapa) => etapa.tipo === "MATERIAL")
+    .sort((a, b) => a.orden - b.orden)
+    .map((etapa) => etapa.codigo);
+}
+
+/** The same grouping as the grid for roles that read but do not write (taller). */
+function ReadOnlyMateriales({ grupos }: { grupos: GrupoDeMateriales[] }) {
   return (
-    <>
-      <SectionTitle>Todos los materiales y precios</SectionTitle>
-      {entries.length ? (
-        <TableWrap>
-          <table className={tableClass}>
-            <thead>
-              <tr>
-                <th className={thClass}>{heading("etapa", "Etapa")}</th>
-                <th className={thClass}>{heading("material", "Material")}</th>
-                <th className={thClass}>{heading("fecha", "Desde")}</th>
-                <th className={`${thClass} ${numClass}`}>Precio</th>
-                <th className={thClass}>Moneda / unidad</th>
-                <th className={thClass}>Color</th>
-                <th className={thClass}>Proveedor</th>
-                <th className={thClass}>Estado</th>
+    <TableWrap>
+      <table className={tableClass}>
+        <thead>
+          <tr>
+            <th className={thClass}>Material</th>
+            <th className={thClass}>Unidad de consumo</th>
+            <th className={`${thClass} ${numClass}`}>Precio</th>
+            <th className={thClass}>Proveedor</th>
+            <th className={thClass}>Desde</th>
+            <th className={thClass}>Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {grupos.map((grupo) => (
+            <Fragment key={grupo.etapa}>
+              <tr className="bg-paper-mid">
+                <th
+                  scope="colgroup"
+                  colSpan={6}
+                  className={`${tdClass} text-left font-bold uppercase`}
+                >
+                  {stageLabel(grupo.etapa)}
+                </th>
               </tr>
-            </thead>
-            <tbody>
-              {entries.map(({ material, price }) => (
-                <tr key={price?.codigo ?? material.codigo}>
-                  <td className={tdClass}>{stageLabel(material.etapa)}</td>
+              {grupo.filas.map(({ material, precio }) => (
+                <tr key={material.codigo}>
                   <td className={tdClass}>
                     {material.nombre}
                     <span className="block text-xs text-muted">
                       {material.codigo}
                     </span>
-                    {writable && material.cotizable ? (
-                      <Link
-                        href={`/materiales?material=${material.codigo}#cargar`}
-                        className="text-xs underline decoration-gold underline-offset-4"
-                      >
-                        Cargar precio nuevo
-                      </Link>
-                    ) : null}
                   </td>
-                  <td className={tdClass}>
-                    {price ? formatDate(price.vigente_desde) : "—"}
-                  </td>
+                  <td className={tdClass}>{material.unidad_de_consumo}</td>
                   <td className={`${tdClass} ${numClass}`}>
-                    {price ? formatMoney(price.precio, price.moneda) : "—"}
+                    {precio ? formatMoney(precio.precio, precio.moneda) : "—"}
                   </td>
+                  <td className={tdClass}>{precio?.proveedor ?? "—"}</td>
                   <td className={tdClass}>
-                    {price
-                      ? `${price.moneda} / ${price.unidad_del_precio}`
-                      : "—"}
+                    {precio ? formatDate(precio.vigente_desde) : "—"}
                   </td>
-                  <td className={tdClass}>{price?.color ?? "—"}</td>
-                  <td className={tdClass}>{price?.proveedor ?? "—"}</td>
                   <td className={tdClass}>
                     {!material.cotizable ? (
                       <Badge tone="alert">No cotizable</Badge>
-                    ) : !price ? (
+                    ) : !precio ? (
                       <Badge tone="warn">Sin precio</Badge>
-                    ) : price.vigente ? (
+                    ) : precio.vigente ? (
                       <Badge tone="good">Vigente</Badge>
                     ) : (
                       "Anterior"
@@ -201,33 +123,10 @@ function AllMaterials({
                   </td>
                 </tr>
               ))}
-            </tbody>
-            <tfoot>
-              <tr className="bg-paper-mid">
-                <th className={tdClass} scope="row">
-                  Materiales
-                </th>
-                <td className={tdClass} colSpan={7}>
-                  {materiales.length} · {precios.length} precios
-                </td>
-              </tr>
-            </tfoot>
-          </table>
-        </TableWrap>
-      ) : (
-        <Notice tone="info" title="Todavía no hay materiales." />
-      )}
-    </>
+            </Fragment>
+          ))}
+        </tbody>
+      </table>
+    </TableWrap>
   );
-}
-
-function optionsOf(materiales: Material[]): MaterialOption[] {
-  return materiales
-    .filter((m) => m.cotizable)
-    .map((m) => ({
-      codigo: m.codigo,
-      label: `${m.codigo} · ${m.nombre} (${m.unidad_de_consumo})`,
-      unidad: m.unidad_de_consumo,
-      group: stageLabel(m.etapa),
-    }));
 }
