@@ -2071,6 +2071,41 @@ class PedidoProveedorOut(Salida):
     lineas: list[PedidoLineaOut]
 
 
+class ProveedorProductoIn(Entrada):
+    """One product a supplier sells. `cantidad` is what one presentation holds, in `unidad`; the price is for that quantity."""
+    nombre: Annotated[str, Field(min_length=1, max_length=proveedores.MAX_PRODUCT_NAME)]
+    unidad: Literal[*UNITS]
+    cantidad: Annotated[Decimal, Field(gt=0, max_digits=12, decimal_places=6)] | None = None
+    precio_referencial: Annotated[Decimal, Field(gt=0, max_digits=14, decimal_places=4)]
+    moneda: Literal[*ARS_USD]
+    iva_incluido: bool = False
+    material: str | None = None
+    vigente_desde: date | None = None
+    nota: Annotated[str, Field(max_length=proveedores.MAX_PRODUCT_NOTE)] | None = None
+
+
+class ProveedorProductosIn(Entrada):
+    productos: Annotated[list[ProveedorProductoIn], Field(min_length=1, max_length=200)]
+
+
+class ProveedorProductoOut(Salida):
+    codigo: str
+    proveedor: str
+    nombre: str
+    material: str | None
+    material_nombre: str | None
+    unidad: str
+    cantidad: Decimal | None
+    precio_referencial: Decimal
+    precio_por_unidad: Decimal
+    moneda: str
+    iva_incluido: bool
+    vigente_desde: date
+    nota: str | None
+    cargas: int
+    precio_anterior: Decimal | None
+
+
 def get_ocr_llm() -> ocr_llm.OcrLLM | None:
     """The real reader while `ANTHROPIC_API_KEY` is set (building it makes no network call), else None."""
     return ocr_llm.create_client()
@@ -2162,6 +2197,19 @@ def registrar_pedido_de_proveedor(codigo: str, cuerpo: PedidoProveedorIn, sessio
     """Registers an order and the price of each line, all or nothing. Orders are never edited or deleted."""
     datos = cuerpo.model_dump()
     return proveedores.create_order(session, codigo, **datos, creado_por=usuario.id)
+
+
+@router.get("/proveedores/{codigo}/productos", dependencies=LECTURA_ADMIN, response_model=list[ProveedorProductoOut])
+def listar_productos_de_proveedor(codigo: str, session: Sesion, historial: bool = False):
+    """What the supplier sells: each product with its newest row; `historial=true` lists every row, newest first."""
+    return proveedores.list_products(session, codigo, historial=historial)
+
+
+@router.post("/proveedores/{codigo}/productos", dependencies=ESCRITURA, response_model=list[ProveedorProductoOut], status_code=201)
+def cargar_productos_de_proveedor(codigo: str, cuerpo: ProveedorProductosIn, session: Sesion, usuario: Escritor):
+    """Appends rows (a new product, or a new version of one already listed), all or nothing; answers the current list."""
+    productos = [producto.model_dump() for producto in cuerpo.productos]
+    return proveedores.add_products(session, codigo, productos=productos, creado_por=usuario.id)
 
 
 @router.get("/proveedores/{codigo}/documentos", dependencies=LECTURA_ADMIN, response_model=list[DocumentoProveedorOut])

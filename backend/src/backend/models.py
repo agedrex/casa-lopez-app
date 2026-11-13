@@ -710,3 +710,34 @@ class PedidoLinea(IdentityAndCreatedAt, Base):
     moneda: Mapped[str] = mapped_column(CHAR(3))
     iva_incluido: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     precio_material_id: Mapped[int] = mapped_column(ForeignKey("costos.precio_material.id"), index=True)
+
+
+# --- What a supplier sells (append-only: a change is a new dated row of the same product) --------------------------
+
+class ProveedorProducto(BusinessKey, Base):
+    """A product a supplier sells, with its unit, the quantity of one presentation and a reference price (`codigo` is
+    `PPR-NNNN`). A product is identified by (supplier, name ignoring case and spaces); a new price, unit or quantity is a new
+    row with its date and the newest row is the current one. Nothing is edited or deleted.
+
+    `precio_referencial` is the price of one presentation of `cantidad` `unidad` (of one `unidad` when `cantidad` is NULL).
+    It is a reference, never a cost: the engine only reads `precio_material`. `material_id` is NULL while the product is
+    not in the material list. `creado_por` is the auth user id as text (no FK: Better Auth lives in `public`).
+    """
+    __tablename__ = "proveedor_producto"
+    __table_args__ = (
+        CheckConstraint("cantidad IS NULL OR cantidad > 0", name="cantidad_positiva"),
+        CheckConstraint("precio_referencial > 0", name="precio_positivo"),
+        one_of("moneda", ARS_USD, "moneda"),
+        one_of("unidad", UNITS, "unidad"),
+    )
+    proveedor_id: Mapped[int] = mapped_column(ForeignKey("costos.proveedor.id"), index=True)
+    material_id: Mapped[int | None] = mapped_column(ForeignKey("costos.material.id"), index=True)
+    nombre: Mapped[str] = mapped_column(Text)
+    unidad: Mapped[str] = mapped_column(Text)
+    cantidad: Mapped[Decimal | None] = mapped_column(quantity())
+    precio_referencial: Mapped[Decimal] = mapped_column(money())
+    moneda: Mapped[str] = mapped_column(CHAR(3))
+    iva_incluido: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    vigente_desde: Mapped[date] = mapped_column(Date)
+    nota: Mapped[str | None] = mapped_column(Text)
+    creado_por: Mapped[str] = mapped_column(Text)

@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session, undefer
 
 from backend.models import (
     DOCUMENT_TYPES, Color, DocumentoProveedor, Material, PedidoLinea, PedidoProveedor, PrecioMaterial, Proveedor,
+    ProveedorProducto,
 )
 from backend.ocr_llm import OcrError, OcrLLM, OcrResult, OcrSuggestion
 from backend.servicios import (
@@ -601,3 +602,91 @@ def _add_order_line(session: Session, supplier: Proveedor, order: PedidoProveedo
         precio_por_presentacion=line["precio_por_presentacion"], moneda=line["moneda"],
         iva_incluido=line["iva_incluido"], precio_material_id=price_id,
     ), f"Línea {position} ({material.codigo}): no se pudo guardar la línea.")
+
+
+# --- Products a supplier sells: unit, quantity of one presentation and a reference price --------------------------
+# Append-only: a change of price, unit or quantity is a new dated row of the same product (same name ignoring case and
+# spaces) and the newest row (date, then id) is the current one. The engine never reads these prices.
+
+MAX_PRODUCT_NAME = 200
+MAX_PRODUCT_NOTE = 2000
+
+
+def price_per_unit(price: Decimal, quantity: Decimal | None) -> Decimal:
+    """What one `unidad` costs: the reference price over the quantity of its presentation (the price itself without one)."""
+    per_unit = price if quantity is None else price / quantity
+    return per_unit.quantize(UNIT_PRICE_STEP, rounding=ROUND_HALF_UP)
+
+
+def _product_key(name: str) -> str:
+    return " ".join(name.split()).casefold()
+
+
+def _product_to_dict(row: ProveedorProducto, supplier_code: str, material: tuple[str, str] | None,
+                     history: list[ProveedorProducto], position: int) -> dict:
+    """`history` is every row of the product, newest first; `position` is where `row` sits in it."""
+    older = history[position + 1] if position + 1 < len(history) else None
+    return {
+        "codigo": row.codigo, "proveedor": supplier_code, "nombre": row.nombre,
+        "material": material[0] if material else None, "material_nombre": material[1] if material else None,
+        "unidad": row.unidad, "cantidad": row.cantidad, "precio_referencial": row.precio_referencial,
+        "precio_por_unidad": price_per_unit(row.precio_referencial, row.cantidad), "moneda": row.moneda,
+        "iva_incluido": row.iva_incluido, "vigente_desde": row.vigente_desde, "nota": row.nota,
+        "cargas": len(history), "precio_anterior": older.precio_referencial if older else None,
+    }
+
+
+def list_products(session: Session, code: str, *, historial: bool = False) -> list[dict]:
+    """The products of a supplier by name with their newest row; with `historial`, every row, newest first."""
+    supplier = _supplier(session, code)
+    rows = session.execute(
+        select(ProveedorProducto, Material.codigo, Material.nombre)
+        .outerjoin(Material, Material.id == ProveedorProducto.material_id)
+        .where(ProveedorProducto.proveedor_id == supplier.id)
+        .order_by(ProveedorProducto.vigente_desde.desc(), ProveedorProducto.id.desc())).all()
+    groups: dict[str, list[tuple]] = {}
+    for row in rows:
+        groups.setdefault(_product_key(row[0].nombre), []).append(row)
+    result = []
+    for group in groups.values():
+        history = [row[0] for row in group]
+        picked = enumerate(group) if historial else [(0, group[0])]
+        for position, (row, material_code, material_name) in picked:
+            material = (material_code, material_name) if material_code else None
+            result.append(_product_to_dict(row, supplier.codigo, material, history, position))
+    if historial:
+        return sorted(result, key=lambda product: (product["vigente_desde"], product["codigo"]), reverse=True)
+    return sorted(result, key=lambda product: _product_key(product["nombre"]))
+
+
+def add_products(session: Session, code: str, *, productos: list[dict], creado_por: str) -> list[dict]:
+    """Append one row per item, all or nothing; an item whose name is already in the list is a new version of it."""
+    supplier = _supplier(session, code)
+    if not productos:
+        raise DatosInvalidos("Falta al menos un producto.")
+    today = date.today()
+    clean = []
+    for position, product in enumerate(productos, start=1):
+        name = " ".join(product["nombre"].split())
+        if not name:
+            raise DatosInvalidos(f"Producto {position}: falta el nombre.")
+        if product["vigente_desde"] is not None and product["vigente_desde"] > today:
+            raise DatosInvalidos(f"Producto {position} ({name}): la fecha no puede estar en el futuro.")
+        material_id = None
+        if product["material"] is not None:
+            material_id = session.scalar(select(Material.id).where(Material.codigo == product["material"]))
+            if material_id is None:
+                raise DatosInvalidos(f"Producto {position} ({name}): no existe el material {product['material']}.")
+        clean.append({**product, "nombre": name, "material_id": material_id,
+                      "vigente_desde": product["vigente_desde"] or today, "nota": _texto_o_nada(product["nota"])})
+    with session.begin_nested():
+        for position, product in enumerate(clean, start=1):
+            _insertar(session, ProveedorProducto(
+                codigo=f"PPR-{_siguiente_numero(session, ProveedorProducto.codigo, 'PPR'):04d}", proveedor_id=supplier.id,
+                material_id=product["material_id"], nombre=product["nombre"], unidad=product["unidad"],
+                cantidad=product["cantidad"], precio_referencial=product["precio_referencial"], moneda=product["moneda"],
+                iva_incluido=product["iva_incluido"], vigente_desde=product["vigente_desde"], nota=product["nota"],
+                creado_por=creado_por,
+            ), f"Producto {position} ({product['nombre']}): no se pudo asignar el código; intentá de nuevo.")
+    session.commit()
+    return list_products(session, code)
