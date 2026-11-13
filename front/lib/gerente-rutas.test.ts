@@ -57,3 +57,25 @@ test("the gerente opens none of the admin only pages under /productos", () => {
     assert.equal(canAccessPath("gerente", path), false, path);
   }
 });
+
+// What the taller opens: the lots (list and detail), the consumption sheets (list and detail), Voz and the product sheet. Nothing else.
+const RUTAS_DEL_TALLER = [
+  "/fabricacion",
+  "/fabricacion/X-1",
+  "/formularios",
+  "/formularios/X-1",
+  "/productos/X-1",
+  "/voz",
+];
+
+test("the pages the taller opens are exactly Lotes, Formularios, Voz and the product sheet", () => {
+  const abiertas = appRoutes().filter((route) =>
+    canAccessPath("taller", route),
+  );
+  assert.deepEqual(abiertas, RUTAS_DEL_TALLER);
+});
+
+test("the legacy role corte opens the same pages as taller", () => {
+  const abiertas = appRoutes().filter((route) => canAccessPath("corte", route));
+  assert.deepEqual(abiertas, RUTAS_DEL_TALLER);
+});

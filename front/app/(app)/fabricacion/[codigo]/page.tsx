@@ -24,7 +24,8 @@ import {
   lotStateLabel,
   todayIso,
 } from "@/lib/format";
-import { canWrite } from "@/lib/permissions";
+import { canWrite, isTallerOnly } from "@/lib/permissions";
+import { collapseSpaces } from "@/lib/productos";
 import { requireSession } from "@/lib/session";
 import type {
   OrdenDetalle,
@@ -95,6 +96,7 @@ export default async function LotePage({
 
   const orden = result.data;
   const writer = canWrite(user.role);
+  if (isTallerOnly(user.role)) return <TallerLote orden={orden} />;
   return (
     <>
       <BackLink />
@@ -385,6 +387,74 @@ async function WriterSections({ orden }: { orden: OrdenDetalle }) {
           />
         </Card>
       </section>
+    </>
+  );
+}
+
+/**
+ * What the taller sees of a lot: state, dates and, per product, the name and how many to make, each
+ * linked to its product sheet. No prices, costs or amounts, and no warnings (they quote prices).
+ */
+function TallerLote({ orden }: { orden: OrdenDetalle }) {
+  return (
+    <>
+      <BackLink />
+      <PageHeader
+        eyebrow={`Lote ${orden.codigo}`}
+        title={whereText(orden)}
+        actions={<LotStateBadge estado={orden.estado} />}
+      />
+      <div className="max-w-3xl space-y-10">
+        <section aria-label="Resumen del lote">
+          <p className="text-sm text-muted">
+            Envío {formatDate(orden.fecha_de_envio)} · Entrega{" "}
+            {formatDate(orden.fecha_de_entrega)} ·{" "}
+            {formatQuantity(orden.unidades)}{" "}
+            {Number(orden.unidades) === 1 ? "unidad" : "unidades"} en total
+          </p>
+          {orden.nota ? <p className="mt-2 text-sm">{orden.nota}</p> : null}
+        </section>
+        <section>
+          <SectionTitle>Qué hay que hacer</SectionTitle>
+          {orden.items.length === 0 ? (
+            <Notice tone="info" title="Este lote todavía no tiene productos." />
+          ) : (
+            <>
+              <p className="mb-3 text-sm text-muted">
+                Tocá un producto para ver sus materiales y consumos.
+              </p>
+              <ul className="divide-y divide-line/70 rounded-card border border-line bg-surface shadow-card">
+                {orden.items.map((item) => (
+                  <li key={item.codigo}>
+                    <Link
+                      href={`/productos/${encodeURIComponent(item.producto)}`}
+                      className="flex min-h-14 items-center justify-between gap-4 px-4 py-3"
+                    >
+                      <span className="min-w-0">
+                        <span className="line-clamp-2 break-words underline decoration-gold underline-offset-4">
+                          {collapseSpaces(item.producto_nombre)}
+                        </span>
+                        <span className="block text-xs text-muted">
+                          {item.producto}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-right">
+                        <span className="font-display text-3xl tabular-nums">
+                          {formatQuantity(item.cantidad)}
+                        </span>
+                        <span className="block text-xs text-muted">
+                          a hacer
+                        </span>
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </section>
+        <Timeline orden={orden} />
+      </div>
     </>
   );
 }

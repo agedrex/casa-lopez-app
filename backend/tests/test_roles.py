@@ -425,3 +425,50 @@ def test_s8_taller_keeps_reading_what_it_read_before(ruta):
 @pytest.mark.parametrize("ruta", ["/panel/costos", "/grilla"])
 def test_s8_taller_stays_out_of_the_panel_costs_and_the_grid(ruta):
     assert _estado(_cliente("taller"), "GET", ruta) == 403
+
+
+# --- Product list: model and last-quote fields (demo-staging-taller-grilla S6) ---------------------------------------
+
+CAMPOS_VIEJOS_DE_LA_LISTA = {
+    "codigo", "nombre", "categoria", "modelo", "estado_del_ciclo", "es_kit", "costo_hoy_ars", "costo_hoy_usd", "avisos",
+    "revisar", "motivos_revisar", "precio_venta_ars", "margen_pct", "precio_final_ars",
+}
+CAMPOS_NUEVOS_DE_LA_LISTA = {
+    "modelo_codigo", "modelo_nombre", "cotizacion_fecha", "cotizacion_dolar", "costo_cotizado_ars", "costo_cotizado_usd",
+}
+
+
+def _fila_vieja():
+    """A row exactly as the service answered before the new fields: it must keep validating (new fields go None)."""
+    from decimal import Decimal as D
+    return {"codigo": "PRD-0001", "nombre": "x", "categoria": None, "modelo": "MOD-0001", "estado_del_ciclo": "COTIZADO",
+            "es_kit": False, "costo_hoy_ars": D("700"), "costo_hoy_usd": D("0.5"), "avisos": [], "revisar": False,
+            "motivos_revisar": []}
+
+
+def test_the_product_list_keeps_its_old_fields_and_adds_the_new_ones_as_null_when_the_service_does_not_send_them(monkeypatch):
+    monkeypatch.setattr(servicios, "listar_productos", lambda *a, **k: [_fila_vieja()])
+    fila = _cliente("admin").get("/productos").json()[0]
+    assert set(fila) == CAMPOS_VIEJOS_DE_LA_LISTA | CAMPOS_NUEVOS_DE_LA_LISTA
+    assert fila["modelo"] == "MOD-0001" and fila["costo_hoy_ars"] == "700" and fila["precio_venta_ars"] is None
+    assert all(fila[campo] is None for campo in CAMPOS_NUEVOS_DE_LA_LISTA)
+
+
+@pytest.mark.parametrize("role, extra", [("admin", {}), ("gerente", {}), ("taller", {"con_precios": False})])
+def test_the_product_list_sends_the_last_quote_as_text_to_every_role_and_the_taller_still_gets_no_sale_prices(monkeypatch, role, extra):
+    from datetime import date
+    from decimal import Decimal as D
+    visto = {}
+
+    def falso(session, limit, offset, q, categoria, revisar, **kwargs):
+        visto.update(kwargs)
+        return [{**_fila_vieja(), "modelo_codigo": "MOD-0001", "modelo_nombre": "Portafolio Simple Ch.",
+                 "cotizacion_fecha": date(2026, 10, 3), "cotizacion_dolar": D("1600.0000"),
+                 "costo_cotizado_ars": D("21000.5000"), "costo_cotizado_usd": D("13.1253")}]
+    monkeypatch.setattr(servicios, "listar_productos", falso)
+    fila = _cliente(role).get("/productos").json()[0]
+    assert visto == extra  # the taller reads the list without sale prices, as before
+    assert fila["modelo_codigo"] == "MOD-0001" and fila["modelo_nombre"] == "Portafolio Simple Ch."
+    assert fila["cotizacion_fecha"] == "2026-10-03" and fila["cotizacion_dolar"] == "1600.0000"
+    assert fila["costo_cotizado_ars"] == "21000.5000" and fila["costo_cotizado_usd"] == "13.1253"  # text, never float
+    assert fila["precio_venta_ars"] is None and fila["margen_pct"] is None and fila["precio_final_ars"] is None

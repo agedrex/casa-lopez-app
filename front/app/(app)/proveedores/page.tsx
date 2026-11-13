@@ -16,7 +16,7 @@ import {
 } from "@/components/ui";
 import { apiGet } from "@/lib/api";
 import { requireRole } from "@/lib/session";
-import type { Proveedor } from "@/lib/types";
+import type { Proveedor, ProveedorProducto } from "@/lib/types";
 import { createProveedor } from "./actions";
 import { ProveedorForm } from "./proveedor-form";
 
@@ -52,6 +52,19 @@ export default async function ProveedoresPage({
     `/proveedores${query.size > 0 ? `?${query}` : ""}`,
   );
   const filtered = Boolean(q || activo);
+  // What each supplier sells: one read per supplier, in parallel (no list endpoint for all of them).
+  const productos = new Map<string, ProveedorProducto[]>(
+    result.ok
+      ? await Promise.all(
+          result.data.map(async (proveedor) => {
+            const lista = await apiGet<ProveedorProducto[]>(
+              `/proveedores/${encodeURIComponent(proveedor.codigo)}/productos`,
+            );
+            return [proveedor.codigo, lista.ok ? lista.data : []] as const;
+          }),
+        )
+      : [],
+  );
 
   return (
     <>
@@ -118,6 +131,7 @@ export default async function ProveedoresPage({
                   <thead>
                     <tr>
                       <th className={thClass}>Proveedor</th>
+                      <th className={thClass}>Productos que vende</th>
                       <th className={thClass}>CUIT</th>
                       <th className={thClass}>Contacto</th>
                       <th className={thClass}>Teléfono</th>
@@ -142,6 +156,11 @@ export default async function ProveedoresPage({
                           {proveedor.activo ? null : (
                             <Badge tone="neutral">Inactivo</Badge>
                           )}
+                        </td>
+                        <td className={tdClass}>
+                          <ProductosResumen
+                            productos={productos.get(proveedor.codigo) ?? []}
+                          />
                         </td>
                         <td className={tdClass}>{proveedor.cuit ?? "—"}</td>
                         <td className={tdClass}>{proveedor.contacto ?? "—"}</td>
@@ -169,5 +188,27 @@ export default async function ProveedoresPage({
         </section>
       </div>
     </>
+  );
+}
+
+const NOMBRES_VISIBLES = 3;
+
+/** Count plus the first names of what a supplier sells; the whole list is on its page. */
+function ProductosResumen({ productos }: { productos: ProveedorProducto[] }) {
+  if (productos.length === 0) {
+    return <span className="text-muted">Sin productos cargados</span>;
+  }
+  const nombres = productos.slice(0, NOMBRES_VISIBLES).map((p) => p.nombre);
+  const resto = productos.length - nombres.length;
+  return (
+    <div className="max-w-xs">
+      <p className="font-bold">
+        {productos.length} {productos.length === 1 ? "producto" : "productos"}
+      </p>
+      <p className="text-xs text-muted">
+        {nombres.join(" · ")}
+        {resto > 0 ? ` · y ${resto} más` : ""}
+      </p>
+    </div>
   );
 }

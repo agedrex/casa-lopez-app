@@ -106,12 +106,19 @@ export function canWorkFormularios(value: string | null | undefined): boolean {
 
 /**
  * Where each role lands and which paths it may open. `null` paths = everything. `paths` open a
- * route and everything below it; `exact` open only that route (taller reads the product LIST,
- * /productos, but not the product sheet, /productos/<code>).
+ * route and everything below it; `exact` open only that route. `denyExact` and `denyPrefix` carve
+ * holes in `paths` (taller opens the product SHEET, /productos/<code>, but not the product LIST,
+ * /productos, nor Modelos).
  */
 const ROLE_ACCESS: Record<
   Role,
-  { home: string; paths: readonly string[] | null; exact?: readonly string[] }
+  {
+    home: string;
+    paths: readonly string[] | null;
+    exact?: readonly string[];
+    denyExact?: readonly string[];
+    denyPrefix?: readonly string[];
+  }
 > = {
   admin: { home: "/admin/panel", paths: null },
   // Gerente reads Productos (list, sheet and Modelos) and runs the scenario simulator. Nothing else:
@@ -120,17 +127,15 @@ const ROLE_ACCESS: Record<
     home: "/productos",
     paths: ["/productos", "/escenarios"],
   },
-  // Taller keeps Corte, Cueros and Voz, and reads everything needed to quote or assemble a product.
+  // Taller has ONE entry: the lots list (what to make and how many). From each product of a lot it
+  // opens the product sheet (materials and recipe, no prices); Formularios is the consumption sheet
+  // it practices and completes; Voz is a header button (not in the menu). The product LIST, Modelos,
+  // Materiales, Corte and Cueros are closed to it (demo-staging-taller-grilla S2).
   taller: {
-    home: "/corte",
-    paths: [
-      "/corte",
-      "/cueros",
-      "/voz",
-      "/productos",
-      "/materiales",
-      "/formularios",
-    ],
+    home: "/fabricacion",
+    paths: ["/fabricacion", "/formularios", "/voz", "/productos"],
+    denyExact: ["/productos"],
+    denyPrefix: ["/productos/modelos"],
   },
 };
 
@@ -169,7 +174,13 @@ export function canAccessPath(
     return false;
   }
   return roles.some((role) => {
-    const { paths, exact } = ROLE_ACCESS[role];
+    const { paths, exact, denyExact, denyPrefix } = ROLE_ACCESS[role];
+    if (
+      (denyExact?.includes(pathname) ?? false) ||
+      (denyPrefix?.some((route) => matchesPath(pathname, route)) ?? false)
+    ) {
+      return false;
+    }
     return (
       paths === null ||
       paths.some((route) => matchesPath(pathname, route)) ||
@@ -184,8 +195,8 @@ export function canOpenProductSheet(value: string | null | undefined): boolean {
 }
 
 /**
- * A taller user who is not also admin: does not see what is paid per m2 of leather (the cueros
- * pages hide it). The product list with its costs IS open to taller, by decision of the user.
+ * A taller user who is not also admin: sees what to make and how many, never money (lots, product
+ * sheet and the cueros pages hide prices, costs and amounts for this role).
  */
 export function isTallerOnly(value: string | null | undefined): boolean {
   return hasRole(value, "taller") && !hasRole(value, "admin");

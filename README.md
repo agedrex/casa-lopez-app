@@ -68,6 +68,19 @@ The admin area (`/admin/*`: users, taxes, Google Sheet; `/admin` redirects to us
 
 `/formularios` holds the digital "formulario de consumos y herrajes" of each new article (admin creates and validates, the `taller` role fills it in). It does no costing; the flow, buttons and print-to-PDF are described in [`docs/formularios.md`](docs/formularios.md).
 
+## Demo data for staging
+
+Two scripts in `backend/scripts/` fill a **staging** database with synthetic data marked `EJEMPLO` in the note of every row. Both refuse to run unless `--entorno staging` is passed and `RAILWAY_ENVIRONMENT_NAME` (when set) is `staging`; both go through `backend.servicios` and are idempotent (a second run creates nothing; nothing is deleted or edited in place). Run them in this order, only with the owner's authorization (they write to the shared staging database):
+
+```sh
+# from the main checkout (the only one linked to Railway); the container path follows docs/produccion.md
+railway ssh -e staging -s backend -- sh -c 'cd /app && test "$RAILWAY_ENVIRONMENT_NAME" = staging && /app/.venv/bin/python scripts/cargar_ejemplo.py --entorno staging --confirmar'
+railway ssh -e staging -s backend -- sh -c 'cd /app && test "$RAILWAY_ENVIRONMENT_NAME" = staging && /app/.venv/bin/python scripts/cargar_demo.py --entorno staging'              # dry run
+railway ssh -e staging -s backend -- sh -c 'cd /app && test "$RAILWAY_ENVIRONMENT_NAME" = staging && /app/.venv/bin/python scripts/cargar_demo.py --entorno staging --confirmar'  # writes
+```
+
+`cargar_demo.py` completes the demo on top of `cargar_ejemplo.py`: five suppliers with their products (some with an older price row) and two supplier orders; saved quotes of six example products at different dates, hence with different dollars (two products stay unquoted on purpose); four lots (PLANIFICADA, EN_CORTE, EN_CONFECCION, LISTA) with several products each; and five consumption forms (a new model to practice, one completed, one returned with a comment, one draft and one validated). Without `--confirmar` it is a dry run. `scripts/recortar_staging.py` **deletes every consumption form**, so run the demo after it, never before. Details: [`docs/importar-productos.md`](docs/importar-productos.md#datos-de-demo-de-staging-cargar_demopy).
+
 ## Checks
 
 ```sh

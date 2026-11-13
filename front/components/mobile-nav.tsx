@@ -29,10 +29,14 @@ export function MobileNav({
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
-  // With the center button, the bar is 2 tabs | + | 1 tab + "Más".
+  // With the center button, the bar is 2 tabs | + | 1 tab + "Más" (with only 2 tabs: 1 | + | 1).
   const visibleTabs = canCreate ? tabs.slice(0, 3) : tabs;
-  const leftTabs = canCreate ? visibleTabs.slice(0, 2) : visibleTabs;
-  const rightTabs = canCreate ? visibleTabs.slice(2) : [];
+  const leftTabs = canCreate
+    ? visibleTabs.slice(0, Math.ceil(visibleTabs.length / 2))
+    : visibleTabs;
+  const rightTabs = canCreate
+    ? visibleTabs.slice(Math.ceil(visibleTabs.length / 2))
+    : [];
   const moreActive =
     !visibleTabs.some((item) => isActive(pathname, item.href)) &&
     groups.some((group) =>
@@ -131,13 +135,16 @@ export function MobileNav({
             id="acciones-rapidas"
             className="fixed inset-x-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-40 rounded-2xl border border-line bg-surface p-2 shadow-card"
           >
-            <Link
-              href="/corte"
-              className="flex min-h-14 items-center gap-3 rounded-card px-4 text-base text-ink"
-            >
-              <Icon path={ICONS["/corte"]} />
-              <span>Cortar</span>
-            </Link>
+            {/* Corte is closed to the restricted roles (the taller enters through Lotes). */}
+            {restricted ? null : (
+              <Link
+                href="/corte"
+                className="flex min-h-14 items-center gap-3 rounded-card px-4 text-base text-ink"
+              >
+                <Icon path={ICONS["/corte"]} />
+                <span>Cortar</span>
+              </Link>
+            )}
             <Link
               href="/voz"
               className="flex min-h-14 items-center gap-3 rounded-card px-4 text-base text-ink"

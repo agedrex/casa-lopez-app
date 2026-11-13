@@ -24,13 +24,17 @@ import {
   formatUsd,
   lifecycleLabel,
 } from "@/lib/format";
-import { canOpenProductSheet, canWrite } from "@/lib/permissions";
+import { canOpenProductSheet, canWrite, isTallerOnly } from "@/lib/permissions";
 import {
   collapseSpaces,
   costoFaltante,
+  cotizacionCaption,
   LIFECYCLE_STATES,
   type LifecycleState,
+  modeloDe,
   parseLifecycleState,
+  SIN_COTIZACION,
+  tieneCotizacion,
 } from "@/lib/productos";
 import { requireSession } from "@/lib/session";
 import type { Catalogos, Conteo, ProductoResumen } from "@/lib/types";
@@ -70,9 +74,10 @@ export default async function ProductosPage({
   const sinCuero = first(params.sin_cuero) === "true";
   const sinColor = first(params.sin_color) === "true";
   const estado = parseLifecycleState(first(params.estado));
-  // Taller reads the list but not the product sheet, and `/catalogos` is closed to it:
-  // without the catalog there is no category selector for that role.
+  // The list is closed to the taller (its single entry is Lotes); if it ever reaches it, no prices and no catalog
+  // (`/catalogos` is closed to it), so no category selector.
   const openSheet = canOpenProductSheet(user.role);
+  const showPrices = openSheet && !isTallerOnly(user.role);
 
   const filter = new URLSearchParams();
   if (q) filter.set("q", q);
@@ -125,6 +130,7 @@ export default async function ProductosPage({
           filter={filter}
           filtered={filter.size > 0}
           openSheet={openSheet}
+          showPrices={showPrices}
           editable={canWrite(user.role)}
         />
       ) : (
@@ -329,7 +335,7 @@ function restoDeAvisos(producto: ProductoResumen): string[] {
     : producto.avisos;
 }
 
-/** First column of the admin grid: code, name, model, category, state, badges and warnings of the product. */
+/** First column of the admin grid: code (PRD-nnnn), name and badges. Model, category, state and warnings have their own columns. */
 function EtiquetaProducto({
   producto,
   openSheet,
@@ -349,22 +355,12 @@ function EtiquetaProducto({
       <div className="mt-0.5">
         <NombreProducto nombre={producto.nombre} />
       </div>
-      <p className="mt-0.5 text-xs text-muted">
-        {producto.modelo ? `Modelo ${producto.modelo} · ` : ""}
-        {producto.categoria ?? "—"} ·{" "}
-        {lifecycleLabel(producto.estado_del_ciclo)}
-      </p>
       {producto.es_kit || producto.revisar ? (
         <div className="mt-1 flex flex-wrap items-start gap-2">
           {producto.es_kit ? <Badge>Kit</Badge> : null}
           {producto.revisar ? (
             <MarcaRevisar motivos={producto.motivos_revisar} />
           ) : null}
-        </div>
-      ) : null}
-      {restoDeAvisos(producto).length > 0 ? (
-        <div className="mt-1">
-          <Avisos avisos={restoDeAvisos(producto)} wrap />
         </div>
       ) : null}
     </div>
@@ -378,6 +374,7 @@ function ProductTable({
   filter,
   filtered,
   openSheet,
+  showPrices,
   editable,
 }: {
   productos: ProductoResumen[];
@@ -386,6 +383,8 @@ function ProductTable({
   filter: URLSearchParams;
   filtered: boolean;
   openSheet: boolean;
+  /** Sale prices and margin: admin and gerente only. */
+  showPrices: boolean;
   /** Admin: the table becomes a grid where the margin is edited. */
   editable: boolean;
 }) {
@@ -405,8 +404,6 @@ function ProductTable({
   }
   const hasNext =
     total === null ? productos.length === PAGE_SIZE : page * PAGE_SIZE < total;
-  // Sale prices are for the roles that open the sheet (admin, gerente); the taller never gets them.
-  const showPrices = openSheet;
   return (
     <>
       {total !== null ? (
@@ -435,9 +432,16 @@ function ProductTable({
                     </span>
                   </div>
                   <p className="mt-1 text-xs text-muted">
-                    {producto.modelo ? `Modelo ${producto.modelo} · ` : ""}
+                    {modeloDe(producto).nombre
+                      ? `Modelo ${modeloDe(producto).nombre}${modeloDe(producto).codigo ? ` (${modeloDe(producto).codigo})` : ""} · `
+                      : ""}
                     {producto.categoria ?? "—"} ·{" "}
                     {lifecycleLabel(producto.estado_del_ciclo)}
+                  </p>
+                  <p className="mt-2 text-xs text-muted tabular-nums">
+                    {tieneCotizacion(producto)
+                      ? `Cotizado ${formatArs(producto.costo_cotizado_ars)} · ${cotizacionCaption(producto.cotizacion_dolar, producto.cotizacion_fecha)}`
+                      : SIN_COTIZACION}
                   </p>
                   {producto.costo_hoy_ars === null ? (
                     <p className="mt-3 text-sm text-muted">
@@ -501,19 +505,16 @@ function ProductTable({
                 <thead>
                   <tr>
                     <th scope="col" className={thClass}>
-                      Código
+                      Producto
                     </th>
                     <th scope="col" className={thClass}>
                       Modelo
                     </th>
-                    <th scope="col" className={thClass}>
-                      Nombre
+                    <th scope="col" className={`${thClass} ${numClass}`}>
+                      Costo cotizado (ARS)
                     </th>
-                    <th scope="col" className={thClass}>
-                      Categoría
-                    </th>
-                    <th scope="col" className={thClass}>
-                      Estado
+                    <th scope="col" className={`${thClass} ${numClass}`}>
+                      Costo cotizado (USD)
                     </th>
                     <th scope="col" className={`${thClass} ${numClass}`}>
                       Costo hoy (ARS)
@@ -521,97 +522,148 @@ function ProductTable({
                     <th scope="col" className={`${thClass} ${numClass}`}>
                       Costo hoy (USD)
                     </th>
+                    <th scope="col" className={thClass}>
+                      Categoría
+                    </th>
+                    <th scope="col" className={thClass}>
+                      Estado
+                    </th>
+                    <th scope="col" className={thClass}>
+                      Avisos
+                    </th>
                     {showPrices ? (
                       <>
                         <th scope="col" className={`${thClass} ${numClass}`}>
                           Margen
                         </th>
                         <th scope="col" className={`${thClass} ${numClass}`}>
+                          Precio neto (ARS)
+                        </th>
+                        <th scope="col" className={`${thClass} ${numClass}`}>
                           Precio final (ARS)
                         </th>
                       </>
                     ) : null}
-                    <th scope="col" className={thClass}>
-                      Avisos
-                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {productos.map((producto) => (
-                    <tr key={producto.codigo} className="hover:bg-paper-mid/50">
-                      <td className={tdClass}>
-                        {openSheet ? (
-                          <Link
-                            href={`/productos/${encodeURIComponent(producto.codigo)}`}
-                            className="underline decoration-gold underline-offset-4"
-                          >
-                            {producto.codigo}
-                          </Link>
-                        ) : (
-                          producto.codigo
-                        )}
-                      </td>
-                      <td className={tdClass}>
-                        {producto.modelo ? (
-                          <Link
-                            href={`/productos?q=${encodeURIComponent(producto.modelo)}`}
-                            title="Ver los productos de este modelo"
-                            className="underline decoration-gold underline-offset-4"
-                          >
-                            {producto.modelo}
-                          </Link>
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                      <td className={tdClass}>
-                        <div className="max-w-sm">
-                          <NombreProducto nombre={producto.nombre} />
-                        </div>
-                        {producto.es_kit || producto.revisar ? (
-                          <div className="mt-1 flex flex-wrap items-start gap-2">
-                            {producto.es_kit ? <Badge>Kit</Badge> : null}
-                            {producto.revisar ? (
-                              <MarcaRevisar
-                                motivos={producto.motivos_revisar}
-                              />
+                  {productos.map((producto) => {
+                    const modelo = modeloDe(producto);
+                    const cotizado = tieneCotizacion(producto);
+                    return (
+                      <tr
+                        key={producto.codigo}
+                        className="hover:bg-paper-mid/50"
+                      >
+                        <td className={tdClass}>
+                          <div className="max-w-sm">
+                            {openSheet ? (
+                              <Link
+                                href={`/productos/${encodeURIComponent(producto.codigo)}`}
+                                className="text-sm underline decoration-gold underline-offset-4"
+                              >
+                                {producto.codigo}
+                              </Link>
+                            ) : (
+                              <span className="text-sm">{producto.codigo}</span>
+                            )}
+                            <div className="mt-0.5">
+                              <NombreProducto nombre={producto.nombre} />
+                            </div>
+                            {producto.es_kit || producto.revisar ? (
+                              <div className="mt-1 flex flex-wrap items-start gap-2">
+                                {producto.es_kit ? <Badge>Kit</Badge> : null}
+                                {producto.revisar ? (
+                                  <MarcaRevisar
+                                    motivos={producto.motivos_revisar}
+                                  />
+                                ) : null}
+                              </div>
                             ) : null}
                           </div>
-                        ) : null}
-                      </td>
-                      <td className={tdClass}>{producto.categoria ?? "—"}</td>
-                      <td className={tdClass}>
-                        {lifecycleLabel(producto.estado_del_ciclo)}
-                      </td>
-                      {producto.costo_hoy_ars === null ? (
-                        <td className={`${tdClass} text-muted`} colSpan={2}>
-                          {costoFaltante(producto.avisos)}
                         </td>
-                      ) : (
-                        <>
+                        <td className={tdClass}>
+                          {modelo.nombre || modelo.codigo ? (
+                            <div className="max-w-48">
+                              {modelo.busqueda ? (
+                                <Link
+                                  href={`/productos?q=${encodeURIComponent(modelo.busqueda)}`}
+                                  title="Ver los productos de este modelo"
+                                  className="underline decoration-gold underline-offset-4"
+                                >
+                                  {modelo.nombre ?? modelo.codigo}
+                                </Link>
+                              ) : (
+                                modelo.nombre
+                              )}
+                              {modelo.codigo &&
+                              modelo.nombre !== modelo.codigo ? (
+                                <span className="block text-xs text-muted">
+                                  {modelo.codigo}
+                                </span>
+                              ) : null}
+                            </div>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                        {cotizado ? (
                           <td className={`${tdClass} ${numClass}`}>
-                            {formatArs(producto.costo_hoy_ars)}
+                            {formatArs(producto.costo_cotizado_ars)}
+                            <span className="block text-xs text-muted">
+                              {cotizacionCaption(
+                                producto.cotizacion_dolar,
+                                producto.cotizacion_fecha,
+                              )}
+                            </span>
                           </td>
-                          <td className={`${tdClass} ${numClass}`}>
-                            {formatUsd(producto.costo_hoy_usd)}
+                        ) : (
+                          <td className={`${tdClass} text-muted`}>
+                            {SIN_COTIZACION}
                           </td>
-                        </>
-                      )}
-                      {showPrices ? (
-                        <>
-                          <td className={`${tdClass} ${numClass}`}>
-                            {formatPercent(producto.margen_pct)}
+                        )}
+                        <td className={`${tdClass} ${numClass}`}>
+                          {cotizado
+                            ? formatUsd(producto.costo_cotizado_usd)
+                            : "—"}
+                        </td>
+                        {producto.costo_hoy_ars === null ? (
+                          <td className={`${tdClass} text-muted`} colSpan={2}>
+                            {costoFaltante(producto.avisos)}
                           </td>
-                          <td className={`${tdClass} ${numClass}`}>
-                            {formatArs(producto.precio_final_ars)}
-                          </td>
-                        </>
-                      ) : null}
-                      <td className={tdClass}>
-                        <Avisos avisos={restoDeAvisos(producto)} wrap />
-                      </td>
-                    </tr>
-                  ))}
+                        ) : (
+                          <>
+                            <td className={`${tdClass} ${numClass}`}>
+                              {formatArs(producto.costo_hoy_ars)}
+                            </td>
+                            <td className={`${tdClass} ${numClass}`}>
+                              {formatUsd(producto.costo_hoy_usd)}
+                            </td>
+                          </>
+                        )}
+                        <td className={tdClass}>{producto.categoria ?? "—"}</td>
+                        <td className={tdClass}>
+                          {lifecycleLabel(producto.estado_del_ciclo)}
+                        </td>
+                        <td className={tdClass}>
+                          <Avisos avisos={restoDeAvisos(producto)} wrap />
+                        </td>
+                        {showPrices ? (
+                          <>
+                            <td className={`${tdClass} ${numClass}`}>
+                              {formatPercent(producto.margen_pct)}
+                            </td>
+                            <td className={`${tdClass} ${numClass}`}>
+                              {formatArs(producto.precio_venta_ars)}
+                            </td>
+                            <td className={`${tdClass} ${numClass}`}>
+                              {formatArs(producto.precio_final_ars)}
+                            </td>
+                          </>
+                        ) : null}
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </TableWrap>

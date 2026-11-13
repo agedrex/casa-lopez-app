@@ -1,4 +1,6 @@
 // Display helpers of the product screens. Pure text: no money is calculated here.
+import { formatDate, formatRate } from "./format";
+import type { ProductoResumen } from "./types";
 
 /** Shown when a product has no cost and the API sent no warning to explain it. */
 export const COSTO_SIN_CAUSA = "No se pudo calcular el costo de hoy.";
@@ -30,4 +32,32 @@ export type LifecycleState = (typeof LIFECYCLE_STATES)[number];
 /** A state read from the URL: anything that is not one of the four is dropped instead of sent (the API would answer 422). */
 export function parseLifecycleState(value: string): LifecycleState | "" {
   return LIFECYCLE_STATES.find((state) => state === value) ?? "";
+}
+
+/** Shown in the quoted-cost column of a product with no saved quote. */
+export const SIN_COTIZACION = "Sin cotización";
+
+/** Whether the API sent a saved quote for the product (older APIs do not send the fields at all). */
+export function tieneCotizacion(
+  producto: Pick<ProductoResumen, "costo_cotizado_ars" | "cotizacion_fecha">,
+): boolean {
+  return Boolean(producto.costo_cotizado_ars && producto.cotizacion_fecha);
+}
+
+/** "USD 1.545 · 12/10/2026": the dollar of the quote and its date. Text only; a whole dollar drops the ",00". */
+export function cotizacionCaption(
+  dolar: string | null | undefined,
+  fecha: string | null | undefined,
+): string {
+  const rate = formatRate(dolar).replace(/,00$/, "");
+  return `USD ${rate} · ${formatDate(fecha)}`;
+}
+
+/** The model of a product: its unique code (`MOD-nnnn`) and name when the API sends them, else the Excel's model code. */
+export function modeloDe(
+  producto: Pick<ProductoResumen, "modelo" | "modelo_codigo" | "modelo_nombre">,
+): { codigo: string | null; nombre: string | null; busqueda: string | null } {
+  const codigo = producto.modelo_codigo ?? null;
+  const nombre = producto.modelo_nombre ?? producto.modelo ?? null;
+  return { codigo, nombre, busqueda: codigo ?? producto.modelo ?? null };
 }

@@ -508,6 +508,15 @@ class ProductoResumen(Salida):
     avisos: list[str]
     revisar: bool
     motivos_revisar: list[str]
+    # Model of the product (`modelo` stays as it was: the same code as `modelo_codigo`).
+    modelo_codigo: str | None = None
+    modelo_nombre: str | None = None
+    # Cost of the NEWEST SAVED quote with the dollar of its own date (the snapshot, never today's dollar). All None when
+    # the product was never quoted: the screen then shows `costo_hoy_*` and says so.
+    cotizacion_fecha: date | None = None
+    cotizacion_dolar: Decimal | None = None
+    costo_cotizado_ars: Decimal | None = None
+    costo_cotizado_usd: Decimal | None = None
     # Sale price columns of the grid: None without a saved price, and always None for the taller role.
     precio_venta_ars: Decimal | None = None
     margen_pct: Decimal | None = None

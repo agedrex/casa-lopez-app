@@ -113,7 +113,7 @@ test("admin and taller reach /formularios and work on it; gerente does not (S8)"
 });
 
 test("opening /formularios does not open the other taller / gerente paths", () => {
-  assert.equal(canAccessPath("taller", "/fabricacion"), false);
+  assert.equal(canAccessPath("taller", "/talleres"), false);
   assert.equal(canAccessPath("taller", "/costos-fijos"), false);
   assert.equal(canAccessPath("gerente", "/materiales"), false);
   assert.equal(canAccessPath("gerente", "/formulariosx"), false);

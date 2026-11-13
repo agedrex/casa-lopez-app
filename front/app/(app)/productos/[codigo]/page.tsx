@@ -82,7 +82,7 @@ export default async function FichaPage({
     // client-side swap here because the page already sits inside a Suspense boundary.
     return (
       <>
-        <BackLink />
+        <BackLink taller={isTallerOnly(user.role)} />
         {result.status === 404 ? (
           <Notice tone="info" title="No encontramos ese producto">
             Revise el código o vuelva al listado de productos.
@@ -97,7 +97,7 @@ export default async function FichaPage({
   const ficha = result.data;
   return (
     <>
-      <BackLink />
+      <BackLink taller={isTallerOnly(user.role)} />
       <PageHeader
         eyebrow={`Producto ${ficha.codigo}`}
         title={collapseSpaces(ficha.nombre)}
@@ -114,7 +114,7 @@ export default async function FichaPage({
       </p>
 
       <div className="space-y-10">
-        <CostToday ficha={ficha} />
+        {isTallerOnly(user.role) ? null : <CostToday ficha={ficha} />}
         {isTallerOnly(user.role) ? null : (
           <PrecioBlock
             codigo={ficha.codigo}
@@ -126,7 +126,7 @@ export default async function FichaPage({
         {canWrite(user.role) && ficha.modelo ? (
           <ModeloBlock codigo={ficha.modelo} />
         ) : (
-          <Recipe ficha={ficha} />
+          <Recipe ficha={ficha} showMoney={!isTallerOnly(user.role)} />
         )}
         {seesValidatedFormulario(user.role) ? (
           <FormularioValidado codigo={ficha.codigo} />
@@ -147,8 +147,12 @@ export default async function FichaPage({
             {isTallerOnly(user.role) ? null : (
               <PriceHistory codigo={ficha.codigo} />
             )}
-            <StoredQuotes ficha={ficha} />
-            <Comparison ficha={ficha} />
+            {isTallerOnly(user.role) ? null : (
+              <>
+                <StoredQuotes ficha={ficha} />
+                <Comparison ficha={ficha} />
+              </>
+            )}
             <Actions ficha={ficha} writer={canWrite(user.role)} />
           </div>
         </details>
@@ -290,14 +294,14 @@ async function Actions({ ficha, writer }: { ficha: Ficha; writer: boolean }) {
   );
 }
 
-function BackLink() {
+function BackLink({ taller }: { taller: boolean }) {
   return (
     <p className="mb-6 text-sm">
       <Link
-        href="/productos"
+        href={taller ? "/fabricacion" : "/productos"}
         className="text-muted underline decoration-gold underline-offset-4"
       >
-        ← Productos
+        {taller ? "← Lotes" : "← Productos"}
       </Link>
     </p>
   );
@@ -463,7 +467,13 @@ function CostToday({ ficha }: { ficha: Ficha }) {
   );
 }
 
-function Recipe({ ficha }: { ficha: Ficha }) {
+function Recipe({
+  ficha,
+  showMoney = true,
+}: {
+  ficha: Ficha;
+  showMoney?: boolean;
+}) {
   return (
     <section>
       <SectionTitle>Receta</SectionTitle>
@@ -500,9 +510,11 @@ function Recipe({ ficha }: { ficha: Ficha }) {
           </table>
         </TableWrap>
       )}
-      <p className="mt-3 text-sm text-muted">
-        Confección estimada: {formatArs(ficha.confeccion_estimada_ars)}
-      </p>
+      {showMoney ? (
+        <p className="mt-3 text-sm text-muted">
+          Confección estimada: {formatArs(ficha.confeccion_estimada_ars)}
+        </p>
+      ) : null}
     </section>
   );
 }

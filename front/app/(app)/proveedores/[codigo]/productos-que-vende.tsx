@@ -129,6 +129,9 @@ export function ProductosQueVende({
         extras: [
           formatMoney(producto.precio_por_unidad, producto.moneda),
           formatDate(producto.vigente_desde),
+          producto.precio_anterior
+            ? formatMoney(producto.precio_anterior, producto.moneda)
+            : "—",
         ],
       })),
     [productos],
@@ -146,7 +149,11 @@ export function ProductosQueVende({
       label="Productos que vende el proveedor"
       rowHeader="Código"
       columns={columns}
-      extraHeaders={["Precio por unidad", "Vigente desde"]}
+      extraHeaders={[
+        "Precio por unidad",
+        "Vigente desde",
+        "Precio referencial anterior",
+      ]}
       rows={rows}
       noun={NOUN}
       allowNew

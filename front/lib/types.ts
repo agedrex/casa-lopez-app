@@ -21,6 +21,16 @@ export type ProductoResumen = {
   margen_pct: string | null;
   /** Net price plus the active taxes. */
   precio_final_ars: string | null;
+  // Fields added with the grid reorder (demo-staging-taller-grilla S5/S6). Optional: an older API does not send them.
+  /** Code of the model (`MOD-nnnn`, unique), unlike `modelo`, which is the Excel's model code. */
+  modelo_codigo?: string | null;
+  modelo_nombre?: string | null;
+  /** Date and dollar of the latest saved quote of the product; `null` without a quote. */
+  cotizacion_fecha?: string | null;
+  cotizacion_dolar?: string | null;
+  /** Total of that quote, as the API calculated it (in pesos and in dollars). */
+  costo_cotizado_ars?: string | null;
+  costo_cotizado_usd?: string | null;
 };
 
 export type LineaReceta = {

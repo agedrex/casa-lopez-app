@@ -79,8 +79,8 @@ export const NAV_ITEMS: NavGroup[] = [
 const MOBILE_TAB_HREFS: Record<Role, readonly string[]> = {
   admin: ["/admin/panel", "/productos", "/materiales", "/fabricacion"],
   gerente: ["/productos", "/escenarios"],
-  // Three tabs around the "+" button; Voz stays one tap away in that button's quick actions.
-  taller: ["/corte", "/cueros", "/productos"],
+  // Lotes (the single entry) and Formularios around the "+" button; Voz stays one tap away in that button's quick actions.
+  taller: ["/fabricacion", "/formularios"],
 };
 
 // Menus of the restricted roles. They match the paths of ROLE_ACCESS in permissions.ts.
@@ -99,25 +99,17 @@ const GERENTE_NAV: NavGroup[] = [
 ];
 
 // Voz is not listed: on desktop it is the microphone button of the header, on mobile the "+" quick action.
+// One entry (Lotes) and the consumption sheet to practice (Formularios). The product sheet is opened from a lot.
 const TALLER_NAV: NavGroup[] = [
   {
     title: "Producción",
     items: [
-      { href: "/corte", label: "Corte" },
-      { href: "/cueros", label: "Cueros" },
+      { href: "/fabricacion", label: "Lotes" },
       {
         href: "/formularios",
         label: "Formularios",
         icon: "/costos-fijos",
       },
-    ],
-  },
-  {
-    title: "Cotizar",
-    items: [
-      { href: "/productos", label: "Productos" },
-      { href: "/productos/modelos", label: "Modelos" },
-      { href: "/materiales", label: "Materiales y precios" },
     ],
   },
 ];
