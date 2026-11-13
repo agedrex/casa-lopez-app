@@ -23,7 +23,7 @@ COMPLETADO form; `formulario_consumo.taller_id` is informative only.
 HTTP (routes in api.py; errors are `{"detail": <Spanish message>}`: 403 not allowed, 404 missing or not visible,
 409 invalid transition or immutable form, 422 invalid data):
     POST /formularios                       admin   {articulo, taller?, producto?, nota?} -> BORRADOR with the preloaded rows
-    GET  /formularios?q=&estado=&producto=  admin, taller (taller: only ENVIADO / COMPLETADO); producto = PRD-NNNN
+    GET  /formularios?q=&estado=&producto=&modelo=  admin, taller (taller: only ENVIADO / COMPLETADO); producto = PRD-NNNN, modelo = MOD-NNNN
     GET  /formularios/{codigo}              same visibility; 404 otherwise
     PUT  /formularios/{codigo}              admin or taller; {articulo, nota?, lineas: [{seccion, nombre, cantidad?, comentario?}]}
                                             replaces articulo / nota and the FULL set of rows (list order = row order
@@ -45,11 +45,11 @@ from sqlalchemy.orm import Session
 from backend.auth import ADMIN, TALLER
 from backend.costeo import MATERIAL_STAGES
 from backend.models import (
-    FORM_SECTIONS, FORM_STATES, Etapa, FormularioConsumo, FormularioConsumoLinea, Material, Modelo, ModeloInsumo, Producto,
+    FORM_SECTIONS, FORM_STATES, Categoria, Etapa, FormularioConsumo, FormularioConsumoLinea, Material, Modelo, ModeloInsumo, Producto,
     Taller,
 )
 from backend.servicios import (
-    Conflicto, DatosInvalidos, NoEncontrado, _insertar, _patron, _por_codigo, _siguiente_numero, _texto_o_nada,
+    TAMANOS, Conflicto, DatosInvalidos, NoEncontrado, _insertar, _patron, _por_codigo, _siguiente_numero, _texto_o_nada,
 )
 
 BORRADOR, ENVIADO, COMPLETADO, VALIDADO = FORM_STATES
@@ -215,10 +215,12 @@ def _cargar(session: Session, codigo: str, roles: frozenset[str], *, bloquear: b
 
 def listar_formularios(
     session: Session, *, q: str | None, estado: str | None, roles: frozenset[str], producto: str | None = None,
+    modelo: str | None = None,
 ) -> list[dict]:
     """Newest first. Every word of `q` must appear in the code, the article, the product code or the workshop name.
 
     `producto` (a PRD-NNNN code) keeps only the forms linked to that product: the product sheet uses it to show its validated form.
+    `modelo` (a MOD-NNNN code) does the same for a model: its sheet shows the state of the form the workshop got.
     """
     if estado is not None and estado not in FORM_STATES:
         raise DatosInvalidos(f"El estado tiene que ser uno de: {', '.join(FORM_STATES)}.")
@@ -229,6 +231,8 @@ def listar_formularios(
         consulta = consulta.where(FormularioConsumo.estado == estado)
     if producto:
         consulta = consulta.where(Producto.codigo == producto)
+    if modelo:
+        consulta = consulta.where(Modelo.codigo == modelo)
     for palabra in (q or "").split():
         patron = _patron(palabra)
         consulta = consulta.where(or_(*(columna.ilike(patron, escape="\\") for columna in (
@@ -280,20 +284,32 @@ def normalizar_nombre(nombre: str | None) -> str:
     return limpio
 
 
-def alta_rapida(session: Session, *, nombre: str, quien: str) -> dict:
-    """New model from its name alone, with its consumption form already sent to the workshop, in one transaction.
+def alta_rapida(
+    session: Session, *, nombre: str, categoria: str, quien: str, tamano: str | None = None, nota: str | None = None,
+) -> dict:
+    """New model from its name, category and notes (no consumption), with its consumption form already sent to the workshop,
+    in one transaction. This is the only way the app creates a model.
 
-    The model is what gets designed and measured; the product (model + leather + colour) is created after validation.
+    The model is what gets designed and measured: the workshop fills the form, the admin validates it and the measures and
+    supplies become the recipe of the model. The product (model + leather + colour) is created after validation. The notes are
+    kept on the model and copied to the form, which is where the workshop reads them (the workshop cannot edit them).
     """
     nombre = normalizar_nombre(nombre)
     if any(existente.casefold() == nombre.casefold() for existente in session.scalars(select(Modelo.nombre_del_modelo))):
         raise Conflicto(f"Ya hay un modelo llamado {nombre}: agregá algo que lo distinga.")
-    # SUPUESTO: validar. Category and size stay empty until someone completes them.
+    fila_categoria = session.scalar(select(Categoria).where(Categoria.nombre == categoria))
+    if fila_categoria is None:
+        raise DatosInvalidos(f"No existe la categoría {categoria}.")
+    if tamano is not None and tamano not in TAMANOS:
+        raise DatosInvalidos(f"El tamaño tiene que ser uno de: {', '.join(TAMANOS)}.")
+    nota = _texto_o_nada(nota)
+    # SUPUESTO: validar. Consumptions stay NULL (missing data) until the validated form fills them.
     modelo = Modelo(
-        codigo=f"MOD-{_siguiente_numero(session, Modelo.codigo, 'MOD'):04d}", nombre_del_modelo=nombre, validado=False)
+        codigo=f"MOD-{_siguiente_numero(session, Modelo.codigo, 'MOD'):04d}", nombre_del_modelo=nombre, validado=False,
+        categoria_id=fila_categoria.id, tamano=tamano, nota=nota)
     _insertar(session, modelo, "Ya hay un modelo con ese nombre, o no se pudo asignar el código; intentá de nuevo.")
     fila = _nuevo(
-        session, articulo=nombre, producto_id=None, taller_id=None, nota=None, quien=quien, lineas=lineas_precargadas())
+        session, articulo=nombre, producto_id=None, taller_id=None, nota=nota, quien=quien, lineas=lineas_precargadas())
     fila.modelo_id, fila.estado, fila.enviado_en = modelo.id, ENVIADO, datetime.now(timezone.utc)
     session.commit()
     return {"modelo": modelo.codigo, "formulario": fila.codigo, "nombre": nombre}

@@ -681,9 +681,9 @@ def test_names_are_normalized_to_single_spaces_and_capitals_and_an_empty_one_is_
             formulario.normalizar_nombre(vacio)
 
 
-def alta(api, nombre="cartera  lucía"):
+def alta(api, nombre="cartera  lucía", **extra):
     como("admin", "admin-1")
-    return api.post("/productos/nuevo", json={"nombre": nombre})
+    return api.post("/productos/nuevo", json={"nombre": nombre, "categoria": "Billeteras", **extra})
 
 
 def test_pg_the_quick_create_makes_a_model_and_a_form_already_sent_but_no_product(api):
@@ -711,7 +711,7 @@ def test_pg_the_quick_create_refuses_a_repeated_name_and_leaves_nothing_behind(a
 def test_pg_only_the_admin_can_use_the_quick_create(api):
     for rol in ("taller", "gerente"):
         como(rol)
-        assert api.post("/productos/nuevo", json={"nombre": "X"}).status_code == 403
+        assert api.post("/productos/nuevo", json={"nombre": "X", "categoria": "Billeteras"}).status_code == 403
 
 
 def test_pg_validating_copies_the_measures_to_the_model_once(api):
@@ -732,3 +732,65 @@ def test_pg_validating_copies_the_measures_to_the_model_once(api):
     assert (D(modelo["cuero_m2_por_unidad"]), D(modelo["flex_m2_por_unidad"])) == (D("0.5"), D("0.25"))
     assert modelo["goma_eva_m2_por_unidad"] is None  # blank row = missing data, not "no lleva"
     assert (modelo["validado"], modelo["origen_de_los_consumos"]) == (True, "MEDIDO")
+
+
+# --- Nuevo modelo: nombre + categoría + notas, y la hoja va al taller (S3 of odd/tasks/modelos-lotes-proveedores-nov.md) ---
+
+def test_pg_a_new_model_takes_name_category_size_and_notes_and_asks_for_no_consumption(api):
+    respuesta = alta(api, "Zz Cartera notas", tamano="MEDIANO", nota="  Medida 24 x 18, cierre arriba  ")
+    assert respuesta.status_code == 201, respuesta.text
+    datos = respuesta.json()
+    modelo = api.get(f"/modelos/{datos['modelo']}").json()
+    assert (modelo["categoria"], modelo["tamano"], modelo["nota"], modelo["validado"]) == (
+        "Billeteras", "MEDIANO", "Medida 24 x 18, cierre arriba", False)
+    assert modelo["cuero_m2_por_unidad"] is None and modelo["origen_de_los_consumos"] is None  # nothing measured yet
+
+
+def test_pg_the_form_the_workshop_gets_carries_the_model_name_and_its_notes(api):
+    datos = alta(api, "Zz Cartera taller", nota="Forro de potro, sin flex").json()
+    como("taller")
+    form = api.get(f"/formularios/{datos['formulario']}").json()
+    assert (form["articulo"], form["nota"], form["estado"], form["modelo"]) == (
+        "ZZ CARTERA TALLER", "Forro de potro, sin flex", "ENVIADO", datos["modelo"])
+    # the taller completes the rows and cannot touch the notes
+    assert api.put(f"/formularios/{datos['formulario']}", json=cuerpo_de(form, nota="otra")).status_code == 403
+    assert api.put(f"/formularios/{datos['formulario']}", json=cuerpo_de(form)).status_code == 200
+
+
+def test_pg_a_new_model_without_notes_has_no_notes_in_the_form(api):
+    datos = alta(api, "Zz Sin notas").json()
+    assert api.get(f"/formularios/{datos['formulario']}").json()["nota"] is None
+    assert api.get(f"/modelos/{datos['modelo']}").json()["nota"] is None
+
+
+def test_pg_a_new_model_needs_a_known_category_and_a_valid_size_and_leaves_nothing_behind(api):
+    como("admin", "admin-1")
+    antes = (len(api.get("/modelos").json()), len(api.get("/formularios").json()))
+    assert api.post("/productos/nuevo", json={"nombre": "Zz Sin categoría"}).status_code == 422
+    assert alta(api, "Zz Categoría rara", categoria="No existe").status_code == 422
+    assert alta(api, "Zz Tamaño raro", tamano="ENORME").status_code == 422
+    assert (len(api.get("/modelos").json()), len(api.get("/formularios").json())) == antes
+
+
+def test_pg_the_model_sheet_shows_its_form_and_its_state_follows_the_workflow(api):
+    datos = alta(api, "Zz Cartera ficha").json()
+    codigo = datos["formulario"]
+    de_modelo = api.get("/formularios", params={"modelo": datos["modelo"]}).json()
+    assert [(f["codigo"], f["estado"]) for f in de_modelo] == [(codigo, "ENVIADO")]
+    como("taller")
+    form = api.get(f"/formularios/{codigo}").json()
+    assert api.put(f"/formularios/{codigo}", json=cuerpo_de(form)).status_code == 200
+    assert api.post(f"/formularios/{codigo}/completar").status_code == 200
+    como("admin", "admin-1")
+    assert api.get("/formularios", params={"modelo": datos["modelo"]}).json()[0]["estado"] == "COMPLETADO"
+    assert api.post(f"/formularios/{codigo}/validar").status_code == 200
+    assert api.get("/formularios", params={"modelo": datos["modelo"]}).json()[0]["estado"] == "VALIDADO"
+    assert api.get("/formularios", params={"modelo": "MOD-9999"}).json() == []
+    assert len(api.get("/formularios").json()) >= 1  # the filter is optional
+
+
+def test_pg_old_models_with_consumptions_still_work(api):
+    como("admin", "admin-1")
+    viejo = api.get("/modelos", params={"limit": 1}).json()[0]
+    assert viejo["cuero_m2_por_unidad"] is not None and viejo["validado"] is False
+    assert api.get("/formularios", params={"modelo": viejo["codigo"]}).json() == []  # no sheet, no error

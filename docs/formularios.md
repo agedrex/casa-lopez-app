@@ -4,12 +4,20 @@ La planilla de papel de consumos y herrajes de cada artículo nuevo, hecha digit
 
 Código: `backend/src/backend/formulario.py` (reglas y API, el docstring del módulo es la referencia) y, en el frontend, `front/components/formulario-consumos.tsx` (la hoja), `front/app/(app)/formularios/` (pantallas y acciones) y `front/lib/formulario.ts` (reglas puras).
 
+## Cómo nace: el modelo nuevo
+
+Lo que llega al taller son **modelos**, no productos. Crear un modelo es una sola cosa (pantalla "Nuevo modelo", `/productos/modelos/nuevo`; `/productos/nuevo` muestra el mismo formulario como atajo): **nombre**, **categoría**, tamaño (opcional) y **notas** (opcional, `modelo.nota`). No se piden consumos. `POST /productos/nuevo` (admin) crea en una transacción el modelo (`validado = false`, consumos en NULL) y su formulario ya `ENVIADO` con ese `modelo_id`; el nombre va a `articulo` (en MAYÚSCULAS) y las notas se copian a la nota del formulario, que el taller lee arriba de la hoja y no puede editar. El taller completa las filas y el admin valida: ahí las medidas y los insumos pasan al modelo y quedan como su receta. Después se crea el producto (cuero y color).
+
+La ficha del modelo (`/productos/modelos/<código>`, admin) lista sus formularios con el estado (`GET /formularios?modelo=MOD-NNNN`). Los modelos viejos (del Excel) siguen con sus consumos y no tienen formulario. SUPUESTO (validar): la categoría es obligatoria al crear; si el taller necesita otro dato del modelo, va en las notas.
+
+El alta completa con todos los consumos (`POST /modelos`) sigue en la API pero ya no tiene pantalla.
+
 ## Pantallas
 
 | Ruta | Quién | Qué hace |
 |---|---|---|
 | `/formularios` | admin, taller | Lista con búsqueda (`q`: código, artículo, producto o taller) y filtro de estado. El taller solo ve `ENVIADO` y `COMPLETADO`. El admin abre "Nuevo formulario": artículo, taller (opcional) y código de producto (opcional). |
-| `/formularios/<código>` | igual | La hoja con ARTÍCULO y las tablas CONSUMOS (`M2`) y HERRAJES (`CANTIDAD`), cada una con `COMENTARIOS / MODIFICACIONES`. Celdas editables, "Agregar fila" y "×" por fila; ninguna fila es obligatoria. |
+| `/formularios/<código>` | igual | La hoja con ARTÍCULO, las notas del modelo (si las hay) y las tablas CONSUMOS (`M2`) y HERRAJES (`CANTIDAD`), cada una con `COMENTARIOS / MODIFICACIONES`. Celdas editables, "Agregar fila" y "×" por fila; ninguna fila es obligatoria. |
 | Ficha del producto | admin | Si el producto tiene un formulario `VALIDADO`, la sección "Formulario de consumos" lo muestra de solo lectura, sin las filas vacías, con un link al formulario. |
 
 Menú: "Formularios" en Producción para admin y taller. Al taller el formulario no le muestra costos, y el código del producto aparece como texto, sin link a la ficha.
