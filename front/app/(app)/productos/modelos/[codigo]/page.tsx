@@ -8,10 +8,12 @@ import {
   PageHeader,
   SectionTitle,
 } from "@/components/ui";
-import { apiGet } from "@/lib/api";
+import { type ApiResult, apiGet } from "@/lib/api";
+import { formatDate } from "@/lib/format";
+import { estadoLabel, estadoTone } from "@/lib/formulario";
 import { originLabel, sizeLabel } from "@/lib/modelos";
 import { requireRole } from "@/lib/session";
-import type { ModeloDetalle } from "@/lib/types";
+import type { FormularioResumen, ModeloDetalle } from "@/lib/types";
 import { ConsumosTable, EditarConsumos, loadForros } from "../modelo-consumos";
 import { ValidadoForm } from "./modelo-forms";
 
@@ -53,9 +55,12 @@ export default async function ModeloPage({
       </>
     );
   }
-  const [result, forros] = await Promise.all([
+  const [result, forros, formularios] = await Promise.all([
     apiGet<ModeloDetalle>(`/modelos/${encodeURIComponent(code)}`),
     loadForros(),
+    apiGet<FormularioResumen[]>(
+      `/formularios?modelo=${encodeURIComponent(code)}`,
+    ),
   ]);
   if (!result.ok) {
     return (
@@ -134,6 +139,10 @@ export default async function ModeloPage({
           </Card>
         </section>
         <section>
+          <SectionTitle>Formulario de consumos</SectionTitle>
+          <FormulariosDelModelo formularios={formularios} />
+        </section>
+        <section>
           <SectionTitle>Consumos por unidad</SectionTitle>
           <ConsumosTable modelo={modelo} />
         </section>
@@ -149,6 +158,56 @@ export default async function ModeloPage({
         </section>
       </div>
     </>
+  );
+}
+
+/** The sheets the workshop got for this model, newest first, with where each one stands. */
+function FormulariosDelModelo({
+  formularios,
+}: {
+  formularios: ApiResult<FormularioResumen[]>;
+}) {
+  if (!formularios.ok) return <ErrorNotice message={formularios.message} />;
+  if (formularios.data.length === 0) {
+    return (
+      <Card>
+        <p className="text-sm text-muted">
+          Este modelo no tiene hoja de consumos: sus consumos se cargaron a mano
+          o vienen del Excel viejo.
+        </p>
+      </Card>
+    );
+  }
+  return (
+    <Card>
+      <ul className="divide-y divide-line text-sm">
+        {formularios.data.map((formulario) => (
+          <li
+            key={formulario.codigo}
+            className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2 first:pt-0 last:pb-0"
+          >
+            <Link
+              href={`/formularios/${encodeURIComponent(formulario.codigo)}`}
+              className="font-medium underline decoration-gold underline-offset-4"
+            >
+              {formulario.codigo}
+            </Link>
+            <Badge tone={estadoTone(formulario.estado)}>
+              {estadoLabel(formulario.estado)}
+            </Badge>
+            <span className="text-muted">
+              {formulario.validado_en
+                ? `Validado ${formatDate(formulario.validado_en)}`
+                : formulario.completado_en
+                  ? `Completado ${formatDate(formulario.completado_en)}`
+                  : formulario.enviado_en
+                    ? `Enviado al taller ${formatDate(formulario.enviado_en)}`
+                    : `Creado ${formatDate(formulario.created_at)}`}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }
 

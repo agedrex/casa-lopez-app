@@ -7,7 +7,7 @@ import { todayIso } from "@/lib/format";
 import { canWrite } from "@/lib/permissions";
 import { requireSession } from "@/lib/session";
 import type { Catalogos, Material, Modelo } from "@/lib/types";
-import { AltaRapidaForm } from "./alta-rapida-form";
+import { ModeloNuevoForm } from "../modelos/modelo-nuevo-form";
 import { ProductoForm } from "./producto-form";
 
 export const metadata: Metadata = { title: "Nuevo producto" };
@@ -35,7 +35,7 @@ export default async function NuevoProductoPage({
         description={
           modeloInicial
             ? "Elija el cuero y el color: las medidas ya están validadas en el modelo."
-            : "Escriba solo el nombre del modelo: el taller recibe la hoja para tomar las medidas y usted la valida. Después se crea el producto (cuero y color)."
+            : "Escriba el nombre, la categoría y las notas del modelo: el taller recibe la hoja para cargar los consumos y usted la valida. Después se crea el producto (cuero y color)."
         }
       />
     </>
@@ -54,8 +54,12 @@ export default async function NuevoProductoPage({
     apiGet<Material[]>("/materiales"),
     apiGet<Catalogos>("/catalogos"),
   ]);
-  if (!modelos.ok || !materiales.ok) {
-    const failure = !modelos.ok ? modelos : materiales;
+  if (!modelos.ok || !materiales.ok || !catalogos.ok) {
+    const failure = !modelos.ok
+      ? modelos
+      : !materiales.ok
+        ? materiales
+        : catalogos;
     return (
       <>
         {header}
@@ -68,7 +72,7 @@ export default async function NuevoProductoPage({
     <>
       {header}
       <Card>
-        <AltaRapidaForm />
+        <ModeloNuevoForm categorias={catalogos.data.categorias} />
       </Card>
       <details className="mt-6" open={Boolean(modeloInicial)}>
         <summary className="cursor-pointer text-sm text-muted">
@@ -87,7 +91,7 @@ export default async function NuevoProductoPage({
                 codigo: m.codigo,
                 label: `${m.nombre} (${m.codigo})`,
               }))}
-            colores={catalogos.ok ? catalogos.data.colores : []}
+            colores={catalogos.data.colores}
             today={todayIso()}
           />
         </Card>

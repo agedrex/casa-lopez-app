@@ -14,7 +14,7 @@ Branch: feature/modelos-lotes-proveedores. Delivery: ask-on-risk. Tests: pytest 
 ## Tasks
 - T1 S1 — inline — done (sin commit aún)
 - T2 S2 — inline — done
-- T3 S3 — pending
+- T3 S3 — delegated (worker, rama feature/modelo-taller) — done (pytest ok con Postgres local, lint ok, build ok; pantalla sin probar en navegador)
 - T4 S4 — pending
 - T5 S5 — pending (requiere tabla nueva + migración)
 - T6 S6 — delegated (worker) — done (pytest 2261 ok, lint ok, build ok; grilla sin probar en navegador)
@@ -28,3 +28,4 @@ Estrategia: stacked-to-main (elegida 2026-11-13). Slice 1 = d1dcae6 + a0a30e4 (T
 ## Log
 L1 (2026-11-13) Pedido original del usuario: "Cambios que quiero que hagamos: ..." (ver S1-S7).
 L2 (2026-11-13) Usuario: "Una cosa más que quisiera ... es que el gerente solo pueda ver productos, modelos y todo lo que es el simulador de escenarios". Usuario confirmó ("si") grilla de Productos editable con Margen % y Precio final.
+L3 (2026-11-13) S3: un solo alta de modelo (`POST /productos/nuevo`: nombre + categoría + tamaño + notas, sin consumos) crea el modelo y su formulario `ENVIADO`; la nota se copia a la hoja del taller. La ficha del modelo lista sus formularios (`GET /formularios?modelo=`). Sin migración: `modelo.nota` ya existía. `POST /modelos` (con consumos) queda en la API sin pantalla. SUPUESTO: validar que la categoría sea obligatoria.
