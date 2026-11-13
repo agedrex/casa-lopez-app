@@ -18,6 +18,15 @@ HILO_CEMENTO = "MAT-HC01"
 
 
 @dataclass(frozen=True)
+class InsumoModelo:
+    """A supply of the model: `cantidad` per unit in the consumption unit of `material`, costed in the stage `etapa`."""
+
+    material: str
+    etapa: str
+    cantidad: Decimal
+
+
+@dataclass(frozen=True)
 class ModeloReceta:
     cuero_m2: Decimal | None
     forro_codigo: str | None
@@ -27,6 +36,7 @@ class ModeloReceta:
     herrajes_usd: Decimal | None
     hilo_cemento: Decimal | None
     confeccion_estimada: Decimal | None
+    insumos: tuple[InsumoModelo, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -66,9 +76,16 @@ def _positive(value: Decimal | None) -> bool:
 
 
 def generar_receta(modelo: ModeloReceta, producto: ProductoReceta, extras: list[Extra]) -> Receta:
-    """Model lines first, then the product's extra lines. Zero or missing consumption means "no lleva"."""
+    """Model lines first, then the model's supplies, then the product's extra lines. Zero or missing consumption means "no lleva".
+
+    Supplies in HERRAJES replace the model's `herrajes_usd` and supplies in HILO_CEMENTO replace its `hilo_cemento`
+    (never both, so nothing is counted twice). A model without supplies gets exactly the lines it always got.
+    """
     lineas: list[LineaReceta] = []
     avisos: list[str] = []
+    insumos = [i for i in modelo.insumos if _positive(i.cantidad)]
+    # Only these two stages of the model are a stand-in for a detailed list of supplies, so only they can be replaced.
+    reemplazadas = {i.etapa for i in insumos} & {"HERRAJES", "HILO_CEMENTO"}
 
     if _positive(modelo.cuero_m2):
         if producto.cuero_codigo:
@@ -86,10 +103,13 @@ def generar_receta(modelo: ModeloReceta, producto: ProductoReceta, extras: list[
         ("HERRAJES", HERRAJES, modelo.herrajes_usd),
         ("HILO_CEMENTO", HILO_CEMENTO, modelo.hilo_cemento),
     ):
-        if _positive(consumo):
+        if _positive(consumo) and etapa not in reemplazadas:
             lineas.append(LineaReceta(etapa, material, None, consumo))
-    if not _positive(modelo.hilo_cemento) and not producto.es_kit:
+    if not _positive(modelo.hilo_cemento) and "HILO_CEMENTO" not in reemplazadas and not producto.es_kit:
         avisos.append("Falta hilo y cemento")
+
+    # Same price lookup, currency and dollar rules as every other line: cotizar_producto prices them (color None = generic price).
+    lineas.extend(LineaReceta(i.etapa, i.material, None, i.cantidad) for i in insumos)
 
     lineas.extend(LineaReceta(e.etapa, e.material, e.color, e.consumo) for e in extras)
     return Receta(lineas, avisos, producto.quien, modelo.confeccion_estimada or ZERO)

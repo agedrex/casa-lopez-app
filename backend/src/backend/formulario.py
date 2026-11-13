@@ -11,6 +11,8 @@ State machine (`ACCIONES`):
     devolver   admin    COMPLETADO -> ENVIADO               (needs a comment, stored in comentario_revision)
     validar    admin    COMPLETADO -> VALIDADO              (sets validado_por / validado_en)
     VALIDADO is immutable: any change is a 409 and the way to change it is `duplicar`.
+    Validating also saves the supplies of the sheet (HERRAJE rows and a few CONSUMO rows with a quantity) as `modelo_insumo`
+    of its model when a costable material has the same name, and answers the names that matched none in `sin_material`.
 
 Who edits what (`comprobar_edicion`): the admin edits articulo, nota and the rows while BORRADOR / ENVIADO / COMPLETADO.
 A `taller` user edits ONLY the rows (add, remove, rename, quantities, comments) and ONLY while ENVIADO. Who sees what
@@ -33,6 +35,7 @@ HTTP (routes in api.py; errors are `{"detail": <Spanish message>}`: 403 not allo
     POST /formularios/{codigo}/duplicar     admin   {articulo} -> new BORRADOR copying the rows (names, quantities, comments)
 """
 
+import unicodedata
 from datetime import datetime, timezone
 from decimal import Decimal
 
@@ -40,7 +43,11 @@ from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
 from backend.auth import ADMIN, GERENTE, TALLER
-from backend.models import FORM_SECTIONS, FORM_STATES, FormularioConsumo, FormularioConsumoLinea, Modelo, Producto, Taller
+from backend.costeo import MATERIAL_STAGES
+from backend.models import (
+    FORM_SECTIONS, FORM_STATES, Etapa, FormularioConsumo, FormularioConsumoLinea, Material, Modelo, ModeloInsumo, Producto,
+    Taller,
+)
 from backend.servicios import (
     Conflicto, DatosInvalidos, NoEncontrado, _insertar, _patron, _por_codigo, _siguiente_numero, _texto_o_nada,
 )
@@ -292,20 +299,93 @@ def alta_rapida(session: Session, *, nombre: str, quien: str) -> dict:
     return {"modelo": modelo.codigo, "formulario": fila.codigo, "nombre": nombre}
 
 
-def _aplicar_medidas(session: Session, fila: FormularioConsumo) -> None:
-    """On validation, copy the measured m2 to the sheet's model, unless that model was already validated by hand."""
+# Rows of the CONSUMO table that are supplies bought by the unit (the rest of the table is leather, lining, hours...).
+# Every row of the HERRAJE table is a supply. SUPUESTO: validar con Gerardo (the list and the name match are our convention).
+INSUMOS_DE_CONSUMO = ("FRISELINA", "CARTÓN FIBRA", "CARTULINA", "MOIRE")
+
+
+def normalizar_para_comparar(nombre: str | None) -> str:
+    """Name for matching: no accents, no case, single spaces (CARTÓN  Fibra == carton fibra)."""
+    sin_tildes = "".join(c for c in unicodedata.normalize("NFKD", nombre or "") if not unicodedata.combining(c))
+    return " ".join(sin_tildes.casefold().split())
+
+
+def separar_insumos(
+    lineas: list[tuple[str, str, Decimal | None]], materiales: list[tuple[int, str, str | None]],
+) -> tuple[dict[int, Decimal], list[str]]:
+    """Split the rows of a form into supplies per material id and the names that matched no material.
+
+    `lineas` are (seccion, nombre, cantidad); only HERRAJE rows and the CONSUMO rows of `INSUMOS_DE_CONSUMO` with a quantity
+    above 0 count. `materiales` are (id, nombre, nombre_corto) of the materials a supply may point to. A name that fits two
+    different materials is not guessed: it goes to the unmatched list. Rows of the same material add up.
+    """
+    candidatos: dict[str, set[int]] = {}
+    for material_id, nombre, nombre_corto in materiales:
+        for texto in (nombre, nombre_corto):
+            if texto:
+                candidatos.setdefault(normalizar_para_comparar(texto), set()).add(material_id)
+    de_consumo = {normalizar_para_comparar(n) for n in INSUMOS_DE_CONSUMO}
+    cantidades: dict[int, Decimal] = {}
+    sin_material: list[str] = []
+    vistos: set[str] = set()
+    for seccion, nombre, cantidad in lineas:
+        clave = normalizar_para_comparar(nombre)
+        if cantidad is None or cantidad <= 0 or not clave or (seccion == CONSUMO and clave not in de_consumo):
+            continue
+        ids = candidatos.get(clave, set())
+        if len(ids) == 1:
+            (material_id,) = ids
+            cantidades[material_id] = cantidades.get(material_id, Decimal(0)) + cantidad
+        elif clave not in vistos:
+            vistos.add(clave)
+            sin_material.append(" ".join(nombre.split()))
+    return cantidades, sin_material
+
+
+def _guardar_insumos(session: Session, modelo: Modelo, fila: FormularioConsumo) -> list[str]:
+    """Save the supplies of the form as `modelo_insumo` rows of the model (one per material, updated if it already exists)
+    and return the names with a quantity that matched no costable material (those are not saved)."""
+    materiales = session.execute(
+        select(Material.id, Material.nombre, Material.nombre_corto)
+        .join(Etapa, Etapa.id == Material.etapa_id)
+        .where(Material.cotizable.is_(True), Etapa.codigo.in_(MATERIAL_STAGES)).order_by(Material.id)
+    ).all()
+    lineas = session.execute(
+        select(FormularioConsumoLinea.seccion, FormularioConsumoLinea.nombre, FormularioConsumoLinea.cantidad)
+        .where(FormularioConsumoLinea.formulario_id == fila.id)
+        .order_by(FormularioConsumoLinea.seccion, FormularioConsumoLinea.orden)
+    ).all()
+    cantidades, sin_material = separar_insumos([tuple(l) for l in lineas], [tuple(m) for m in materiales])
+    existentes = {i.material_id: i for i in session.scalars(select(ModeloInsumo).where(ModeloInsumo.modelo_id == modelo.id))}
+    for material_id, cantidad in cantidades.items():
+        if material_id in existentes:
+            existentes[material_id].cantidad_por_unidad = cantidad
+        else:
+            _insertar(session, ModeloInsumo(
+                codigo=f"MIN-{_siguiente_numero(session, ModeloInsumo.codigo, 'MIN'):04d}", modelo_id=modelo.id,
+                material_id=material_id, cantidad_por_unidad=cantidad,
+            ), "Ya hay un insumo de ese material en el modelo: probá de nuevo.")
+    return sin_material
+
+
+def _aplicar_medidas(session: Session, fila: FormularioConsumo) -> list[str] | None:
+    """On validation, copy the measured m2 to the sheet's model and save its supplies, unless that model was already validated.
+
+    Returns the rows with a quantity that matched no material, or None when the model was not touched.
+    """
     modelo_id = fila.modelo_id
     if modelo_id is None and fila.producto_id is not None:  # forms made before 0017 only know their product
         modelo_id = session.scalar(select(Producto.modelo_id).where(Producto.id == fila.producto_id))
     modelo = session.get(Modelo, modelo_id) if modelo_id is not None else None
     if modelo is None or modelo.validado:
-        return
+        return None
     for linea in session.scalars(select(FormularioConsumoLinea).where(
             FormularioConsumoLinea.formulario_id == fila.id, FormularioConsumoLinea.seccion == CONSUMO)):
         campo = MEDIDAS_AL_VALIDAR.get(linea.nombre.strip().upper())
         if campo and linea.cantidad is not None:
             setattr(modelo, campo, linea.cantidad)
     modelo.origen_de_los_consumos, modelo.validado = "MEDIDO", True
+    return _guardar_insumos(session, modelo, fila)
 
 
 def guardar_formulario(
@@ -336,6 +416,7 @@ def cambiar_estado(
     ahora = ahora or datetime.now(timezone.utc)
     fila, producto, taller, modelo = _cargar(session, codigo, roles, bloquear=True)
     nuevo = siguiente_estado(accion, fila.estado, roles)
+    sin_material = None
     if accion == "devolver":
         comentario = _texto_o_nada(comentario)
         if comentario is None:
@@ -347,10 +428,13 @@ def cambiar_estado(
         fila.completado_por, fila.completado_en = quien, ahora
     elif accion == "validar":
         fila.validado_por, fila.validado_en = quien, ahora
-        _aplicar_medidas(session, fila)
+        sin_material = _aplicar_medidas(session, fila)
     fila.estado = nuevo
     session.commit()  # get_session rolls back whatever is not committed
-    return _detalle(session, fila, producto, taller, modelo)
+    detalle = _detalle(session, fila, producto, taller, modelo)
+    if sin_material is not None:  # only the answer of `validar` carries it
+        detalle["sin_material"] = sin_material
+    return detalle
 
 
 def duplicar_formulario(session: Session, codigo: str, *, articulo: str, quien: str, roles: frozenset[str]) -> dict:

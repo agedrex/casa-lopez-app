@@ -2,7 +2,7 @@
 
 Source of truth: sheet `Diccionario` of `Plantilla Costos Casa Lopez v4.1 (trabajo).xlsx`.
 It supersedes [`der.md`](der.md) (DER v1) and the old Excel rules (GG 11 % is gone; CORTE is fixed; CONFECCION and HILO_CEMENTO are separate stages).
-The models are in `backend/src/backend/models.py`; Alembic revision `0003_der_v3` drops the v1 tables and creates these ones, and `0004_semillas_v3` loads the reference data `0005_gasto_reemplaza_a` adds `gasto_periodo.reemplaza_a_id` `0009_gasto_anulado` adds `gasto_periodo.anulado` `0010_compra_sin_unidades` makes `compra_reventa.unidades` nullable and `0012_impuesto_activo` adds `impuesto.activo` and `0013_impuestos_vacios` removes the three seeded taxes (the tax grid starts empty) and `0014_gastos_venta_pct` adds the parameter `GASTOS_VENTA_PCT` and `0015_precio_venta_margen` adds `precio_venta.margen` and `0016_formulario_consumo` adds `formulario_consumo` and `formulario_consumo_linea` and `0017_formulario_modelo` adds `formulario_consumo.modelo_id` (the sheet measures a model; the product is created after it is validated) and `0018_pedidos_proveedor` adds `pedido_proveedor` and `pedido_linea` and the unit `m` (metre) to the closed unit lists.
+The models are in `backend/src/backend/models.py`; Alembic revision `0003_der_v3` drops the v1 tables and creates these ones, and `0004_semillas_v3` loads the reference data `0005_gasto_reemplaza_a` adds `gasto_periodo.reemplaza_a_id` `0009_gasto_anulado` adds `gasto_periodo.anulado` `0010_compra_sin_unidades` makes `compra_reventa.unidades` nullable and `0012_impuesto_activo` adds `impuesto.activo` and `0013_impuestos_vacios` removes the three seeded taxes (the tax grid starts empty) and `0014_gastos_venta_pct` adds the parameter `GASTOS_VENTA_PCT` and `0015_precio_venta_margen` adds `precio_venta.margen` and `0016_formulario_consumo` adds `formulario_consumo` and `formulario_consumo_linea` and `0017_formulario_modelo` adds `formulario_consumo.modelo_id` (the sheet measures a model; the product is created after it is validated) and `0018_pedidos_proveedor` adds `pedido_proveedor` and `pedido_linea` and the unit `m` (metre) to the closed unit lists and `0019_modelo_insumo` adds `modelo_insumo`.
 
 Only columns marked `carga` / `clave` in the dictionary are persisted. Columns marked `calculada (la app recalcula)` are computed by the backend, except in `cotizacion`, which stores a calculated snapshot. Sheets marked `vista` are not tables.
 
@@ -41,6 +41,7 @@ Conventions: schema `costos`; `id` (identity) and `created_at` everywhere; `codi
 | `formulario_consumo_linea` | (no sheet) | The rows of that sheet. |
 | `pedido_proveedor` | (no sheet) | A delivery from a supplier (revision 0018): see the section below. |
 | `pedido_linea` | (no sheet) | The materials of that delivery and the price each one created. |
+| `modelo_insumo` | (no sheet) | The supplies a model carries per unit (revision 0019): see the section below. |
 
 ## Resale products, shown as "Mercadería" in the app (revision 0008)
 
@@ -133,6 +134,14 @@ What arrived from a supplier, how it came and what each presentation cost. **App
 The price created is `precio_por_presentacion / contenido_por_presentacion`, rounded half up to 4 decimals (SUPUESTO: validar), in the consumption unit of the material, with `vigente_desde = fecha_de_recepcion`, `proveedor_id` = the supplier and no colour (all colours). Endpoints: `POST /proveedores/{codigo}/pedidos` (admin, 201) and `GET /proveedores/{codigo}/pedidos` (admin and gerente; SUPUESTO: validar). The `taller` role sees nothing.
 
 **Unit `m` (metre).** Revision 0018 replaces the CHECK constraints `ck_material_unidad_de_consumo` and `ck_precio_material_unidad_del_precio` with the list that includes `m`. Its downgrade restores the old lists, so it **fails if any `material` or `precio_material` row uses `m`**, and it drops both new tables (the prices they created stay, only the link is lost).
+
+## Supplies of a model (`modelo_insumo`, revision 0019)
+
+What a model carries per unit besides the leather, lining, flex and EVA: zippers, buckles, lining board... `codigo` (`MIN-NNNN`), `modelo_id` and `material_id` (FKs, required; unique together), `cantidad_por_unidad` (`NUMERIC(12,6)`, `> 0`, in the consumption unit of the material). Not append-only: validating another sheet of the same (not yet validated) model updates the quantity of an existing pair.
+
+**Costing.** The engine treats each supply as one more material line: quantity × the unit price valid at the quote date (generic price, same lookup as every material), USD × the dollar of the date, ARS untouched, in the stage of its material. No price (or no dollar) makes the quote incomplete, with the warning `Sin precio para <material> a esa fecha`. **No double count:** supplies in the HERRAJES stage replace `modelo.herrajes_usd_por_unidad`, and supplies in HILO_CEMENTO replace `modelo.hilo_y_cemento` (and the "Falta hilo y cemento" warning); a model without supplies is costed as before.
+
+**Filling.** Only when a consumption form is validated and its model was not validated yet: every HERRAJE row with a quantity > 0, and the CONSUMO rows FRISELINA, CARTÓN FIBRA, CARTULINA and MOIRE with a quantity > 0, whose name equals (ignoring case, accents and repeated spaces) the `nombre` or `nombre_corto` of a costable material of a material stage, are saved. A name that fits two materials is not guessed. The rows with a quantity that matched nothing are not saved and come back in `sin_material` (a list of names) in the answer of `POST /formularios/{codigo}/validar` (null in every other answer). SUPUESTO: validar; the name match is our convention. There is no manual editing yet. `GET /modelos/{codigo}` lists `insumos` (`codigo`, `material`, `nombre`, `etapa`, `unidad_de_consumo`, `cantidad_por_unidad`, `precio_unitario` and `moneda` of the generic price in force today, null when there is none). Downgrade of 0019 drops the table: the saved supplies are lost and those models change cost.
 
 ## Consumption form of a new article (`formulario_consumo`, `formulario_consumo_linea`, revision 0016)
 

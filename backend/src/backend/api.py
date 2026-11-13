@@ -559,11 +559,23 @@ class ModeloOut(Salida):
     validado: bool
 
 
+class InsumoModeloOut(Salida):
+    codigo: str
+    material: str
+    nombre: str
+    etapa: str
+    unidad_de_consumo: str
+    cantidad_por_unidad: Decimal
+    precio_unitario: Decimal | None  # the price in force today; None when the material has none
+    moneda: str | None
+
+
 class ModeloDetalleOut(ModeloOut):
     nota: str | None
     modelo_excel_viejo: str | None
     fila_excel_viejo: int | None
     productos: int  # products made from this model
+    insumos: list[InsumoModeloOut] = []
 
 
 class MaterialOut(Salida):
@@ -2202,6 +2214,8 @@ class FormularioOut(FormularioResumenOut):
     completado_por: str | None
     validado_por: str | None
     lineas: list[FormularioLineaOut]
+    # Only the answer of `validar` fills it: the rows with a quantity that matched no material (not saved as supplies).
+    sin_material: list[str] | None = None
 
 
 @router.post("/formularios", response_model=FormularioOut, status_code=201)

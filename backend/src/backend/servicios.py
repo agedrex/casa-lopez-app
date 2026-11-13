@@ -20,15 +20,15 @@ from sqlalchemy.orm import Session, aliased
 from backend import dolar_bna
 from backend.costeo import (
     Desglose, ItemLote, PrecioVigente, Precios, ProductoEnMezcla, ZERO, confeccion_externa, costo_kit, costo_por_unidad,
-    equilibrio_con_mezcla, importe_sobre_precio, margen_de_contribucion, margen_por_hora, necesita_recotizar, precio_con_margen, punto_de_equilibrio, resultado_cvu,
+    equilibrio_con_mezcla, importe_sobre_precio, margen_de_contribucion, margen_por_hora, necesita_recotizar, precio_a_la_fecha, precio_con_margen, punto_de_equilibrio, resultado_cvu,
 )
 from backend.models import (
-    Categoria, Color, Cotizacion, Etapa, GastoPeriodo, Impuesto, KitComponente, Material, Modelo,
+    Categoria, Color, Cotizacion, Etapa, GastoPeriodo, Impuesto, KitComponente, Material, Modelo, ModeloInsumo,
     OrdenEstado, OrdenFabricacion, OrdenItem, Parametro, Persona, PrecioMaterial, PrecioVenta, Producto, Proveedor,
     RecetaLinea, Taller, TipoCambio,
 )
 from backend.receta import (
-    Cotizado, Extra, ModeloReceta, ProductoReceta, Receta, cotizar_producto, generar_receta,
+    Cotizado, Extra, InsumoModelo, ModeloReceta, ProductoReceta, Receta, cotizar_producto, generar_receta,
 )
 
 # Audit lines (who changed which parameter or consumption) go to uvicorn's logger: uvicorn sets it to INFO, whereas the
@@ -331,6 +331,18 @@ def cargar_productos(
     extras: dict[int, list[Extra]] = {}
     lotes: dict[int, list[ItemLote]] = {}
     componentes: dict[int, list[tuple[str, Decimal]]] = {}
+    insumos: dict[int, tuple[InsumoModelo, ...]] = {}
+    modelo_ids = sorted({fila[1].id for fila in filas if fila[1] is not None})
+    if modelo_ids:
+        por_modelo: dict[int, list[InsumoModelo]] = {}
+        for modelo_id, material, etapa, cantidad in session.execute(
+            select(ModeloInsumo.modelo_id, Material.codigo, Etapa.codigo, ModeloInsumo.cantidad_por_unidad)
+            .join(Material, Material.id == ModeloInsumo.material_id)
+            .join(Etapa, Etapa.id == Material.etapa_id)
+            .where(ModeloInsumo.modelo_id.in_(modelo_ids)).order_by(ModeloInsumo.id)
+        ):
+            por_modelo.setdefault(modelo_id, []).append(InsumoModelo(material, etapa, cantidad))
+        insumos = {modelo_id: tuple(lista) for modelo_id, lista in por_modelo.items()}
     if ids:
         for producto_id, material, etapa, color, consumo in session.execute(
             select(RecetaLinea.producto_id, Material.codigo, Etapa.codigo, Color.nombre, RecetaLinea.consumo_neto_por_unidad)
@@ -361,7 +373,7 @@ def cargar_productos(
         receta_modelo = ModeloReceta(
             modelo.cuero_m2_por_unidad, forro_codigo, modelo.forro_m2_por_unidad, modelo.flex_m2_por_unidad,
             modelo.goma_eva_m2_por_unidad, modelo.herrajes_usd_por_unidad, modelo.hilo_y_cemento,
-            modelo.confeccion_estimada_ars,
+            modelo.confeccion_estimada_ars, insumos.get(modelo.id, ()),
         ) if modelo else ModeloReceta(None, None, None, None, None, None, None, None)
         resultado.append(DatosProducto(
             id=producto.id, codigo=producto.codigo,
@@ -2389,7 +2401,29 @@ def detalle_modelo(session: Session, codigo: str) -> dict:
         **_modelo_a_dict(m, categoria, forro_codigo), "nota": m.nota,
         "modelo_excel_viejo": m.modelo_excel_viejo, "fila_excel_viejo": m.fila_excel_viejo,
         "productos": session.scalar(select(func.count(Producto.id)).where(Producto.modelo_id == m.id)) or 0,
+        "insumos": _insumos_del_modelo(session, m.id),
     }
+
+
+def _insumos_del_modelo(session: Session, modelo_id: int) -> list[dict]:
+    """The model's supplies with the unit price in force today (generic price, same lookup as the engine); None when there is none."""
+    filas = session.execute(
+        select(ModeloInsumo, Material, Etapa.codigo).join(Material, Material.id == ModeloInsumo.material_id)
+        .join(Etapa, Etapa.id == Material.etapa_id).where(ModeloInsumo.modelo_id == modelo_id).order_by(ModeloInsumo.id)
+    ).all()
+    if not filas:
+        return []
+    precios = cargar_contexto(session).precios
+    hoy = date.today()
+    insumos = []
+    for insumo, material, etapa in filas:
+        precio = precio_a_la_fecha(precios, material.codigo, None, hoy)
+        insumos.append({
+            "codigo": insumo.codigo, "material": material.codigo, "nombre": material.nombre, "etapa": etapa,
+            "unidad_de_consumo": material.unidad_de_consumo, "cantidad_por_unidad": insumo.cantidad_por_unidad,
+            "precio_unitario": precio.precio if precio else None, "moneda": precio.moneda if precio else None,
+        })
+    return insumos
 
 
 def _forro_del_modelo(session: Session, forro: str | None, forro_m2: Decimal | None) -> Material | None:

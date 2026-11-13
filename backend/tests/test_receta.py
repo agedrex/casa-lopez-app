@@ -9,6 +9,7 @@ import pytest
 from backend.costeo import PrecioVigente, Precios
 from backend.receta import (
     Extra,
+    InsumoModelo,
     ModeloReceta,
     ProductoReceta,
     cotizar_producto,
@@ -124,3 +125,87 @@ def test_internal_makes_confeccion_zero_and_external_uses_the_given_price():
 def test_unknown_who_makes_it_is_a_warning_and_incomplete():
     q = cotizar(date(2026, 9, 1), replace(PRODUCTO, quien=None))
     assert not q.completa and "Falta elegir quién lo confecciona" in q.avisos
+
+
+# --- Supplies of the model (modelo_insumo): quantity x unit price, in the stage of the material -------------------------
+
+CIERRE, CARRETE, CARTULINA = "MAT-IN01", "MAT-IN02", "MAT-IN03"
+ETAPAS_INSUMOS = {**ETAPAS, CIERRE: "HERRAJES", CARRETE: "HILO_CEMENTO", CARTULINA: "FLEX"}
+PRECIOS_INSUMOS = Precios([
+    *PRECIOS._filas,
+    PrecioVigente(CIERRE, None, D("1.5"), "USD", D0),
+    PrecioVigente(CARRETE, None, D("3"), "ARS", D0),
+    PrecioVigente(CARTULINA, None, D("200"), "ARS", D0),
+])
+
+
+def cotizar_con_insumos(*insumos, fecha=date(2026, 9, 1), modelo=MODELO, precios=PRECIOS_INSUMOS):
+    modelo = replace(modelo, insumos=tuple(insumos))
+    return cotizar_producto(generar_receta(modelo, PRODUCTO, []), precios, ETAPAS_INSUMOS, DOLARES, fecha, confeccion=D("0"))
+
+
+def test_a_supply_costs_quantity_times_the_unit_price_in_its_stage():
+    q = cotizar_con_insumos(InsumoModelo(CARTULINA, "FLEX", D("0.5")))
+    assert q.completa and q.avisos == []
+    assert q.desglose.etapas["FLEX"] == D("0.45") * D("10000") + D("0.5") * D("200")  # added to the model's own flex line
+
+
+def test_a_usd_supply_is_multiplied_by_the_dolar_of_the_date():
+    insumo = InsumoModelo(CIERRE, "HERRAJES", D("2"))
+    a, b = cotizar_con_insumos(insumo).desglose, cotizar_con_insumos(insumo, fecha=date(2026, 10, 1)).desglose
+    assert a.etapas["HERRAJES"] == D("2") * D("1.5") * D("1545")
+    assert b.etapas["HERRAJES"] == D("2") * D("1.5") * D("1700")
+
+
+def test_an_ars_supply_does_not_move_with_the_dolar():
+    insumo = InsumoModelo(CARRETE, "HILO_CEMENTO", D("4"))
+    a, b = cotizar_con_insumos(insumo).desglose, cotizar_con_insumos(insumo, fecha=date(2026, 10, 1)).desglose
+    assert a.etapas["HILO_CEMENTO"] == b.etapas["HILO_CEMENTO"] == D("12")
+
+
+def test_a_supply_without_a_price_makes_the_quote_incomplete_and_names_the_material():
+    sin_precio = Precios([f for f in PRECIOS_INSUMOS._filas if f.material != CIERRE])
+    q = cotizar_con_insumos(InsumoModelo(CIERRE, "HERRAJES", D("2")), precios=sin_precio)
+    assert not q.completa
+    assert f"Sin precio para {CIERRE} a esa fecha" in q.avisos
+    assert q.desglose.etapas["HERRAJES"] == D("0")  # the model's herrajes_usd was replaced, nothing else fills the stage
+
+
+def test_a_supply_priced_after_the_date_counts_as_no_price():
+    futuro = Precios([*PRECIOS._filas, PrecioVigente(CIERRE, None, D("1.5"), "USD", date(2026, 9, 15))])
+    assert not cotizar_con_insumos(InsumoModelo(CIERRE, "HERRAJES", D("1")), precios=futuro).completa
+
+
+def test_supplies_in_herrajes_replace_the_models_herrajes_amount_and_never_add_to_it():
+    receta = generar_receta(replace(MODELO, insumos=(InsumoModelo(CIERRE, "HERRAJES", D("2")),)), PRODUCTO, [])
+    assert [(l.material, l.consumo) for l in receta.lineas if l.etapa == "HERRAJES"] == [(CIERRE, D("2"))]
+    q = cotizar_con_insumos(InsumoModelo(CIERRE, "HERRAJES", D("2")))
+    assert q.desglose.etapas["HERRAJES"] == D("2") * D("1.5") * D("1545")  # not + the model's USD 2
+
+
+def test_supplies_in_hilo_cemento_replace_hilo_y_cemento_and_the_missing_thread_warning():
+    sin_hilo = replace(MODELO, hilo_cemento=None)
+    assert "Falta hilo y cemento" in generar_receta(sin_hilo, PRODUCTO, []).avisos
+    con_insumo = replace(MODELO, insumos=(InsumoModelo(CARRETE, "HILO_CEMENTO", D("4")),))
+    receta = generar_receta(con_insumo, PRODUCTO, [])
+    assert [(l.material, l.consumo) for l in receta.lineas if l.etapa == "HILO_CEMENTO"] == [(CARRETE, D("4"))]
+    assert "Falta hilo y cemento" not in generar_receta(replace(sin_hilo, insumos=con_insumo.insumos), PRODUCTO, []).avisos
+
+
+def test_supplies_in_other_stages_do_not_replace_the_herrajes_or_the_thread_of_the_model():
+    receta = generar_receta(replace(MODELO, insumos=(InsumoModelo(CARTULINA, "FLEX", D("1")),)), PRODUCTO, [])
+    assert by_stage(receta.lineas)[("HERRAJES", "MAT-HE00")] == D("2")
+    assert by_stage(receta.lineas)[("HILO_CEMENTO", "MAT-HC01")] == D("1")
+
+
+def test_a_model_without_supplies_is_costed_exactly_as_before():
+    assert MODELO.insumos == ()
+    assert generar_receta(replace(MODELO, insumos=()), PRODUCTO, []) == generar_receta(MODELO, PRODUCTO, [])
+    antes = cotizar(date(2026, 9, 1))
+    ahora = cotizar_con_insumos(precios=PRECIOS)
+    assert (ahora.desglose, ahora.avisos, ahora.completa) == (antes.desglose, antes.avisos, antes.completa)
+
+
+def test_a_supply_with_zero_quantity_is_ignored():
+    q = cotizar_con_insumos(InsumoModelo(CIERRE, "HERRAJES", D("0")))
+    assert q.desglose.etapas["HERRAJES"] == D("2") * D("1545")  # the model's own herrajes stays

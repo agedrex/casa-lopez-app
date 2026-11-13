@@ -255,6 +255,21 @@ class RecetaLinea(BusinessKey, Base):
     nota: Mapped[str | None] = mapped_column(Text)
 
 
+class ModeloInsumo(BusinessKey, Base):
+    """A supply a model carries per unit (a zipper, a lining board): `cantidad_por_unidad` in the consumption unit of the
+    material. The engine costs it as quantity x the unit price valid at the quote date, in the stage of the material.
+    It is filled when a consumption form is validated (formulario.py); there is no manual editing yet.
+    """
+    __tablename__ = "modelo_insumo"
+    __table_args__ = (
+        CheckConstraint("cantidad_por_unidad > 0", name="cantidad_positiva"),
+        UniqueConstraint("modelo_id", "material_id", name="uq_modelo_insumo_modelo_id_material_id"),
+    )
+    modelo_id: Mapped[int] = mapped_column(ForeignKey("costos.modelo.id"))
+    material_id: Mapped[int] = mapped_column(ForeignKey("costos.material.id"), index=True)
+    cantidad_por_unidad: Mapped[Decimal] = mapped_column(quantity())
+
+
 class KitComponente(IdentityAndCreatedAt, Base):
     __tablename__ = "kit_componente"
     __table_args__ = (
