@@ -12,19 +12,22 @@ import {
 } from "@/components/ui";
 import { apiGet } from "@/lib/api";
 import { stageLabel, todayIso } from "@/lib/format";
-import { canWrite } from "@/lib/permissions";
+import { canWrite, hasRole } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
 import type {
   Catalogos,
   DocumentoProveedor,
   Material,
   MaterialesDeProveedor,
+  PedidoProveedor,
   Proveedor,
 } from "@/lib/types";
 import { ActivoForm } from "./activo-form";
 import { DocumentoCard } from "./documento-card";
 import { EditarForm } from "./editar-form";
 import { MaterialesDelProveedor } from "./materiales-del-proveedor";
+import { PedidoForm } from "./pedido-form";
+import { PedidosRecibidos } from "./pedidos-recibidos";
 import { type MaterialOption, PrecioForm } from "./precio-form";
 import { SubirDocumentosForm } from "./subir-documentos-form";
 
@@ -75,7 +78,10 @@ export default async function ProveedorPage({
 
   const path = `/proveedores/${encodeURIComponent(code)}`;
   const writer = canWrite(user.role);
-  const [proveedor, documentos, historia, materiales, catalogos] =
+  // Orders are read by admin and gerente; the taller never sees them (the API refuses them too).
+  const readsPedidos =
+    hasRole(user.role, "admin") || hasRole(user.role, "gerente");
+  const [proveedor, documentos, historia, materiales, catalogos, pedidos] =
     await Promise.all([
       apiGet<Proveedor>(path),
       apiGet<DocumentoProveedor[]>(
@@ -85,6 +91,7 @@ export default async function ProveedorPage({
       // Only the form needs the catalogs, and only a writer sees it.
       writer ? apiGet<Material[]>("/materiales") : null,
       writer ? apiGet<Catalogos>("/catalogos") : null,
+      readsPedidos ? apiGet<PedidoProveedor[]>(`${path}/pedidos`) : null,
     ]);
 
   if (!proveedor.ok) {
@@ -158,6 +165,42 @@ export default async function ProveedorPage({
             ) : null}
           </div>
         </section>
+
+        {readsPedidos ? (
+          <section>
+            <SectionTitle>Pedidos recibidos</SectionTitle>
+            <div className="space-y-6">
+              <p className="text-sm text-muted">
+                Lo que llegó de este proveedor: qué materiales, cómo vinieron y
+                cuánto costó cada unidad. Cada línea carga el precio del
+                material desde la fecha de recepción. Un pedido no se edita ni
+                se borra: si hay un error, se registra otro.
+              </p>
+              {writer && materiales?.ok ? (
+                <Card>
+                  <h3 className="mb-4 font-bold">Registrar pedido recibido</h3>
+                  <PedidoForm
+                    codigo={data.codigo}
+                    materials={materialOptions(materiales.data)}
+                    today={todayIso()}
+                  />
+                </Card>
+              ) : null}
+              {pedidos?.ok ? (
+                pedidos.data.length === 0 ? (
+                  <Notice
+                    tone="info"
+                    title="Este proveedor todavía no tiene pedidos registrados."
+                  />
+                ) : (
+                  <PedidosRecibidos pedidos={pedidos.data} />
+                )
+              ) : pedidos ? (
+                <ErrorNotice message={pedidos.message} />
+              ) : null}
+            </div>
+          </section>
+        ) : null}
 
         <section>
           <SectionTitle>Facturas e imágenes</SectionTitle>

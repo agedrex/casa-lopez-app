@@ -905,6 +905,35 @@ export type MaterialesDeProveedor = {
   materiales: MaterialDeProveedor[];
 };
 
+// Orders received from a supplier. Mirror PedidoProveedorOut / PedidoLineaOut. Only added, never edited.
+export type PedidoLinea = {
+  orden: number;
+  material: string;
+  material_nombre: string;
+  unidad_de_consumo: string;
+  cantidad_presentaciones: string;
+  presentacion: string;
+  contenido_por_presentacion: string;
+  precio_por_presentacion: string;
+  moneda: "ARS" | "USD";
+  iva_incluido: boolean;
+  // Price per consumption unit that the API stored (price per presentation / content).
+  precio_unitario: string;
+  precio_codigo: string;
+};
+
+export type PedidoProveedor = {
+  codigo: string;
+  proveedor: string;
+  fecha_de_recepcion: string;
+  remito: string | null;
+  documento_id: number | null;
+  nota: string | null;
+  creado_por: string;
+  created_at: string;
+  lineas: PedidoLinea[];
+};
+
 export type LoteDeTaller = {
   lote: string;
   fecha: string | null;

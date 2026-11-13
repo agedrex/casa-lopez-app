@@ -11,8 +11,9 @@ Objective: tanda 3, paso 1. Branch: main. Delivery: ask-on-risk. Runner: `uv run
 - Fuera de esta tanda: `modelo_insumo` y el motor (paso 2), stock.
 
 ## Tasks
-- T1 (S1-S5) backend: migración 0018, modelos, servicio, API, tests, docs. Route: delegated (context backstop).
-- T2 (S1, S5) front: formulario de pedido y lista en la ficha del proveedor. Route: delegated, después de T1.
+- T1 (S1-S5) backend: migración 0018, modelos, servicio, API, tests, docs. Route: delegated (context backstop). DONE (dba3d68; suite 2576 passed, 6 skipped).
+- T2 (S1, S5) front: formulario de pedido y lista en la ficha del proveedor. Route: delegated, después de T1. DONE (lint, tsc, build, 38/38 tests front; sin prueba en navegador).
 
 ## Log
 - L1 (2026-11-13): "cuando se compra a algún proveedor [...] esos datos se llenen desde el proveedor o zonas que se compran, desde la capa o parte de proveedores. Una vez que se hace o se registra un nuevo pedido que llega de algún proveedor, se debieran registrar qué materiales llegaron, cómo llegaron y sus unidades." Plan de dos pasos aprobado con "si" (paso 1 ahora).
+- L2 (2026-11-13): parent spot check: lint, tsc y tests front 38/38 limpios. El gerente no abre la ficha del proveedor (`requireRole("admin")`), así que hoy solo el admin ve los pedidos.
