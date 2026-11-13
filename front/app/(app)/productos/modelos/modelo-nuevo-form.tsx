@@ -9,24 +9,18 @@ import {
 import { SIZES } from "@/lib/modelos";
 import { useActionForm } from "@/lib/use-action-form";
 import { createModelo } from "./actions";
-import { ConsumptionFields, type ForroOption } from "./consumption-fields";
 
-export function ModeloNuevoForm({
-  categorias,
-  forros,
-}: {
-  categorias: string[];
-  forros: ForroOption[];
-}) {
+/** The only "Nuevo modelo" form (also shown in /productos/nuevo): no consumptions, the workshop measures them. */
+export function ModeloNuevoForm({ categorias }: { categorias: string[] }) {
   const { state, pending, onSubmit } = useActionForm(createModelo);
-  // No form key: on success the action redirects to the new model.
+  // No form key: on success the action redirects to the consumption form sent to the workshop.
   return (
-    <form onSubmit={onSubmit} className="space-y-6">
+    <form onSubmit={onSubmit} className="space-y-5">
       <div className="grid gap-5 sm:grid-cols-3">
         <Field
           id="modelo-nombre"
           label="Nombre del modelo"
-          hint="No puede repetirse: agregue algo que lo distinga."
+          hint="Se guarda en MAYÚSCULAS y no puede repetirse: agregue algo que lo distinga."
         >
           <input
             id="modelo-nombre"
@@ -35,7 +29,7 @@ export function ModeloNuevoForm({
             maxLength={200}
             autoComplete="off"
             aria-describedby="modelo-nombre-hint"
-            className={inputClass}
+            className={`${inputClass} uppercase`}
           />
         </Field>
         <Field id="modelo-categoria" label="Categoría">
@@ -72,18 +66,23 @@ export function ModeloNuevoForm({
           </select>
         </Field>
       </div>
-      <ConsumptionFields prefix="nuevo" forros={forros} />
-      <Field id="modelo-nota" label="Nota (opcional)">
-        <input
+      <Field
+        id="modelo-nota"
+        label="Notas del modelo (opcional)"
+        hint="Medidas, materiales, detalles: el taller las lee arriba de la hoja de consumos."
+      >
+        <textarea
           id="modelo-nota"
           name="nota"
-          autoComplete="off"
+          rows={4}
+          maxLength={2000}
+          aria-describedby="modelo-nota-hint"
           className={inputClass}
         />
       </Field>
       <FormFeedback state={state} />
       <PrimaryButton pending={pending}>
-        {pending ? "Creando…" : "Crear modelo"}
+        {pending ? "Creando…" : "Crear modelo y enviar al taller"}
       </PrimaryButton>
     </form>
   );

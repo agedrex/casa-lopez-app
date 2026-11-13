@@ -6,6 +6,7 @@ import { error, type FormState, ok } from "@/lib/action-state";
 import { apiPost } from "@/lib/api";
 import { parseDecimalInput } from "@/lib/format";
 import { CONSUMPTION_FIELDS, ORIGINS, SIZES } from "@/lib/modelos";
+import { collapseSpaces } from "@/lib/productos";
 import type { ModeloDetalle, ResultadoLoteConsumos } from "@/lib/types";
 import {
   denyUnlessAdmin,
@@ -51,6 +52,12 @@ function isFailure(value: Consumptions | FormState): value is FormState {
   return "status" in value;
 }
 
+type AltaModelo = { modelo: string; formulario: string; nombre: string };
+
+/**
+ * The one way to create a model: name, category, size and notes (no consumptions). The API creates the model and the
+ * consumption form already sent to the workshop; we land on that form, which is what the admin follows from here.
+ */
 export async function createModelo(
   _previous: FormState,
   formData: FormData,
@@ -58,7 +65,7 @@ export async function createModelo(
   const check = await denyUnlessAdmin();
   if (check.denied) return check.denied;
 
-  const nombre = text(formData, "nombre_del_modelo");
+  const nombre = collapseSpaces(text(formData, "nombre_del_modelo"));
   const categoria = text(formData, "categoria");
   const tamano = text(formData, "tamano");
   if (!nombre) return error("Indique el nombre del modelo.");
@@ -66,22 +73,19 @@ export async function createModelo(
   if (tamano && !SIZES.some((item) => item.value === tamano)) {
     return error("El tamaño no es válido.");
   }
-  const consumptions = readConsumptions(formData);
-  if (isFailure(consumptions)) return consumptions;
 
-  const result = await apiPost<ModeloDetalle>("/modelos", {
-    nombre_del_modelo: nombre,
+  const result = await apiPost<AltaModelo>("/productos/nuevo", {
+    nombre,
     categoria,
     tamano: tamano || null,
     nota: optional(formData, "nota"),
-    ...consumptions,
   });
   if (!result.ok) {
     return fromFailure(result, {
       409: "Ya hay un modelo con ese nombre: agregue algo que lo distinga.",
     });
   }
-  redirect(`/productos/modelos/${encodeURIComponent(result.data.codigo)}`);
+  redirect(`/formularios/${encodeURIComponent(result.data.formulario)}`);
 }
 
 export async function setValidado(

@@ -2254,7 +2254,11 @@ def crear_formulario(cuerpo: FormularioNuevoIn, session: Sesion, usuario: SoloAd
 
 
 class ProductoNuevoIn(Entrada):
-    nombre: str
+    """A new model: name, category and notes. No consumption (the workshop measures it in the form that is sent)."""
+    nombre: Annotated[str, Field(min_length=1, max_length=200)]
+    categoria: str
+    tamano: Literal[*servicios.TAMANOS] | None = None
+    nota: NotaDeFormulario | None = None
 
 
 class ProductoNuevoOut(BaseModel):
@@ -2265,17 +2269,20 @@ class ProductoNuevoOut(BaseModel):
 
 @router.post("/productos/nuevo", response_model=ProductoNuevoOut, status_code=201)
 def crear_producto_solo_con_nombre(cuerpo: ProductoNuevoIn, session: Sesion, usuario: SoloAdmin):
-    """Name only: the app makes the model code and its consumption form, already sent to the workshop. The product comes later."""
-    return formulario.alta_rapida(session, nombre=cuerpo.nombre, quien=usuario.id)
+    """New model (name, category, size and notes; no consumption): the app makes the model code and its consumption form,
+    already sent to the workshop, which reads the notes there. The product comes after the admin validates the form."""
+    return formulario.alta_rapida(session, quien=usuario.id, **cuerpo.model_dump())
 
 
 @router.get("/formularios", response_model=list[FormularioResumenOut])
 def listar_formularios(
     session: Sesion, usuario: FormularioLector, q: Annotated[str | None, Query(max_length=100)] = None,
     estado: Literal[*FORM_STATES] | None = None, producto: Annotated[str | None, Query(max_length=40)] = None,
+    modelo: Annotated[str | None, Query(max_length=40)] = None,
 ):
-    """Newest first. A taller only gets the ENVIADO and COMPLETADO ones. `producto` (PRD-NNNN) keeps the forms of that product."""
-    return formulario.listar_formularios(session, q=q, estado=estado, producto=producto, roles=usuario.roles)
+    """Newest first. A taller only gets the ENVIADO and COMPLETADO ones. `producto` (PRD-NNNN) / `modelo` (MOD-NNNN) keep the forms of that product / model."""
+    return formulario.listar_formularios(
+        session, q=q, estado=estado, producto=producto, modelo=modelo, roles=usuario.roles)
 
 
 @router.get("/formularios/{codigo}", response_model=FormularioOut)

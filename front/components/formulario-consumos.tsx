@@ -104,6 +104,19 @@ function ArticuloLabel({ children }: { children: ReactNode }) {
   );
 }
 
+/** The details written when the model was created: what the workshop needs to read before filling the sheet. */
+function NotasDelModelo({ nota }: { nota: string | null }) {
+  if (!nota) return null;
+  return (
+    <div className="rounded-card border border-line bg-paper-mid/60 px-3 py-2 print:rounded-none print:border-ink print:bg-transparent">
+      <p className="text-xs font-bold uppercase tracking-caps-sm text-ink-soft">
+        Notas del modelo
+      </p>
+      <p className="mt-1 whitespace-pre-wrap break-words text-sm">{nota}</p>
+    </div>
+  );
+}
+
 // --- Readonly -------------------------------------------------------------------------------------------------------
 
 function Lectura({
@@ -131,6 +144,7 @@ function Lectura({
           {formulario.articulo}
         </span>
       </div>
+      <NotasDelModelo nota={formulario.nota} />
       {tablas.length === 0 ? (
         <p className="text-sm text-muted">
           El formulario todavía no tiene cantidades ni comentarios cargados.
@@ -280,6 +294,7 @@ function Editable({
         )}
       </div>
       <input type="hidden" name="nota" value={formulario.nota ?? ""} />
+      <NotasDelModelo nota={formulario.nota} />
       <input type="hidden" name="lineas" value={lineas} />
       <input type="hidden" name="dirty" value={dirty ? "1" : ""} />
       {SECCIONES.map((seccion) => (
