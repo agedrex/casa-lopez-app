@@ -101,10 +101,13 @@ function marginParam(raw: string): string | null {
  */
 export async function PrecioBlock({
   codigo,
+  costo,
   writer,
   typedMargin,
 }: {
   codigo: string;
+  /** Cost of today (ARS), already calculated by the API; shown next to the margin that turns it into a price. */
+  costo: string | null;
   writer: boolean;
   typedMargin: string;
 }) {
@@ -128,6 +131,14 @@ export async function PrecioBlock({
       <SectionTitle>Precio de venta</SectionTitle>
       <div className="grid gap-6 rounded-card border border-line p-5 sm:grid-cols-2">
         <div className="space-y-3">
+          <div>
+            <p className="mb-1 text-sm uppercase tracking-caps-sm text-muted sm:text-xs">
+              Costo del producto
+            </p>
+            <p className="font-display text-3xl">
+              {costo ? formatArs(costo) : "Sin costo todavía"}
+            </p>
+          </div>
           <form method="get" action={`${base}#precio`} className="space-y-3">
             <div>
               <label
@@ -193,7 +204,8 @@ export async function PrecioBlock({
           ) : null}
           {suggestedPrice ? (
             <p className="text-sm text-muted">
-              Calculado con {typedMargin}% de margen. Guardalo para usarlo.
+              Calculado con {typedMargin}% de margen sobre el costo
+              {costo ? ` de ${formatArs(costo)}` : ""}. Guardalo para usarlo.
             </p>
           ) : null}
         </div>

@@ -118,6 +118,7 @@ export default async function FichaPage({
         {isTallerOnly(user.role) ? null : (
           <PrecioBlock
             codigo={ficha.codigo}
+            costo={ficha.costo_hoy?.total_ars ?? null}
             writer={canWrite(user.role)}
             typedMargin={typedMarginOf((await searchParams).margen)}
           />
