@@ -51,7 +51,8 @@ const RESULT_SENTENCE = {
     "Con estos precios no te queda nada de cada unidad para pagar los costos fijos, así que no hay un punto de equilibrio.",
 } as const;
 
-// Where to fix each notice the API raises (same destinations as the rest of the panel).
+// Where to fix each notice the API raises (same destinations as the rest of the panel). Those pages are admin only,
+// so the links are shown only to who can open them (a gerente runs the scenario but fixes nothing).
 const AVISO_LINK: Record<string, { text: string; href: string }> = {
   SIN_FIJOS: { text: "Cargar costos fijos", href: "/costos-fijos" },
   FIJOS_PENDIENTES: { text: "Completar montos", href: "/costos-fijos" },
@@ -77,7 +78,13 @@ function Cifra({
   );
 }
 
-function Resultado({ data }: { data: Escenario }) {
+function Resultado({
+  data,
+  puedeCorregir,
+}: {
+  data: Escenario;
+  puedeCorregir: boolean;
+}) {
   const { resultado, fijos } = data;
   const perdida = resultado.utilidad?.startsWith("-") ?? false;
   return (
@@ -234,7 +241,7 @@ function Resultado({ data }: { data: Escenario }) {
             return (
               <li key={aviso.codigo}>
                 {aviso.texto}{" "}
-                {destino ? (
+                {destino && puedeCorregir ? (
                   <Link className={linkClass} href={destino.href}>
                     {destino.text}
                   </Link>
@@ -251,9 +258,11 @@ function Resultado({ data }: { data: Escenario }) {
 export function EscenarioDeVentas({
   productos,
   periodo,
+  puedeCorregir,
 }: {
   productos: ProductOption[];
   periodo: string;
+  puedeCorregir: boolean;
 }) {
   const [state, dispatch, pending] = useActionState<EscenarioState, FormData>(
     runEscenario,
@@ -371,7 +380,9 @@ export function EscenarioDeVentas({
         </div>
         <FormFeedback state={state.data ? IDLE : state} />
       </form>
-      {state.data ? <Resultado data={state.data} /> : null}
+      {state.data ? (
+        <Resultado data={state.data} puedeCorregir={puedeCorregir} />
+      ) : null}
     </Card>
   );
 }

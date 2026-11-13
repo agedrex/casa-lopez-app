@@ -8,11 +8,11 @@ Código: `backend/src/backend/formulario.py` (reglas y API, el docstring del mó
 
 | Ruta | Quién | Qué hace |
 |---|---|---|
-| `/formularios` | admin, gerente, taller | Lista con búsqueda (`q`: código, artículo, producto o taller) y filtro de estado. El taller solo ve `ENVIADO` y `COMPLETADO`. El admin abre "Nuevo formulario": artículo, taller (opcional) y código de producto (opcional). |
+| `/formularios` | admin, taller | Lista con búsqueda (`q`: código, artículo, producto o taller) y filtro de estado. El taller solo ve `ENVIADO` y `COMPLETADO`. El admin abre "Nuevo formulario": artículo, taller (opcional) y código de producto (opcional). |
 | `/formularios/<código>` | igual | La hoja con ARTÍCULO y las tablas CONSUMOS (`M2`) y HERRAJES (`CANTIDAD`), cada una con `COMENTARIOS / MODIFICACIONES`. Celdas editables, "Agregar fila" y "×" por fila; ninguna fila es obligatoria. |
-| Ficha del producto | admin, gerente | Si el producto tiene un formulario `VALIDADO`, la sección "Formulario de consumos" lo muestra de solo lectura, sin las filas vacías, con un link al formulario. |
+| Ficha del producto | admin | Si el producto tiene un formulario `VALIDADO`, la sección "Formulario de consumos" lo muestra de solo lectura, sin las filas vacías, con un link al formulario. |
 
-Menú: "Formularios" en Producción para admin, gerente y taller. Al taller el formulario no le muestra costos, y el código del producto aparece como texto, sin link a la ficha.
+Menú: "Formularios" en Producción para admin y taller. Al taller el formulario no le muestra costos, y el código del producto aparece como texto, sin link a la ficha.
 
 ## Flujo y botones
 

@@ -16,14 +16,14 @@ State machine (`ACCIONES`):
 
 Who edits what (`comprobar_edicion`): the admin edits articulo, nota and the rows while BORRADOR / ENVIADO / COMPLETADO.
 A `taller` user edits ONLY the rows (add, remove, rename, quantities, comments) and ONLY while ENVIADO. Who sees what
-(`es_visible`): admin and gerente see every form (gerente read only); `taller` sees only ENVIADO and COMPLETADO.
+(`es_visible`): admin sees every form; `taller` sees only ENVIADO and COMPLETADO; `gerente` sees none (the module is closed to it).
 SUPUESTO: validar. The `taller` role is not tied to one specific workshop, so any taller user sees every ENVIADO /
 COMPLETADO form; `formulario_consumo.taller_id` is informative only.
 
 HTTP (routes in api.py; errors are `{"detail": <Spanish message>}`: 403 not allowed, 404 missing or not visible,
 409 invalid transition or immutable form, 422 invalid data):
     POST /formularios                       admin   {articulo, taller?, producto?, nota?} -> BORRADOR with the preloaded rows
-    GET  /formularios?q=&estado=&producto=  admin, gerente, taller (taller: only ENVIADO / COMPLETADO); producto = PRD-NNNN
+    GET  /formularios?q=&estado=&producto=  admin, taller (taller: only ENVIADO / COMPLETADO); producto = PRD-NNNN
     GET  /formularios/{codigo}              same visibility; 404 otherwise
     PUT  /formularios/{codigo}              admin or taller; {articulo, nota?, lineas: [{seccion, nombre, cantidad?, comentario?}]}
                                             replaces articulo / nota and the FULL set of rows (list order = row order
@@ -42,7 +42,7 @@ from decimal import Decimal
 from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
-from backend.auth import ADMIN, GERENTE, TALLER
+from backend.auth import ADMIN, TALLER
 from backend.costeo import MATERIAL_STAGES
 from backend.models import (
     FORM_SECTIONS, FORM_STATES, Etapa, FormularioConsumo, FormularioConsumoLinea, Material, Modelo, ModeloInsumo, Producto,
@@ -100,8 +100,8 @@ def lineas_precargadas() -> list[dict]:
 
 
 def es_visible(estado: str, roles: frozenset[str]) -> bool:
-    """Admin and gerente see every form; taller only the ones sent to it (ENVIADO) or completed (COMPLETADO)."""
-    if roles & {ADMIN, GERENTE}:
+    """Admin sees every form; taller only the ones sent to it (ENVIADO) or completed (COMPLETADO); any other role none."""
+    if ADMIN in roles:
         return True
     return TALLER in roles and estado in ESTADOS_VISIBLES_PARA_TALLER
 
@@ -223,7 +223,7 @@ def listar_formularios(
     if estado is not None and estado not in FORM_STATES:
         raise DatosInvalidos(f"El estado tiene que ser uno de: {', '.join(FORM_STATES)}.")
     consulta = _consulta_base().order_by(FormularioConsumo.id.desc())
-    if not roles & {ADMIN, GERENTE}:
+    if ADMIN not in roles:
         consulta = consulta.where(FormularioConsumo.estado.in_(sorted(ESTADOS_VISIBLES_PARA_TALLER)))
     if estado:
         consulta = consulta.where(FormularioConsumo.estado == estado)

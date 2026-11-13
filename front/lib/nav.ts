@@ -78,7 +78,7 @@ export const NAV_ITEMS: NavGroup[] = [
 
 const MOBILE_TAB_HREFS: Record<Role, readonly string[]> = {
   admin: ["/admin/panel", "/productos", "/materiales", "/fabricacion"],
-  gerente: ["/productos"],
+  gerente: ["/productos", "/escenarios"],
   // Three tabs around the "+" button; Voz stays one tap away in that button's quick actions.
   taller: ["/corte", "/cueros", "/productos"],
 };
@@ -88,29 +88,13 @@ const GERENTE_NAV: NavGroup[] = [
   {
     title: "Consultas",
     items: [
-      { href: "/admin/panel", label: "Panel", icon: "/" },
       { href: "/productos", label: "Productos" },
       { href: "/productos/modelos", label: "Modelos" },
     ],
   },
   {
-    title: "Producción",
-    items: [
-      { href: "/fabricacion", label: "Lotes" },
-      {
-        href: "/formularios",
-        label: "Formularios",
-        icon: "/costos-fijos",
-      },
-      { href: "/cueros", label: "Inventario de cuero" },
-    ],
-  },
-  {
-    title: "Abastecimiento",
-    items: [
-      { href: "/proveedores", label: "Proveedores" },
-      { href: "/talleres", label: "Talleres" },
-    ],
+    title: "Simulador",
+    items: [{ href: "/escenarios", label: "Escenarios" }],
   },
 ];
 

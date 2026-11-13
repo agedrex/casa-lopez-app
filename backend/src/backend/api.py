@@ -37,8 +37,10 @@ router = APIRouter(dependencies=[Depends(require_user)])
 # Access matrix, deny by default: EVERY endpoint carries one of these gates (test_roles.py fails otherwise).
 # `require_role` builds on `require_user`, so no session still answers 401, not 403. SUPUESTO: validar.
 #   admin    everything.
-#   gerente  read only: Producción and Abastecimiento (lots, leather stock, workshops, suppliers), product and quote
-#            data (LECTURA_PRODUCTOS) and the plain catalogs (LECTURA_GENERAL).
+#   gerente  read only, and only Productos, Modelos and the scenario simulator: product and quote data
+#            (LECTURA_PRODUCTOS, which also holds the POST /cvu/escenario calculation: it saves nothing) and the plain
+#            catalogs (LECTURA_GENERAL). Lots, workshops, suppliers, leather stock, consumption forms and the Panel's
+#            alerts are closed to it.
 #   taller   voice, cutting and leather stock (CORTES, LECTURA_CORTE), plus, read only, everything needed to quote or
 #            assemble a new product: products and their sheet, models, materials, prices, catalogs, dollar (LECTURA_GENERAL),
 #            but not profitability / sale prices (gerente + admin) nor the workshop history (admin only).
@@ -48,8 +50,8 @@ CORTES = [Depends(CORTE)]
 # The admin area (the front also hides it, and re-checks the role in every server action).
 ADMINISTRACION = [Depends(SOLO_ADMIN)]
 LECTURA_ADMIN = [Depends(SOLO_ADMIN)]  # costs, prices, fixed costs, orders' money, quality, sync: admin only
-LECTURA_PRODUCTOS = [Depends(PRODUCTOS)]  # admin + gerente (also the Panel reads: costs, quality, dollar)
-LECTURA_CORTE = [Depends(CORTE)]  # admin + taller
+LECTURA_PRODUCTOS = [Depends(PRODUCTOS)]  # admin + gerente: product, quote and scenario data
+LECTURA_CORTE = [Depends(CORTE)]  # admin + taller (lots and leather stock too: the gerente does not read them)
 LECTURA_GENERAL = [Depends(CUALQUIER_ROL)]  # any of the three roles
 SoloAdmin = Annotated[Usuario, Depends(SOLO_ADMIN)]
 Escritor = SoloAdmin
@@ -1268,19 +1270,19 @@ def materiales(session: Sesion):
     return servicios.listar_materiales(session)
 
 
-@router.get("/cueros", dependencies=LECTURA_GENERAL, response_model=list[GrupoCueroOut])
+@router.get("/cueros", dependencies=LECTURA_CORTE, response_model=list[GrupoCueroOut])
 def listar_cueros(session: Sesion, material: str | None = None, color: str | None = None):
     return cueros.listar_cueros(session, material, color)
 
 
-@router.get("/cueros/alcanza", dependencies=LECTURA_GENERAL, response_model=AlcanzaCueroOut)
+@router.get("/cueros/alcanza", dependencies=LECTURA_CORTE, response_model=AlcanzaCueroOut)
 def alcanza_cuero(
     session: Sesion, producto: str, cantidad: Annotated[Decimal, Query(gt=0, max_digits=12, decimal_places=6)],
 ):
     return cueros.alcanza(session, producto, cantidad)
 
 
-@router.get("/cueros/{codigo}", dependencies=LECTURA_GENERAL, response_model=PiezaCueroDetalleOut)
+@router.get("/cueros/{codigo}", dependencies=LECTURA_CORTE, response_model=PiezaCueroDetalleOut)
 def detalle_cuero(codigo: str, session: Sesion):
     return cueros.detalle_pieza(session, codigo)
 
@@ -1345,7 +1347,7 @@ def parametros(session: Sesion):
     return servicios.listar_parametros(session)
 
 
-@router.get("/talleres", dependencies=LECTURA_PRODUCTOS, response_model=list[TallerOut])
+@router.get("/talleres", dependencies=LECTURA_ADMIN, response_model=list[TallerOut])
 def talleres(session: Sesion):
     return servicios.listar_talleres(session)
 
@@ -1355,7 +1357,7 @@ def personas(session: Sesion):
     return servicios.listar_personas(session)
 
 
-@router.get("/talleres/{codigo}", dependencies=LECTURA_PRODUCTOS, response_model=TallerDetalleOut)
+@router.get("/talleres/{codigo}", dependencies=LECTURA_ADMIN, response_model=TallerDetalleOut)
 def taller(codigo: str, session: Sesion):
     return servicios.detalle_taller(session, codigo)
 
@@ -1418,7 +1420,7 @@ def periodos_de_costos_fijos(session: Sesion):
     return servicios.periodos_de_costos_fijos(session)
 
 
-@router.get("/ordenes", dependencies=LECTURA_GENERAL, response_model=list[OrdenResumenOut])
+@router.get("/ordenes", dependencies=LECTURA_CORTE, response_model=list[OrdenResumenOut])
 def ordenes(
     session: Sesion, estado: Literal[*LOT_STATES] | None = None, donde: Literal[*WHERE_MADE] | None = None,
     taller: str | None = None,
@@ -1431,7 +1433,7 @@ def unidades_por_producto(session: Sesion, periodo: str | None = Query(None, pat
     return servicios.unidades_por_producto(session, periodo)
 
 
-@router.get("/ordenes/{codigo}", dependencies=LECTURA_GENERAL, response_model=OrdenDetalleOut)
+@router.get("/ordenes/{codigo}", dependencies=LECTURA_CORTE, response_model=OrdenDetalleOut)
 def orden(codigo: str, session: Sesion):
     return servicios.detalle_orden(session, codigo)
 
@@ -1447,7 +1449,7 @@ def precios_de_talleres(codigo: str, session: Sesion, mismo_tamano: bool = True)
     return servicios.precios_de_talleres(session, codigo, date.today(), mismo_tamano)
 
 
-@router.get("/calidad", dependencies=LECTURA_PRODUCTOS, response_model=CalidadOut)
+@router.get("/calidad", dependencies=LECTURA_ADMIN, response_model=CalidadOut)
 def calidad(session: Sesion):
     return servicios.calidad_de_datos(session)
 
@@ -1475,7 +1477,7 @@ def guardar_precios_por_margen(cuerpo: PreciosLoteIn, session: Sesion, usuario: 
         session, [item.model_dump() for item in cuerpo.items], quien=usuario.id)
 
 
-@router.post("/cvu/escenario", dependencies=ESCRITURA, response_model=EscenarioOut)
+@router.post("/cvu/escenario", dependencies=LECTURA_PRODUCTOS, response_model=EscenarioOut)
 def escenario_cvu(cuerpo: EscenarioIn, session: Sesion):
     """Break-even of the factory for a mix typed by the owner. A POST only because of the body: it reads and saves nothing."""
     return servicios.escenario_cvu(session, cuerpo.periodo, [item.model_dump() for item in cuerpo.items])
@@ -2075,7 +2077,7 @@ def registrar_compra_de_reventa(codigo: str, cuerpo: CompraReventaIn, session: S
     return reventa.registrar_compra(session, codigo, **cuerpo.model_dump(), quien=usuario.id)
 
 
-@router.get("/proveedores", dependencies=LECTURA_PRODUCTOS, response_model=list[ProveedorOut])
+@router.get("/proveedores", dependencies=LECTURA_ADMIN, response_model=list[ProveedorOut])
 def listar_proveedores(
     session: Sesion, q: Annotated[str | None, Query(max_length=100)] = None, activo: bool | None = None,
 ):
@@ -2087,7 +2089,7 @@ def crear_proveedor(cuerpo: ProveedorIn, session: Sesion):
     return proveedores.create_supplier(session, **cuerpo.model_dump())
 
 
-@router.get("/proveedores/{codigo}", dependencies=LECTURA_PRODUCTOS, response_model=ProveedorOut)
+@router.get("/proveedores/{codigo}", dependencies=LECTURA_ADMIN, response_model=ProveedorOut)
 def detalle_de_proveedor(codigo: str, session: Sesion):
     return proveedores.get_supplier(session, codigo)
 
@@ -2102,7 +2104,7 @@ def cambiar_activo_de_proveedor(codigo: str, cuerpo: ActivoIn, session: Sesion):
     return proveedores.set_supplier_active(session, codigo, cuerpo.activo)
 
 
-@router.get("/proveedores/{codigo}/materiales", dependencies=LECTURA_PRODUCTOS, response_model=MaterialesDeProveedorOut)
+@router.get("/proveedores/{codigo}/materiales", dependencies=LECTURA_ADMIN, response_model=MaterialesDeProveedorOut)
 def materiales_de_proveedor(codigo: str, session: Sesion):
     """The materials a supplier has priced and the history of each (oldest to newest in time, newest first in the list)."""
     return proveedores.list_supplier_materials(session, codigo)
@@ -2114,7 +2116,7 @@ def cargar_precio_de_proveedor(codigo: str, cuerpo: PrecioDeProveedorIn, session
     return proveedores.add_supplier_price(session, codigo, **cuerpo.model_dump())
 
 
-@router.get("/proveedores/{codigo}/pedidos", dependencies=LECTURA_PRODUCTOS, response_model=list[PedidoProveedorOut])
+@router.get("/proveedores/{codigo}/pedidos", dependencies=LECTURA_ADMIN, response_model=list[PedidoProveedorOut])
 def listar_pedidos_de_proveedor(codigo: str, session: Sesion):
     """What arrived from this supplier, newest first, with the unit price each line created."""
     return proveedores.list_orders(session, codigo)
@@ -2127,7 +2129,7 @@ def registrar_pedido_de_proveedor(codigo: str, cuerpo: PedidoProveedorIn, sessio
     return proveedores.create_order(session, codigo, **datos, creado_por=usuario.id)
 
 
-@router.get("/proveedores/{codigo}/documentos", dependencies=LECTURA_PRODUCTOS, response_model=list[DocumentoProveedorOut])
+@router.get("/proveedores/{codigo}/documentos", dependencies=LECTURA_ADMIN, response_model=list[DocumentoProveedorOut])
 def listar_documentos_de_proveedor(codigo: str, session: Sesion, q: Annotated[str | None, Query(max_length=100)] = None):
     """Newest first; `q` searches the file name, the number and the OCR text. Never includes the files."""
     return proveedores.list_documents(session, codigo, q=q)
@@ -2175,7 +2177,7 @@ def confirmar_datos_de_documento(id: DocumentoId, cuerpo: DatosDeDocumentoIn, se
 
 # --- Consumption forms (formulario de consumos y herrajes) ---------------------------------------------------------------
 # One digital sheet per new article; the rules, states and who may do what are in formulario.py. No costing happens here.
-# Gates: read = admin, gerente, taller (the service shows the taller only ENVIADO / COMPLETADO); edit rows and complete =
+# Gates: read = admin, taller (the service shows the taller only ENVIADO / COMPLETADO); edit rows and complete =
 # admin + taller (the service lets a taller touch only the rows, only while ENVIADO); everything else is admin only.
 
 FormularioLector = Annotated[Usuario, Depends(FORMULARIO_LEER)]

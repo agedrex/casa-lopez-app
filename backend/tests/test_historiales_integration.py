@@ -127,7 +127,7 @@ def test_only_an_admin_writes_the_supplier_prices_and_a_taller_does_not_read_the
     app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="t", role="taller"))
     assert api.get("/proveedores/PRV-0001/materiales").status_code == 403
     app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="g", role="gerente"))
-    assert api.get("/proveedores/PRV-0001/materiales").status_code == 200  # Abastecimiento is read only for a gerente
+    assert api.get("/proveedores/PRV-0001/materiales").status_code == 403  # Proveedores is closed to a gerente (S8)
     assert precio_de(api, "PRV-0001").status_code == 403
 
 

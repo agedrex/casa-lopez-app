@@ -17,8 +17,8 @@ function positive(value: string | null): value is string {
 }
 
 /**
- * Runs the sales scenario. It saves nothing, but the API only lets an admin call it
- * (ESCRITURA); here we only check the session and the API's 403 comes back as the error.
+ * Runs the sales scenario. It saves nothing, so the API lets admin and gerente call it
+ * (LECTURA_PRODUCTOS); here we only check the session and the API's 403 comes back as the error.
  */
 export async function runEscenario(
   _previous: EscenarioState,

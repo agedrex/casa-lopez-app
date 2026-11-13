@@ -39,23 +39,20 @@ export function parseEstado(value: string): FormularioEstado | "" {
   return FORMULARIO_ESTADOS.find((estado) => estado === value) ?? "";
 }
 
-/** The states a role can list: a taller user (not also admin / gerente) only gets ENVIADO and COMPLETADO. */
+/** The states a role can list: admin gets all, a taller user only ENVIADO and COMPLETADO, gerente none (module closed). */
 export function estadosVisibles(
   role: string | null | undefined,
 ): readonly FormularioEstado[] {
   const roles = parseRoles(role);
-  if (roles.includes("admin") || roles.includes("gerente")) {
-    return FORMULARIO_ESTADOS;
-  }
+  if (roles.includes("admin")) return FORMULARIO_ESTADOS;
   return roles.includes("taller") ? ["ENVIADO", "COMPLETADO"] : [];
 }
 
-/** Admin and gerente see the validated form inside the product sheet; taller never does. */
+/** Only admin sees the validated form inside the product sheet; the Formularios module is closed to gerente and taller. */
 export function seesValidatedFormulario(
   role: string | null | undefined,
 ): boolean {
-  const roles = parseRoles(role);
-  return roles.includes("admin") || roles.includes("gerente");
+  return parseRoles(role).includes("admin");
 }
 
 export type FormularioAcciones = {

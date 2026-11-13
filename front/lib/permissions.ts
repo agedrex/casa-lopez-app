@@ -92,9 +92,10 @@ export function canUseVoice(value: string | null | undefined): boolean {
   return roles.includes("admin") || roles.includes("taller");
 }
 
-/** Consumption forms: admin, gerente and taller read them (the backend shows the taller only ENVIADO / COMPLETADO). */
+/** Consumption forms: admin and taller read them (the backend shows the taller only ENVIADO / COMPLETADO); gerente has no access. */
 export function canReadFormularios(value: string | null | undefined): boolean {
-  return parseRoles(value).length > 0;
+  const roles = parseRoles(value);
+  return roles.includes("admin") || roles.includes("taller");
 }
 
 /** Consumption forms: admin and taller fill them in and complete them; every other action is admin only (canWrite). */
@@ -113,19 +114,11 @@ const ROLE_ACCESS: Record<
   { home: string; paths: readonly string[] | null; exact?: readonly string[] }
 > = {
   admin: { home: "/admin/panel", paths: null },
-  // Gerente reads Producción and Abastecimiento. The Panel is the only page of /admin it opens
-  // (exact: the other admin pages stay closed).
+  // Gerente reads Productos (list, sheet and Modelos) and runs the scenario simulator. Nothing else:
+  // no Panel, Lotes, Formularios, Cueros, Proveedores nor Talleres (S8).
   gerente: {
     home: "/productos",
-    paths: [
-      "/productos",
-      "/fabricacion",
-      "/cueros",
-      "/talleres",
-      "/proveedores",
-      "/formularios",
-    ],
-    exact: ["/admin/panel"],
+    paths: ["/productos", "/escenarios"],
   },
   // Taller keeps Corte, Cueros and Voz, and reads everything needed to quote or assemble a product.
   taller: {

@@ -558,11 +558,8 @@ def test_new_endpoints_honour_roles(api):
         assert api.post(ruta, json=cuerpo).status_code == 403, ruta
     lecturas = ("/ordenes", "/ordenes/LOT-0001", "/talleres/TAL-0001", "/fabricacion/casa-vs-taller",
                 "/costos-fijos/periodos", f"/productos/{codigo}/precios-talleres")
-    for ruta in lecturas[:3]:  # a gerente reads Producción and Abastecimiento: lots and workshops
-        assert api.get(ruta).status_code == 200, ruta
-    for ruta in lecturas[3:]:  # but not the cost comparison, the fixed costs nor the workshop prices
+    for ruta in (*lecturas, "/calidad"):  # a gerente reads only Productos, Modelos and the simulator (S8): none of these
         assert api.get(ruta).status_code == 403, ruta
-    assert api.get("/calidad").status_code == 200  # the Panel's alerts are open to a gerente
     app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id="u", role="taller"))
     assert api.get("/ordenes").status_code == 200 and api.get("/ordenes/LOT-0001").status_code == 200  # the cut flow
     for ruta in (*lecturas[2:], "/calidad"):

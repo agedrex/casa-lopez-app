@@ -134,7 +134,8 @@ def test_invalid_period_is_rejected():
 
 # Every POST is admin only. The routes below are checked by their own tests (test_admin.py, test_sheets_api.py,
 # test_cvu_rentabilidad.py and test_roles.py), so the generic body-validation tests here leave them out.
-# /cvu/escenario is a POST only because of its body: it computes and saves nothing, but it is admin only anyway.
+# /cvu/escenario is a POST only because of its body: it computes and saves nothing, so it is open to admin and gerente
+# (LECTURA_PRODUCTOS); test_roles.py and test_escenarios_gerente.py fix its gate.
 SOLO_ADMIN = {"/parametros/{codigo}", "/personas", "/personas/{codigo}/activo", "/colores", "/categorias",
               "/impuestos", "/impuestos/{codigo}/alicuota", "/impuestos/{codigo}/activo",
               "/modelos/{codigo}/consumos", "/sync/sheets", "/cvu/escenario", "/productos/precios-lote",

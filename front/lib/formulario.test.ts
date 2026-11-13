@@ -81,26 +81,29 @@ test("legacy and missing roles map like the rest of the app", () => {
   assert.equal(accionesDe(null, "ENVIADO").editar, false);
 });
 
-test("a taller user is listed only ENVIADO and COMPLETADO", () => {
+test("a taller user is listed only ENVIADO and COMPLETADO and a gerente none", () => {
   assert.deepEqual(estadosVisibles("taller"), ["ENVIADO", "COMPLETADO"]);
-  assert.deepEqual(estadosVisibles("gerente"), FORMULARIO_ESTADOS);
+  assert.deepEqual(estadosVisibles("gerente"), []);
   assert.deepEqual(estadosVisibles("taller,admin"), FORMULARIO_ESTADOS);
   assert.deepEqual(estadosVisibles(null), []);
 });
 
-test("the product sheet shows the validated form to admin and gerente, never to taller", () => {
+test("the product sheet shows the validated form only to admin", () => {
   assert.equal(seesValidatedFormulario("admin"), true);
-  assert.equal(seesValidatedFormulario("gerente"), true);
+  assert.equal(seesValidatedFormulario("gerente"), false);
   assert.equal(seesValidatedFormulario("taller"), false);
   assert.equal(seesValidatedFormulario(null), false);
 });
 
-test("the three roles reach /formularios and only admin and taller work on it", () => {
-  for (const role of ["admin", "gerente", "taller"]) {
+test("admin and taller reach /formularios and work on it; gerente does not (S8)", () => {
+  for (const role of ["admin", "taller"]) {
     assert.equal(canAccessPath(role, "/formularios"), true, role);
     assert.equal(canAccessPath(role, "/formularios/FCO-0001"), true, role);
     assert.equal(canReadFormularios(role), true, role);
   }
+  assert.equal(canAccessPath("gerente", "/formularios"), false);
+  assert.equal(canAccessPath("gerente", "/formularios/FCO-0001"), false);
+  assert.equal(canReadFormularios("gerente"), false);
   assert.equal(canAccessPath(null, "/formularios"), false);
   assert.equal(canAccessPath("desconocido", "/formularios"), false);
   assert.equal(canWorkFormularios("admin"), true);

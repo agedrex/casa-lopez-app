@@ -309,13 +309,13 @@ def test_pg_orders_are_append_only_there_is_no_way_to_edit_or_delete_one(api):
     assert len(api.get(f"/proveedores/{code}/pedidos").json()) == 1
 
 
-def test_pg_only_admin_registers_admin_and_gerente_read_and_taller_sees_nothing(api):
+def test_pg_only_admin_registers_and_reads_gerente_and_taller_see_nothing(api):
     como("admin")
     code = make_supplier(api)
     api.post(f"/proveedores/{code}/pedidos", json=order())
     before = counts(api)
     como("gerente")
-    assert api.get(f"/proveedores/{code}/pedidos").status_code == 200
+    assert api.get(f"/proveedores/{code}/pedidos").status_code == 403
     assert api.post(f"/proveedores/{code}/pedidos", json=order([line(FLEX)])).status_code == 403
     como("taller")
     assert api.get(f"/proveedores/{code}/pedidos").status_code == 403

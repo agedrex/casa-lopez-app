@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { PageHeader } from "@/components/ui";
 import { apiGet } from "@/lib/api";
+import { canWrite } from "@/lib/permissions";
+import { requireSession } from "@/lib/session";
 import type { PanelCostos, ProductoResumen } from "@/lib/types";
 import { BloqueConError } from "../admin/panel/panel-cvu";
 import { EscenarioDeVentas } from "../cvu/escenario";
@@ -8,6 +10,7 @@ import { EscenarioDeVentas } from "../cvu/escenario";
 export const metadata: Metadata = { title: "Escenarios" };
 
 export default async function EscenariosPage() {
+  const { user } = await requireSession();
   // SUPUESTO: 500 is the API's page maximum; it only feeds the product suggestions of the scenario.
   const [panel, productos] = await Promise.all([
     apiGet<PanelCostos>("/panel/costos"),
@@ -26,6 +29,7 @@ export default async function EscenariosPage() {
           <EscenarioDeVentas
             productos={productos.ok ? productos.data : []}
             periodo={panel.data.periodo}
+            puedeCorregir={canWrite(user.role)}
           />
         ) : (
           <BloqueConError message={panel.message} />

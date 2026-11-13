@@ -22,7 +22,7 @@ export async function proxy(request: NextRequest) {
   const real = await auth.api.getSession({ headers: request.headers });
   if (!real) return NextResponse.redirect(new URL("/login", request.url));
   const session = withPreview(real, request.cookies.get(PREVIEW_COOKIE)?.value);
-  // Deny by default: each role opens only its own paths (/admin is admin only, except the Panel for gerente).
+  // Deny by default: each role opens only its own paths (/admin is admin only).
   if (!canAccessPath(session.user.role, pathname)) {
     return NextResponse.redirect(
       new URL(homePath(session.user.role), request.url),

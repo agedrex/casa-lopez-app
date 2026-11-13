@@ -142,8 +142,9 @@ def test_s8_gerente_and_unknown_roles_cannot_edit():
 
 
 @pytest.mark.parametrize("estado", ESTADOS)
-def test_s8_visibility_admin_and_gerente_see_everything_taller_only_enviado_and_completado(estado):
-    assert es_visible(estado, ADMIN) and es_visible(estado, GERENTE) and es_visible(estado, ADMIN | TALLER)
+def test_s8_visibility_admin_sees_everything_taller_only_enviado_and_completado_gerente_nothing(estado):
+    assert es_visible(estado, ADMIN) and es_visible(estado, ADMIN | TALLER)
+    assert es_visible(estado, GERENTE) is False  # the Formularios module is closed to the gerente
     assert es_visible(estado, TALLER) is (estado in ("ENVIADO", "COMPLETADO"))
     assert es_visible(estado, OTRO) is False
 
@@ -327,9 +328,10 @@ def test_a_role_matrix_over_the_routes_that_pass_the_gate(monkeypatch):
     vistos = []
     monkeypatch.setattr(formulario, "listar_formularios", lambda s, **k: vistos.append(("listar", k["roles"])) or [])
     monkeypatch.setattr(formulario, "cambiar_estado", lambda s, codigo, accion, **k: vistos.append((accion, k["roles"])) or None)
-    for role, ruta in (("admin", "/formularios"), ("gerente", "/formularios"), ("taller", "/formularios")):
+    for role, ruta in (("admin", "/formularios"), ("taller", "/formularios")):
         assert cliente(role).get(ruta).status_code == 200
-    assert vistos == [("listar", ADMIN), ("listar", GERENTE), ("listar", TALLER)]  # the service gets the roles to filter
+    assert vistos == [("listar", ADMIN), ("listar", TALLER)]  # the service gets the roles to filter
+    assert cliente("gerente").get("/formularios").status_code == 403 and len(vistos) == 2  # closed to the gerente
 
 
 def test_the_taller_hits_the_service_to_complete_with_its_own_roles_and_user(monkeypatch):
@@ -394,7 +396,7 @@ def test_the_list_filter_only_takes_the_four_states(monkeypatch):
 def test_the_list_passes_the_producto_filter_to_the_service(monkeypatch):
     vistos = []
     monkeypatch.setattr(formulario, "listar_formularios", lambda s, **k: vistos.append(k) or [])
-    assert cliente("gerente").get("/formularios", params={"producto": "PRD-0001", "estado": "VALIDADO"}).status_code == 200
+    assert cliente("admin").get("/formularios", params={"producto": "PRD-0001", "estado": "VALIDADO"}).status_code == 200
     assert cliente("admin").get("/formularios").status_code == 200
     assert [(k["producto"], k["estado"]) for k in vistos] == [("PRD-0001", "VALIDADO"), (None, None)]
 
@@ -612,8 +614,8 @@ def test_pg_list_search_and_what_each_role_sees(api):
     assert [f["codigo"] for f in api.get("/formularios", params={"q": uno["codigo"].lower()}).json()] == [uno["codigo"]]
     assert [f["codigo"] for f in api.get("/formularios", params={"estado": "ENVIADO", "q": "zeta"}).json()] == [dos["codigo"]]
     como("gerente")
-    assert {f["codigo"] for f in api.get("/formularios").json()} >= {uno["codigo"], dos["codigo"], tres["codigo"]}
-    assert api.get(f"/formularios/{uno['codigo']}").status_code == 200
+    assert api.get("/formularios").status_code == 403  # the module is closed to the gerente
+    assert api.get(f"/formularios/{uno['codigo']}").status_code == 403
     assert api.put(f"/formularios/{uno['codigo']}", json=cuerpo_de(uno)).status_code == 403
     como("taller")
     visibles = {f["codigo"]: f["estado"] for f in api.get("/formularios").json()}

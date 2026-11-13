@@ -81,6 +81,7 @@ def test_require_role_accepts_legacy_names_in_its_arguments():
 
 ACCESO: dict[tuple[str, str], frozenset[str]] = {
     # Product and quote data: admin and gerente. /materiales has no prices, so every role reads it.
+    # The gerente opens ONLY Productos, Modelos and the scenario simulator (S8): everything else it used to read is closed.
     ("GET", "/productos"): TODOS,  # taller: the "alcanza" selector of the cut pages and the product list
     ("GET", "/productos/conteo"): TODOS,  # taller: the pagination of that list (the sheet itself stays admin / gerente)
     ("GET", "/productos/{codigo}"): TODOS,
@@ -90,13 +91,13 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
     ("GET", "/grilla"): PRODUCTOS,
     ("GET", "/catalogos"): TODOS,
     ("GET", "/materiales"): TODOS,
-    # What the corte / cueros / voz pages read.
-    ("GET", "/cueros"): TODOS,
-    ("GET", "/cueros/alcanza"): TODOS,
-    ("GET", "/cueros/{codigo}"): TODOS,
+    # What the corte / cueros / voz pages read (leather stock and lots: not the gerente).
+    ("GET", "/cueros"): CORTE,
+    ("GET", "/cueros/alcanza"): CORTE,
+    ("GET", "/cueros/{codigo}"): CORTE,
     ("GET", "/colores"): TODOS,
-    ("GET", "/ordenes"): TODOS,
-    ("GET", "/ordenes/{codigo}"): TODOS,
+    ("GET", "/ordenes"): CORTE,
+    ("GET", "/ordenes/{codigo}"): CORTE,
     ("GET", "/ordenes/unidades-por-producto"): ADMIN,
     ("GET", "/voz/estado"): CORTE,
     # Admin only reads.
@@ -105,18 +106,18 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
     ("GET", "/modelos"): TODOS, ("GET", "/modelos/{codigo}"): TODOS,
     ("GET", "/precios"): TODOS, ("GET", "/precios/chequeo"): ADMIN,
     ("GET", "/categorias"): TODOS, ("GET", "/impuestos"): ADMIN, ("GET", "/dolar"): TODOS, ("GET", "/parametros"): ADMIN,
-    ("GET", "/talleres"): PRODUCTOS, ("GET", "/talleres/{codigo}"): PRODUCTOS, ("GET", "/personas"): ADMIN,
+    ("GET", "/talleres"): ADMIN, ("GET", "/talleres/{codigo}"): ADMIN, ("GET", "/personas"): ADMIN,
     ("GET", "/talleres/{codigo}/historial"): ADMIN,
     ("GET", "/costos-fijos"): ADMIN, ("GET", "/costos-fijos/periodos"): ADMIN,
     ("GET", "/panel/costos"): PRODUCTOS, ("GET", "/panel/tendencia"): ADMIN,
-    ("GET", "/fabricacion/casa-vs-taller"): ADMIN, ("GET", "/calidad"): PRODUCTOS,
+    ("GET", "/fabricacion/casa-vs-taller"): ADMIN, ("GET", "/calidad"): ADMIN,
     ("GET", "/sync/sheets/estado"): ADMIN, ("GET", "/sync/sheets/vista/{pestana}"): ADMIN,
     # Writes: admin only, except cutting and the voice interpreter.
     ("POST", "/cueros/{codigo}/cortes"): CORTE, ("POST", "/cueros/{codigo}/sobrante"): CORTE,
     ("POST", "/voz/interpretar"): CORTE,
-    # Consumption forms: everybody reads (the service hides BORRADOR / VALIDADO from taller), admin and taller edit the rows
-    # and complete, the rest is admin only.
-    ("GET", "/formularios"): TODOS, ("GET", "/formularios/{codigo}"): TODOS,
+    # Consumption forms: admin and taller read (the service hides BORRADOR / VALIDADO from taller), admin and taller edit the
+    # rows and complete, the rest is admin only. The gerente has no access to the module.
+    ("GET", "/formularios"): CORTE, ("GET", "/formularios/{codigo}"): CORTE,
     ("PUT", "/formularios/{codigo}"): CORTE, ("POST", "/formularios/{codigo}/completar"): CORTE,
     **{("POST", ruta): ADMIN for ruta in (
         "/productos/nuevo", "/formularios", "/formularios/{codigo}/enviar", "/formularios/{codigo}/devolver", "/formularios/{codigo}/validar",
@@ -125,7 +126,7 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
     ("POST", "/ordenes/{codigo}/items/{item}/precios"): CORTE,
     **{("POST", ruta): ADMIN for ruta in (
         "/cueros", "/productos", "/productos/{codigo}/precio-venta", "/productos/{codigo}/extras",
-        "/productos/{codigo}/componentes", "/productos/{codigo}/cotizaciones", "/cvu/escenario", "/precios", "/dolar",
+        "/productos/{codigo}/componentes", "/productos/{codigo}/cotizaciones", "/precios", "/dolar",
         "/dolar/actualizar-bna", "/costos-fijos", "/costos-fijos/{codigo}/monto", "/costos-fijos/{codigo}/corregir",
         "/costos-fijos/{codigo}/anular", "/costos-fijos/copiar", "/ordenes", "/ordenes/{codigo}/estado", "/ordenes/{codigo}/items",
         "/talleres", "/talleres/{codigo}/activo", "/parametros/{codigo}",
@@ -133,11 +134,13 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
         "/impuestos", "/impuestos/{codigo}/alicuota", "/impuestos/{codigo}/activo",
         "/modelos/{codigo}/consumos", "/sync/sheets", "/costos-fijos/lote", "/modelos/consumos/lote",
         "/productos/precios-lote")},
-    # Suppliers: gerente reads (Abastecimiento), the invoice file and every write stay admin only.
+    # The scenario simulator: a POST only because of its body, it computes and saves nothing (test_escenarios_gerente.py).
+    ("POST", "/cvu/escenario"): PRODUCTOS,
+    # Suppliers: admin only (reads and writes), the gerente has no access to the module.
     ("GET", "/reventa"): ADMIN, ("GET", "/reventa/{codigo}"): ADMIN,
-    ("GET", "/proveedores"): PRODUCTOS, ("GET", "/proveedores/{codigo}"): PRODUCTOS,
-    ("GET", "/proveedores/{codigo}/documentos"): PRODUCTOS, ("GET", "/documentos-proveedor/{id}/archivo"): ADMIN,
-    ("GET", "/proveedores/{codigo}/materiales"): PRODUCTOS, ("GET", "/proveedores/{codigo}/pedidos"): PRODUCTOS,
+    ("GET", "/proveedores"): ADMIN, ("GET", "/proveedores/{codigo}"): ADMIN,
+    ("GET", "/proveedores/{codigo}/documentos"): ADMIN, ("GET", "/documentos-proveedor/{id}/archivo"): ADMIN,
+    ("GET", "/proveedores/{codigo}/materiales"): ADMIN, ("GET", "/proveedores/{codigo}/pedidos"): ADMIN,
     **{("POST", ruta): ADMIN for ruta in (
         "/reventa", "/reventa/lote", "/reventa/{codigo}/activo", "/reventa/{codigo}/compras",
         "/proveedores", "/proveedores/{codigo}", "/proveedores/{codigo}/activo", "/proveedores/{codigo}/documentos",
@@ -217,13 +220,13 @@ def test_admin_only_routes_refuse_everyone_else_without_calling_the_service(monk
 
 
 @pytest.mark.parametrize("role, rutas", [
+    # Productos (list and sheet), Modelos and the scenario simulator, and what those pages read.
     ("gerente", [("GET", "/productos"), ("GET", "/productos/conteo"), ("GET", "/productos/X-1"),
-                 ("GET", "/productos/X-1/rentabilidad"), ("GET", "/productos/X-1/precio-venta"), ("GET", "/grilla"),
-                 ("GET", "/catalogos"), ("GET", "/materiales"),
-                 ("GET", "/panel/costos"), ("GET", "/calidad"), ("GET", "/dolar"),
-                 ("GET", "/ordenes"), ("GET", "/ordenes/LOT-1"), ("GET", "/cueros"), ("GET", "/cueros/PZC-1"),
-                 ("GET", "/talleres"), ("GET", "/talleres/T-1"), ("GET", "/proveedores"), ("GET", "/proveedores/PRV-1"),
-                 ("GET", "/proveedores/PRV-1/pedidos"), ("GET", "/formularios"), ("GET", "/formularios/FCO-0001")]),
+                 ("GET", "/productos/X-1/rentabilidad"), ("GET", "/productos/X-1/precio-venta"),
+                 ("GET", "/productos/X-1/precio-sugerido"), ("GET", "/grilla"),
+                 ("GET", "/modelos"), ("GET", "/modelos/MOD-1"),
+                 ("GET", "/catalogos"), ("GET", "/materiales"), ("GET", "/dolar"),
+                 ("GET", "/panel/costos"), ("POST", "/cvu/escenario")]),
     ("taller", [("GET", "/productos"), ("GET", "/productos/conteo"), ("GET", "/materiales"), ("GET", "/cueros"), ("GET", "/cueros/PZC-1"),
                 ("GET", "/cueros/alcanza?producto=P&cantidad=1"), ("GET", "/colores"), ("GET", "/ordenes"),
                 ("GET", "/ordenes/LOT-1"), ("GET", "/voz/estado"),
@@ -244,7 +247,7 @@ def test_each_role_passes_the_gate_of_its_allowed_set(role, rutas):
         assert _estado(cliente, metodo, ruta) not in (401, 403), (role, metodo, ruta)
 
 
-def test_taller_is_still_refused_on_the_panel_reads_that_gerente_now_has():
+def test_taller_is_still_refused_on_the_panel_reads_and_the_scenario():
     cliente = _cliente("taller")
     for ruta in ("/panel/costos", "/calidad"):
         respuesta = cliente.get(ruta)
@@ -252,13 +255,61 @@ def test_taller_is_still_refused_on_the_panel_reads_that_gerente_now_has():
 
 
 @pytest.mark.parametrize("metodo, ruta", [
-    ("GET", "/panel/tendencia"), ("GET", "/costos-fijos"), ("POST", "/cvu/escenario"), ("POST", "/productos"),
+    ("GET", "/panel/tendencia"), ("GET", "/costos-fijos"), ("POST", "/productos"),
 ])
 @pytest.mark.parametrize("role", ["gerente", "taller"])
 def test_gerente_and_taller_are_refused_on_the_representative_admin_routes(metodo, ruta, role):
     cliente = _cliente(role)
     respuesta = cliente.request(metodo, ruta, json={} if metodo == "POST" else None)
     assert respuesta.status_code == 403 and respuesta.json() == SIN_PERMISO
+
+
+def test_taller_cannot_run_the_scenario_simulator(monkeypatch):
+    monkeypatch.setattr(servicios, "escenario_cvu", lambda *a, **k: pytest.fail("the service must not be called"))
+    respuesta = _cliente("taller").post("/cvu/escenario", json={"items": []})
+    assert respuesta.status_code == 403 and respuesta.json() == SIN_PERMISO
+
+
+# --- The gerente opens only Productos, Modelos and the scenario simulator (S8): one test per closed module ------------
+
+CERRADO_PARA_GERENTE = {
+    "panel": [("GET", "/calidad"), ("GET", "/panel/tendencia"), ("GET", "/costos-fijos"), ("GET", "/costos-fijos/periodos")],
+    "lotes": [("GET", "/ordenes"), ("GET", "/ordenes/LOT-1"), ("GET", "/fabricacion/casa-vs-taller"),
+              ("GET", "/ordenes/unidades-por-producto"), ("POST", "/ordenes")],
+    "formularios": [("GET", "/formularios"), ("GET", "/formularios/FCO-0001"), ("PUT", "/formularios/FCO-0001"),
+                    ("POST", "/formularios"), ("POST", "/formularios/FCO-0001/completar"), ("POST", "/formularios/FCO-0001/validar")],
+    "cueros": [("GET", "/cueros"), ("GET", "/cueros/alcanza"), ("GET", "/cueros/PZC-1"), ("POST", "/cueros"),
+               ("POST", "/cueros/PZC-1/cortes")],
+    "proveedores": [("GET", "/proveedores"), ("GET", "/proveedores/PRV-1"), ("GET", "/proveedores/PRV-1/materiales"),
+                    ("GET", "/proveedores/PRV-1/pedidos"), ("GET", "/proveedores/PRV-1/documentos"),
+                    ("POST", "/proveedores"), ("POST", "/proveedores/PRV-1/pedidos")],
+    "talleres": [("GET", "/talleres"), ("GET", "/talleres/TAL-1"), ("GET", "/talleres/TAL-1/historial"), ("POST", "/talleres")],
+}
+
+
+@pytest.mark.parametrize("modulo", sorted(CERRADO_PARA_GERENTE))
+@pytest.mark.parametrize("role", ["gerente", "consulta"])
+def test_s8_the_gerente_is_refused_on_every_route_of_a_closed_module(monkeypatch, modulo, role):
+    session = MagicMock()
+    for nombre in dir(servicios):
+        if callable(getattr(servicios, nombre)) and not nombre.startswith("_") and nombre.islower():
+            monkeypatch.setattr(servicios, nombre, lambda *a, **k: pytest.fail("the service must not be called"))
+    cliente = _cliente(role, session)
+    for metodo, ruta in CERRADO_PARA_GERENTE[modulo]:
+        assert _estado(cliente, metodo, ruta) == 403, (modulo, metodo, ruta)
+    session.commit.assert_not_called()
+
+
+@pytest.mark.parametrize("modulo", sorted(CERRADO_PARA_GERENTE))
+def test_s8_admin_still_passes_the_gates_of_every_closed_module(modulo):
+    cliente = _cliente("admin")
+    for metodo, ruta in CERRADO_PARA_GERENTE[modulo]:
+        assert _estado(cliente, metodo, ruta) not in (401, 403), (modulo, metodo, ruta)
+
+
+@pytest.mark.parametrize("ruta", ["/ordenes", "/ordenes/LOT-1", "/cueros", "/cueros/PZC-1", "/formularios", "/formularios/FCO-0001"])
+def test_s8_taller_keeps_reading_lots_leather_and_forms(ruta):
+    assert _estado(_cliente("taller"), "GET", ruta) not in (401, 403), ruta
 
 
 @pytest.mark.parametrize("metodo, ruta", [
