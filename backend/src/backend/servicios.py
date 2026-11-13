@@ -838,9 +838,12 @@ def agregar_componente(session: Session, codigo_kit: str, *, componente: str, ca
 def crear_precio(
     session: Session, *, material: str, color: str | None, proveedor: str | None, precio: Decimal, moneda: str,
     unidad_del_precio: str, iva_incluido: bool, vigente_desde: date, nota_fuente: str | None = None,
-    proveedor_id: int | None = None,
+    proveedor_id: int | None = None, commit: bool = True,
 ) -> dict:
     """A new price is a new row with its date; an existing (material, color, date) is a conflict.
+
+    `commit=False` leaves the row flushed in the caller's transaction, so a caller that saves several things together
+    (a supplier order) can commit or roll back all of them at once.
 
     The supplier text is stored as typed. The link `proveedor_id` is set when the caller knows the supplier (the supplier's
     page) or when the text is exactly the code of an existing supplier (codes are unique, so that match is unambiguous).
@@ -861,7 +864,8 @@ def crear_precio(
         nota_fuente=nota_fuente,
     )
     _insertar(session, fila, "Ya hay un precio de ese material y color para esa fecha; cargá uno con otra fecha.")
-    session.commit()
+    if commit:
+        session.commit()
     return next(p for p in listar_precios(session, material, vigente_desde) if p["codigo"] == fila.codigo)
 
 

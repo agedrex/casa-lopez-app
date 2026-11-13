@@ -1948,6 +1948,53 @@ class MaterialesDeProveedorOut(Salida):
     materiales: list[MaterialDeProveedorOut]
 
 
+class PedidoLineaIn(Entrada):
+    """One material that arrived. The content is in the consumption unit of the material (m2, m, unidad...)."""
+    material: str
+    cantidad_presentaciones: Annotated[Decimal, Field(gt=0, max_digits=12, decimal_places=6)]
+    presentacion: Annotated[str, Field(min_length=1, max_length=proveedores.MAX_PRESENTATION)]
+    contenido_por_presentacion: Annotated[Decimal, Field(gt=0, max_digits=12, decimal_places=6)]
+    precio_por_presentacion: Annotated[Decimal, Field(ge=0, max_digits=14, decimal_places=4)]
+    moneda: Literal[*ARS_USD]
+    iva_incluido: bool = False
+
+
+class PedidoProveedorIn(Entrada):
+    """An order from this supplier. The supplier comes from the URL, never from the body."""
+    fecha_de_recepcion: date
+    remito: Annotated[str, Field(max_length=proveedores.MAX_ORDER_TEXT)] | None = None
+    documento_id: Annotated[int, Field(ge=1, le=2**63 - 1)] | None = None
+    nota: Annotated[str, Field(max_length=2000)] | None = None
+    lineas: Annotated[list[PedidoLineaIn], Field(min_length=1, max_length=200)]
+
+
+class PedidoLineaOut(Salida):
+    orden: int
+    material: str
+    material_nombre: str
+    unidad_de_consumo: str
+    cantidad_presentaciones: Decimal
+    presentacion: str
+    contenido_por_presentacion: Decimal
+    precio_por_presentacion: Decimal
+    moneda: str
+    iva_incluido: bool
+    precio_unitario: Decimal
+    precio_codigo: str
+
+
+class PedidoProveedorOut(Salida):
+    codigo: str
+    proveedor: str
+    fecha_de_recepcion: date
+    remito: str | None
+    documento_id: int | None
+    nota: str | None
+    creado_por: str
+    created_at: datetime
+    lineas: list[PedidoLineaOut]
+
+
 def get_ocr_llm() -> ocr_llm.OcrLLM | None:
     """The real reader while `ANTHROPIC_API_KEY` is set (building it makes no network call), else None."""
     return ocr_llm.create_client()
@@ -2026,6 +2073,19 @@ def materiales_de_proveedor(codigo: str, session: Sesion):
 def cargar_precio_de_proveedor(codigo: str, cuerpo: PrecioDeProveedorIn, session: Sesion):
     """Adds a dated price of a material linked to this supplier (a new row; older ones are never changed)."""
     return proveedores.add_supplier_price(session, codigo, **cuerpo.model_dump())
+
+
+@router.get("/proveedores/{codigo}/pedidos", dependencies=LECTURA_PRODUCTOS, response_model=list[PedidoProveedorOut])
+def listar_pedidos_de_proveedor(codigo: str, session: Sesion):
+    """What arrived from this supplier, newest first, with the unit price each line created."""
+    return proveedores.list_orders(session, codigo)
+
+
+@router.post("/proveedores/{codigo}/pedidos", dependencies=ESCRITURA, response_model=PedidoProveedorOut, status_code=201)
+def registrar_pedido_de_proveedor(codigo: str, cuerpo: PedidoProveedorIn, session: Sesion, usuario: Escritor):
+    """Registers an order and the price of each line, all or nothing. Orders are never edited or deleted."""
+    datos = cuerpo.model_dump()
+    return proveedores.create_order(session, codigo, **datos, creado_por=usuario.id)
 
 
 @router.get("/proveedores/{codigo}/documentos", dependencies=LECTURA_PRODUCTOS, response_model=list[DocumentoProveedorOut])

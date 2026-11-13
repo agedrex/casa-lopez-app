@@ -2,7 +2,7 @@
 
 Source of truth: sheet `Diccionario` of `Plantilla Costos Casa Lopez v4.1 (trabajo).xlsx`.
 It supersedes [`der.md`](der.md) (DER v1) and the old Excel rules (GG 11 % is gone; CORTE is fixed; CONFECCION and HILO_CEMENTO are separate stages).
-The models are in `backend/src/backend/models.py`; Alembic revision `0003_der_v3` drops the v1 tables and creates these ones, and `0004_semillas_v3` loads the reference data `0005_gasto_reemplaza_a` adds `gasto_periodo.reemplaza_a_id` `0009_gasto_anulado` adds `gasto_periodo.anulado` `0010_compra_sin_unidades` makes `compra_reventa.unidades` nullable and `0012_impuesto_activo` adds `impuesto.activo` and `0013_impuestos_vacios` removes the three seeded taxes (the tax grid starts empty) and `0014_gastos_venta_pct` adds the parameter `GASTOS_VENTA_PCT` and `0015_precio_venta_margen` adds `precio_venta.margen` and `0016_formulario_consumo` adds `formulario_consumo` and `formulario_consumo_linea` and `0017_formulario_modelo` adds `formulario_consumo.modelo_id` (the sheet measures a model; the product is created after it is validated).
+The models are in `backend/src/backend/models.py`; Alembic revision `0003_der_v3` drops the v1 tables and creates these ones, and `0004_semillas_v3` loads the reference data `0005_gasto_reemplaza_a` adds `gasto_periodo.reemplaza_a_id` `0009_gasto_anulado` adds `gasto_periodo.anulado` `0010_compra_sin_unidades` makes `compra_reventa.unidades` nullable and `0012_impuesto_activo` adds `impuesto.activo` and `0013_impuestos_vacios` removes the three seeded taxes (the tax grid starts empty) and `0014_gastos_venta_pct` adds the parameter `GASTOS_VENTA_PCT` and `0015_precio_venta_margen` adds `precio_venta.margen` and `0016_formulario_consumo` adds `formulario_consumo` and `formulario_consumo_linea` and `0017_formulario_modelo` adds `formulario_consumo.modelo_id` (the sheet measures a model; the product is created after it is validated) and `0018_pedidos_proveedor` adds `pedido_proveedor` and `pedido_linea` and the unit `m` (metre) to the closed unit lists.
 
 Only columns marked `carga` / `clave` in the dictionary are persisted. Columns marked `calculada (la app recalcula)` are computed by the backend, except in `cotizacion`, which stores a calculated snapshot. Sheets marked `vista` are not tables.
 
@@ -39,6 +39,8 @@ Conventions: schema `costos`; `id` (identity) and `created_at` everywhere; `codi
 | `cotizacion` | Cotizaciones | Calculated snapshot per product, type (INICIAL / RECOTIZACION / FINAL) and date: dollar, one amount per stage, subtotal, kit components, purchase VAT, repairs, totals in ARS and USD. |
 | `formulario_consumo` | (no sheet) | The digital "consumos y herrajes" sheet of one new article (revision 0016): see the section below. |
 | `formulario_consumo_linea` | (no sheet) | The rows of that sheet. |
+| `pedido_proveedor` | (no sheet) | A delivery from a supplier (revision 0018): see the section below. |
+| `pedido_linea` | (no sheet) | The materials of that delivery and the price each one created. |
 
 ## Resale products, shown as "Mercadería" in the app (revision 0008)
 
@@ -87,7 +89,7 @@ The payments to a workshop need no new table: `GET /talleres/{codigo}/historial`
 
 ## Open assumptions (`SUPUESTO: validar`)
 
-- Units of consumption and price are a closed `CHECK` list (`m2`, `cm`, `juego`, `unidad`, `USD`) although the sheet shows it as open.
+- Units of consumption and price are a closed `CHECK` list (`m2`, `cm`, `juego`, `unidad`, `USD`, plus `m` since revision 0018) although the sheet shows it as open.
 - `tipo_cambio.tipo` is nullable: the migrated Excel dollar has no type yet (pending with Gerardo).
 - `impuesto.base` and `cotizacion.estado` have no dropdown in the sheet, so they are free text.
 - `producto.modelo_id` and dates are nullable (a kit has no model); `estado_del_ciclo` defaults to `EN_DEFINICION`.
@@ -119,6 +121,18 @@ The endpoints that read and load these tables are listed in [`backend/README.md`
 | `creado_por`, `nota`, `created_at` | Who saved it (auth user id as text), an optional note and when. |
 
 `POST /productos/{codigo}/precio-venta` takes an optional `margen` (fraction, 0 to below 1, up to 3 decimals) and both it and `GET .../precio-venta` return it. The front sends it only when the price is the one suggested for the typed margin; editing the price by hand drops it. Downgrade of 0015 drops the check and the column: the saved margins are lost (the prices stay).
+
+## Supplier orders (`pedido_proveedor`, `pedido_linea`, revision 0018)
+
+What arrived from a supplier, how it came and what each presentation cost. **Append-only**: orders and lines are never edited or deleted (a correction is a new order). Saving an order creates one `precio_material` row per line through `servicios.crear_precio`, **all in one transaction**: if any line fails (unknown material, a price already loaded for that material and date) nothing is stored.
+
+`pedido_proveedor`: `codigo` (`PED-NNNN`), `proveedor_id` (FK, required), `fecha_de_recepcion` (date, required), `remito` (text: the supplier's delivery note or invoice number), `documento_id` (FK to `documento_proveedor`, optional; it must belong to the same supplier), `nota` and `creado_por` (auth user id as text, no FK).
+
+`pedido_linea`: `pedido_id` (FK), `orden` (from 1; unique with `pedido_id`), `material_id` (FK), `cantidad_presentaciones` (`NUMERIC(12,6)`, `> 0`), `presentacion` (free text: CARRETE, CAJA, ROLLO, UNIDAD...), `contenido_por_presentacion` (`NUMERIC(12,6)`, `> 0`, in the consumption unit of the material), `precio_por_presentacion` (`NUMERIC(14,4)`, `>= 0`), `moneda` (`ARS` or `USD`), `iva_incluido` and `precio_material_id` (FK, required: the price this line created).
+
+The price created is `precio_por_presentacion / contenido_por_presentacion`, rounded half up to 4 decimals (SUPUESTO: validar), in the consumption unit of the material, with `vigente_desde = fecha_de_recepcion`, `proveedor_id` = the supplier and no colour (all colours). Endpoints: `POST /proveedores/{codigo}/pedidos` (admin, 201) and `GET /proveedores/{codigo}/pedidos` (admin and gerente; SUPUESTO: validar). The `taller` role sees nothing.
+
+**Unit `m` (metre).** Revision 0018 replaces the CHECK constraints `ck_material_unidad_de_consumo` and `ck_precio_material_unidad_del_precio` with the list that includes `m`. Its downgrade restores the old lists, so it **fails if any `material` or `precio_material` row uses `m`**, and it drops both new tables (the prices they created stay, only the link is lost).
 
 ## Consumption form of a new article (`formulario_consumo`, `formulario_consumo_linea`, revision 0016)
 

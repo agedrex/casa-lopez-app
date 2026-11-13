@@ -52,7 +52,8 @@ def one_of(column: str, values: tuple[str, ...], name: str) -> CheckConstraint:
 ARS_USD = ("ARS", "USD")
 # SUPUESTO: validar. The sheet describes the unit as "m2, juego, unidad, USD (solo herrajes migrados), cm..."
 # (open list); these are the values in use, extend it with a migration when Casa López adds one.
-UNITS = ("m2", "cm", "juego", "unidad", "USD")
+# "m" (metre) comes from migration 0018, for materials bought by the metre (thread, cord, tape).
+UNITS = ("m2", "cm", "juego", "unidad", "USD", "m")
 LOT_STATES = ("PLANIFICADA", "EN_CORTE", "CORTADA", "EN_CONFECCION", "LISTA", "CERRADA")
 WHERE_MADE = ("EXTERNA", "INTERNA")
 DOCUMENT_TYPES = ("FACTURA", "IMAGEN", "OTRO")
@@ -652,3 +653,45 @@ class FormularioConsumoLinea(IdentityAndCreatedAt, Base):
     nombre: Mapped[str] = mapped_column(Text)
     cantidad: Mapped[Decimal | None] = mapped_column(quantity())
     comentario: Mapped[str | None] = mapped_column(Text)
+
+
+# --- Supplier orders: what arrived, how it came (presentation) and the price it created -----------------------------
+
+class PedidoProveedor(BusinessKey, Base):
+    """A delivery from a supplier (`codigo` is `PED-NNNN`). Append-only: a correction is a new order, never an edit.
+
+    `creado_por` is the auth user id as text (no FK: Better Auth lives in `public`).
+    """
+    __tablename__ = "pedido_proveedor"
+    proveedor_id: Mapped[int] = mapped_column(ForeignKey("costos.proveedor.id"), index=True)
+    fecha_de_recepcion: Mapped[date] = mapped_column(Date)
+    # The supplier's delivery note or invoice number, as typed.
+    remito: Mapped[str | None] = mapped_column(Text)
+    documento_id: Mapped[int | None] = mapped_column(ForeignKey("costos.documento_proveedor.id"))
+    nota: Mapped[str | None] = mapped_column(Text)
+    creado_por: Mapped[str] = mapped_column(Text)
+
+
+class PedidoLinea(IdentityAndCreatedAt, Base):
+    """One material of an order. The unit price is `precio_por_presentacion / contenido_por_presentacion`, in the
+    consumption unit of the material, and lives in the `precio_material` row this line created (`precio_material_id`).
+    """
+    __tablename__ = "pedido_linea"
+    __table_args__ = (
+        CheckConstraint("cantidad_presentaciones > 0", name="cantidad_positiva"),
+        CheckConstraint("contenido_por_presentacion > 0", name="contenido_positivo"),
+        CheckConstraint("precio_por_presentacion >= 0", name="precio_no_negativo"),
+        one_of("moneda", ARS_USD, "moneda"),
+        UniqueConstraint("pedido_id", "orden", name="uq_pedido_linea_pedido_id_orden"),
+    )
+    pedido_id: Mapped[int] = mapped_column(ForeignKey("costos.pedido_proveedor.id"))
+    orden: Mapped[int] = mapped_column(Integer)
+    material_id: Mapped[int] = mapped_column(ForeignKey("costos.material.id"), index=True)
+    cantidad_presentaciones: Mapped[Decimal] = mapped_column(quantity())
+    # How it arrived: CARRETE, CAJA, ROLLO, UNIDAD... free text.
+    presentacion: Mapped[str] = mapped_column(Text)
+    contenido_por_presentacion: Mapped[Decimal] = mapped_column(quantity())
+    precio_por_presentacion: Mapped[Decimal] = mapped_column(money())
+    moneda: Mapped[str] = mapped_column(CHAR(3))
+    iva_incluido: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    precio_material_id: Mapped[int] = mapped_column(ForeignKey("costos.precio_material.id"), index=True)

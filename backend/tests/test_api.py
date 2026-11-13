@@ -139,7 +139,8 @@ SOLO_ADMIN = {"/parametros/{codigo}", "/personas", "/personas/{codigo}/activo", 
               "/modelos/{codigo}/consumos", "/sync/sheets", "/cvu/escenario",
               # Suppliers and documents (see test_proveedores_api.py and test_roles.py).
               "/proveedores", "/proveedores/{codigo}", "/proveedores/{codigo}/activo",
-              "/proveedores/{codigo}/documentos", "/proveedores/{codigo}/precios", "/documentos-proveedor/{id}/ocr",
+              "/proveedores/{codigo}/documentos", "/proveedores/{codigo}/precios", "/proveedores/{codigo}/pedidos",
+              "/documentos-proveedor/{id}/ocr",
               "/documentos-proveedor/{id}/datos",
               # Resale products (see test_reventa.py and test_roles.py).
               "/reventa", "/reventa/lote", "/reventa/{codigo}/activo", "/reventa/{codigo}/compras",

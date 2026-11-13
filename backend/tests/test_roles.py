@@ -136,11 +136,11 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
     ("GET", "/reventa"): ADMIN, ("GET", "/reventa/{codigo}"): ADMIN,
     ("GET", "/proveedores"): PRODUCTOS, ("GET", "/proveedores/{codigo}"): PRODUCTOS,
     ("GET", "/proveedores/{codigo}/documentos"): PRODUCTOS, ("GET", "/documentos-proveedor/{id}/archivo"): ADMIN,
-    ("GET", "/proveedores/{codigo}/materiales"): PRODUCTOS,
+    ("GET", "/proveedores/{codigo}/materiales"): PRODUCTOS, ("GET", "/proveedores/{codigo}/pedidos"): PRODUCTOS,
     **{("POST", ruta): ADMIN for ruta in (
         "/reventa", "/reventa/lote", "/reventa/{codigo}/activo", "/reventa/{codigo}/compras",
         "/proveedores", "/proveedores/{codigo}", "/proveedores/{codigo}/activo", "/proveedores/{codigo}/documentos",
-        "/proveedores/{codigo}/precios",
+        "/proveedores/{codigo}/precios", "/proveedores/{codigo}/pedidos",
         "/documentos-proveedor/{id}/ocr", "/documentos-proveedor/{id}/datos")},
 }
 # Open on purpose: the health check of the deploy and the stage catalog of routers.py, which carries no business data
@@ -222,7 +222,7 @@ def test_admin_only_routes_refuse_everyone_else_without_calling_the_service(monk
                  ("GET", "/panel/costos"), ("GET", "/calidad"), ("GET", "/dolar"),
                  ("GET", "/ordenes"), ("GET", "/ordenes/LOT-1"), ("GET", "/cueros"), ("GET", "/cueros/PZC-1"),
                  ("GET", "/talleres"), ("GET", "/talleres/T-1"), ("GET", "/proveedores"), ("GET", "/proveedores/PRV-1"),
-                 ("GET", "/formularios"), ("GET", "/formularios/FCO-0001")]),
+                 ("GET", "/proveedores/PRV-1/pedidos"), ("GET", "/formularios"), ("GET", "/formularios/FCO-0001")]),
     ("taller", [("GET", "/productos"), ("GET", "/productos/conteo"), ("GET", "/materiales"), ("GET", "/cueros"), ("GET", "/cueros/PZC-1"),
                 ("GET", "/cueros/alcanza?producto=P&cantidad=1"), ("GET", "/colores"), ("GET", "/ordenes"),
                 ("GET", "/ordenes/LOT-1"), ("GET", "/voz/estado"),
@@ -234,7 +234,7 @@ def test_admin_only_routes_refuse_everyone_else_without_calling_the_service(monk
     ("admin", [("GET", "/panel/costos"), ("GET", "/costos-fijos"), ("GET", "/ordenes"), ("GET", "/productos"),
                ("GET", "/cueros"), ("GET", "/voz/estado"), ("POST", "/cvu/escenario"), ("POST", "/ordenes"),
                ("POST", "/productos"), ("POST", "/cueros/PZC-1/cortes"), ("POST", "/formularios"),
-               ("PUT", "/formularios/FCO-0001"), ("POST", "/formularios/FCO-0001/validar")]),
+               ("POST", "/proveedores/PRV-1/pedidos"), ("GET", "/proveedores/PRV-1/pedidos"), ("PUT", "/formularios/FCO-0001"), ("POST", "/formularios/FCO-0001/validar")]),
 ])
 def test_each_role_passes_the_gate_of_its_allowed_set(role, rutas):
     cliente = _cliente(role)

@@ -13,14 +13,16 @@ import re
 import unicodedata
 from dataclasses import dataclass
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from urllib.parse import quote
 
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, undefer
 
-from backend.models import DOCUMENT_TYPES, Color, DocumentoProveedor, Material, PrecioMaterial, Proveedor
+from backend.models import (
+    DOCUMENT_TYPES, Color, DocumentoProveedor, Material, PedidoLinea, PedidoProveedor, PrecioMaterial, Proveedor,
+)
 from backend.ocr_llm import OcrError, OcrLLM, OcrResult, OcrSuggestion
 from backend.servicios import (
     UNIQUE_VIOLATION, Conflicto, DatosInvalidos, NoEncontrado, _insertar, _patron, _siguiente_numero, _texto_o_nada,
@@ -480,3 +482,122 @@ def add_supplier_price(
         moneda=moneda, unidad_del_precio=unidad_del_precio, iva_incluido=iva_incluido, vigente_desde=vigente_desde,
         nota_fuente=_texto_o_nada(nota_fuente),
     )
+
+
+# --- Orders: what arrived from a supplier, how it came, and the price each line creates ---------------------------
+# An order is append-only (a correction is a new order). Saving it creates one `precio_material` row per line through
+# `crear_precio`, all inside one transaction: if any line fails, no order and no price is stored.
+
+MAX_PRESENTATION = 60
+MAX_ORDER_TEXT = 500
+# SUPUESTO: validar. The unit price is kept with the precision of `money()` (4 decimals), rounded half up.
+UNIT_PRICE_STEP = Decimal("0.0001")
+
+
+def unit_price(price_per_presentation: Decimal, content_per_presentation: Decimal) -> Decimal:
+    """Price of one consumption unit of the material: what a presentation costs divided by what it holds."""
+    return (price_per_presentation / content_per_presentation).quantize(UNIT_PRICE_STEP, rounding=ROUND_HALF_UP)
+
+
+def _order_to_dict(order: PedidoProveedor, supplier_code: str, lines: list[tuple]) -> dict:
+    return {
+        "codigo": order.codigo, "proveedor": supplier_code, "fecha_de_recepcion": order.fecha_de_recepcion,
+        "remito": order.remito, "documento_id": order.documento_id, "nota": order.nota, "creado_por": order.creado_por,
+        "created_at": order.created_at,
+        "lineas": [{
+            "orden": line.orden, "material": material, "material_nombre": name, "unidad_de_consumo": unit,
+            "cantidad_presentaciones": line.cantidad_presentaciones, "presentacion": line.presentacion,
+            "contenido_por_presentacion": line.contenido_por_presentacion,
+            "precio_por_presentacion": line.precio_por_presentacion, "moneda": line.moneda,
+            "iva_incluido": line.iva_incluido, "precio_unitario": price.precio, "precio_codigo": price.codigo,
+        } for line, material, name, unit, price in lines],
+    }
+
+
+def _order_lines(session: Session, order_ids: list[int]) -> dict[int, list[tuple]]:
+    rows = session.execute(
+        select(PedidoLinea, Material.codigo, Material.nombre, Material.unidad_de_consumo, PrecioMaterial)
+        .join(Material, Material.id == PedidoLinea.material_id)
+        .join(PrecioMaterial, PrecioMaterial.id == PedidoLinea.precio_material_id)
+        .where(PedidoLinea.pedido_id.in_(order_ids)).order_by(PedidoLinea.pedido_id, PedidoLinea.orden)
+    ).all()
+    lines: dict[int, list[tuple]] = {}
+    for row in rows:
+        lines.setdefault(row[0].pedido_id, []).append(row)
+    return lines
+
+
+def list_orders(session: Session, code: str) -> list[dict]:
+    """The orders of a supplier, newest reception first, each with its lines and the unit price it created."""
+    supplier = _supplier(session, code)
+    orders = session.scalars(
+        select(PedidoProveedor).where(PedidoProveedor.proveedor_id == supplier.id)
+        .order_by(PedidoProveedor.fecha_de_recepcion.desc(), PedidoProveedor.id.desc())).all()
+    lines = _order_lines(session, [order.id for order in orders])
+    return [_order_to_dict(order, supplier.codigo, lines.get(order.id, [])) for order in orders]
+
+
+def _line_error(error: Exception, position: int, material: str) -> Exception:
+    """The same kind of error with the line it came from, so the person knows what to fix."""
+    return type(error)(f"Línea {position} ({material}): {error}")
+
+
+def create_order(
+    session: Session, code: str, *, fecha_de_recepcion: date, remito: str | None, documento_id: int | None,
+    nota: str | None, lineas: list[dict], creado_por: str,
+) -> dict:
+    """Store an order and, for each line, the price it implies. All or nothing."""
+    supplier = _supplier(session, code)
+    if not lineas:
+        raise DatosInvalidos("El pedido necesita al menos una línea.")
+    if documento_id is not None and session.scalar(select(DocumentoProveedor.id).where(
+            DocumentoProveedor.id == documento_id, DocumentoProveedor.proveedor_id == supplier.id)) is None:
+        raise DatosInvalidos(f"El documento {documento_id} no existe o no es de este proveedor.")
+    clean_lines = []
+    for position, line in enumerate(lineas, start=1):
+        presentation = (line["presentacion"] or "").strip()
+        if not presentation:
+            raise DatosInvalidos(f"Línea {position} ({line['material']}): falta la presentación.")
+        clean_lines.append({**line, "presentacion": presentation})
+    # One savepoint around the whole order: any failure below undoes the order and every price already flushed.
+    with session.begin_nested():
+        order = PedidoProveedor(
+            codigo=f"PED-{_siguiente_numero(session, PedidoProveedor.codigo, 'PED'):04d}", proveedor_id=supplier.id,
+            fecha_de_recepcion=fecha_de_recepcion, remito=_texto_o_nada(remito), documento_id=documento_id,
+            nota=_texto_o_nada(nota), creado_por=creado_por,
+        )
+        _insertar(session, order, "No se pudo asignar el código del pedido; intentá de nuevo.")
+        for position, line in enumerate(clean_lines, start=1):
+            _add_order_line(session, supplier, order, position, line)
+    session.commit()
+    return _stored_order(session, supplier, order.id)
+
+
+def _stored_order(session: Session, supplier: Proveedor, order_id: int) -> dict:
+    order = session.get(PedidoProveedor, order_id)
+    return _order_to_dict(order, supplier.codigo, _order_lines(session, [order_id]).get(order_id, []))
+
+
+def _add_order_line(session: Session, supplier: Proveedor, order: PedidoProveedor, position: int, line: dict) -> None:
+    material = session.scalar(select(Material).where(Material.codigo == line["material"]))
+    if material is None:
+        raise DatosInvalidos(f"Línea {position} ({line['material']}): no existe el material {line['material']}.")
+    price = unit_price(line["precio_por_presentacion"], line["contenido_por_presentacion"])
+    try:
+        # SUPUESTO: validar. The price applies to every colour of the material (colour NULL), like a supplier price.
+        created = crear_precio(
+            session, material=material.codigo, color=None, proveedor=supplier.codigo, proveedor_id=supplier.id,
+            precio=price, moneda=line["moneda"], unidad_del_precio=material.unidad_de_consumo,
+            iva_incluido=line["iva_incluido"], vigente_desde=order.fecha_de_recepcion,
+            nota_fuente=f"Pedido {order.codigo}", commit=False,
+        )
+    except (DatosInvalidos, Conflicto) as error:
+        raise _line_error(error, position, material.codigo) from None
+    price_id = session.scalar(select(PrecioMaterial.id).where(PrecioMaterial.codigo == created["codigo"]))
+    _insertar(session, PedidoLinea(
+        pedido_id=order.id, orden=position, material_id=material.id,
+        cantidad_presentaciones=line["cantidad_presentaciones"], presentacion=line["presentacion"],
+        contenido_por_presentacion=line["contenido_por_presentacion"],
+        precio_por_presentacion=line["precio_por_presentacion"], moneda=line["moneda"],
+        iva_incluido=line["iva_incluido"], precio_material_id=price_id,
+    ), f"Línea {position} ({material.codigo}): no se pudo guardar la línea.")

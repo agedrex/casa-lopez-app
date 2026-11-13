@@ -61,6 +61,10 @@ class RecordedOperations:
 
     def drop_constraint(self, name, table_name, schema, type_):
         self.dropped_constraints.append(name)
+        table = self.metadata.tables.get(f"{schema}.{table_name}")
+        if table is not None:  # a dropped CHECK leaves the recorded table, so a later one can replace it
+            for constraint in [c for c in table.constraints if c.name == name]:
+                table.constraints.discard(constraint)
 
     def drop_column(self, table_name, column_name, schema):
         self.dropped_columns.append((schema, table_name, column_name))
@@ -76,7 +80,7 @@ class RecordedOperations:
 
 # Tables created by revisions after 0003, so 0003 neither creates nor drops them.
 ADDED_AFTER_DER_V3 = {"precio_venta", "proveedor", "documento_proveedor", "producto_reventa", "compra_reventa",
-                      "formulario_consumo", "formulario_consumo_linea"}
+                      "formulario_consumo", "formulario_consumo_linea", "pedido_proveedor", "pedido_linea"}
 
 
 # 0011 links the existing precio_material to proveedor (created by 0007), so that FK comes after both tables exist.
@@ -96,7 +100,8 @@ def test_revision_chain_replaces_v1_with_v3_then_seeds(monkeypatch):
                      "0008_reventa.py", "0009_gasto_anulado.py", "0010_compra_sin_unidades.py",
                      "0011_precio_material_proveedor.py", "0012_impuesto_activo.py",
                      "0013_impuestos_vacios.py", "0014_gastos_venta_pct.py",
-                     "0015_precio_venta_margen.py", "0016_formulario_consumo.py", "0017_formulario_modelo.py"):
+                     "0015_precio_venta_margen.py", "0016_formulario_consumo.py", "0017_formulario_modelo.py",
+                     "0018_pedidos_proveedor.py"):
         _, revision = load_revision(monkeypatch, filename)
         chain[revision["revision"]] = revision["down_revision"]
     assert chain == {
@@ -112,6 +117,7 @@ def test_revision_chain_replaces_v1_with_v3_then_seeds(monkeypatch):
         "0015_precio_venta_margen": "0014_gastos_venta_pct",
         "0016_formulario_consumo": "0015_precio_venta_margen",
         "0017_formulario_modelo": "0016_formulario_consumo",
+        "0018_pedidos_proveedor": "0017_formulario_modelo",
     }
 
 
@@ -143,6 +149,7 @@ def test_der_v3_revision_matches_orm_and_reverses_dependencies(monkeypatch):
     runpy.run_path(str(VERSIONS / "0015_precio_venta_margen.py"))["upgrade"]()
     runpy.run_path(str(VERSIONS / "0016_formulario_consumo.py"))["upgrade"]()
     runpy.run_path(str(VERSIONS / "0017_formulario_modelo.py"))["upgrade"]()
+    runpy.run_path(str(VERSIONS / "0018_pedidos_proveedor.py"))["upgrade"]()
     assert set(operations.metadata.tables) == set(Base.metadata.tables)
     dialect = postgresql.dialect()
     for key, declared in operations.metadata.tables.items():
