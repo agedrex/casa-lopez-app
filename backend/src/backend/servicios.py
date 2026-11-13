@@ -114,6 +114,7 @@ class DatosProducto:
     lotes: list[ItemLote] = field(default_factory=list)
     componentes: list[tuple[str, Decimal]] = field(default_factory=list)
     tamano: str | None = None
+    modelo_nombre: str | None = None
 
     @property
     def producto(self) -> ProductoReceta:
@@ -384,6 +385,7 @@ def cargar_productos(
             fecha_de_recotizacion=producto.fecha_de_recotizacion, fecha_de_cierre=producto.fecha_de_cierre,
             modelo=receta_modelo, extras=extras.get(producto.id, []), lotes=lotes.get(producto.id, []),
             componentes=componentes.get(producto.id, []), tamano=modelo.tamano if modelo else None,
+            modelo_nombre=modelo.nombre_del_modelo if modelo else None,
         ))
     return resultado
 
@@ -518,9 +520,29 @@ def listar_productos(
     return _filas_de_productos(session, base, con_precios)
 
 
+def _cotizacion_mas_nueva_por_producto(session: Session, producto_ids: set[int]) -> dict[int, Cotizacion]:
+    """The newest saved quote of each of these products (date, then id), in ONE query (no query per product)."""
+    if not producto_ids:
+        return {}
+    orden = func.row_number().over(
+        partition_by=Cotizacion.producto_id, order_by=(Cotizacion.fecha.desc(), Cotizacion.id.desc())).label("orden")
+    numeradas = select(Cotizacion.id, orden).where(Cotizacion.producto_id.in_(producto_ids)).subquery()
+    return {c.producto_id: c for c in session.scalars(
+        select(Cotizacion).join(numeradas, numeradas.c.id == Cotizacion.id).where(numeradas.c.orden == 1))}
+
+
+def _costo_cotizado(cotizacion: Cotizacion | None) -> dict:
+    """Cost of the newest saved quote with ITS OWN dollar (the snapshot); all None for a product that was never quoted."""
+    if cotizacion is None:
+        return {"cotizacion_fecha": None, "cotizacion_dolar": None, "costo_cotizado_ars": None, "costo_cotizado_usd": None}
+    return {"cotizacion_fecha": cotizacion.fecha, "cotizacion_dolar": cotizacion.dolar,
+            "costo_cotizado_ars": cotizacion.total_ars, "costo_cotizado_usd": cotizacion.total_usd}
+
+
 def _filas_de_productos(session: Session, base: list[DatosProducto], con_precios: bool) -> list[dict]:
     catalogo = expandir_kits(session, base)
     ctx = cargar_contexto(session)
+    cotizadas = _cotizacion_mas_nueva_por_producto(session, {datos.id for datos in base})
     precios = _ultimos_precios_de_venta_completos(session, {datos.id for datos in base}) if con_precios else {}
     impuestos = _impuestos_activos(session) if precios else []
     filas = []
@@ -531,10 +553,11 @@ def _filas_de_productos(session: Session, base: list[DatosProducto], con_precios
         venta = _precio_de_venta_de_grilla(precios.get(datos.id), costo["total_ars"] if costo else None, impuestos)
         filas.append({
             "codigo": datos.codigo, "nombre": datos.nombre, "categoria": datos.categoria,
-            "modelo": datos.modelo_codigo,
+            "modelo": datos.modelo_codigo, "modelo_codigo": datos.modelo_codigo, "modelo_nombre": getattr(datos, "modelo_nombre", None),
             "estado_del_ciclo": datos.estado_del_ciclo, "es_kit": datos.es_kit,
             "costo_hoy_ars": costo["total_ars"] if costo else None,
             "costo_hoy_usd": costo["total_usd"] if costo else None,
+            **_costo_cotizado(cotizadas.get(datos.id)),
             "avisos": avisos, "revisar": bool(motivos), "motivos_revisar": motivos, **venta,
         })
     return filas

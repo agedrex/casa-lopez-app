@@ -72,3 +72,18 @@ Texto separado por ` | `, en este orden: `IMPORTADO-EXCEL fila <N>`, marcas `REV
 ## El resumen que imprime
 
 Filas leídas y con nombre, productos por cuero y por color, filas `REVISAR` por motivo (una fila puede tener varios), cuero vacío por motivo, modelos repetidos, y (con base) cuántos se crean, cuántos ya existían y cuáles no tienen modelo.
+
+## Datos de demo de staging (`cargar_demo.py`)
+
+No importa nada del Excel: completa la demo de staging con datos **ficticios** para ver la interfaz final. Se corre **después** de `cargar_ejemplo.py` (usa sus productos `EJEMPLO producto 1` a `8` y los talleres del seed; lo que no encuentra lo saltea y lo avisa) y **después** de `recortar_staging.py`, que borra todos los formularios de consumos.
+
+```sh
+# desde el checkout principal, solo con autorización de Agustin (la ruta /app sale de docs/produccion.md; sin verificar)
+railway ssh -e staging -s backend -- sh -c 'cd /app && test "$RAILWAY_ENVIRONMENT_NAME" = staging && /app/.venv/bin/python scripts/cargar_demo.py --entorno staging'              # solo muestra qué crearía
+railway ssh -e staging -s backend -- sh -c 'cd /app && test "$RAILWAY_ENVIRONMENT_NAME" = staging && /app/.venv/bin/python scripts/cargar_demo.py --entorno staging --confirmar'  # escribe
+```
+
+- Sin `--entorno staging` (o con `RAILWAY_ENVIRONMENT_NAME` distinto de `staging`) se niega con código 2. Sin `--confirmar` no escribe. Nunca imprime la URL ni las credenciales, solo `host:puerto/base`.
+- Carga: 5 proveedores (PRV-0001 y PRV-0002 con esos códigos, los que ya nombran los precios del seed) con 5 a 8 productos cada uno y algunas filas de precio anterior; 2 pedidos de proveedor al precio vigente de hoy (no mueven ningún costo); 9 cotizaciones guardadas de 6 productos en fechas distintas (cada una con el dólar de su fecha; los productos 7 y 8 quedan sin cotizar); 4 lotes (PLANIFICADA, EN_CORTE, EN_CONFECCION, LISTA); 5 formularios de consumos (un modelo nuevo ENVIADO para practicar, uno COMPLETADO, uno devuelto con comentario, un BORRADOR y uno VALIDADO).
+- Todo pasa por `servicios`, `proveedores` y `formulario`. Cada fila lleva `EJEMPLO` en su `nota`; la cotización no tiene nota y se reconoce por (producto, tipo). Se puede correr dos veces: la segunda no crea nada y un formulario que alguien ya avanzó no se toca.
+- SUPUESTO: validar. Los precios, medidas y nombres de proveedores son inventados; solo sirven para la demo.

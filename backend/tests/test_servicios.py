@@ -208,3 +208,99 @@ def test_recotizar_flag_uses_cost_and_dollar_tolerances():
 def test_service_layer_never_touches_float():
     codigo = (Path(servicios.__file__)).read_text(encoding="utf-8")
     assert not re.search(r"\bfloat\s*\(", codigo)
+
+
+# --- Cost of the newest saved quote in the product list (S6) -----------------------------------------------------------
+
+def test_a_product_never_quoted_has_every_quote_field_empty():
+    assert servicios._costo_cotizado(None) == {
+        "cotizacion_fecha": None, "cotizacion_dolar": None, "costo_cotizado_ars": None, "costo_cotizado_usd": None}
+
+
+def test_the_quoted_cost_is_the_snapshot_with_its_own_dollar():
+    from types import SimpleNamespace
+    guardada = SimpleNamespace(fecha=D1, dolar=D("1600"), total_ars=D("21000.5"), total_usd=D("13.1253"))
+    assert servicios._costo_cotizado(guardada) == {
+        "cotizacion_fecha": D1, "cotizacion_dolar": D("1600"), "costo_cotizado_ars": D("21000.5"),
+        "costo_cotizado_usd": D("13.1253")}
+
+
+def test_no_products_means_no_query_for_quotes():
+    from unittest.mock import MagicMock
+    session = MagicMock()
+    assert servicios._cotizacion_mas_nueva_por_producto(session, set()) == {}
+    session.scalars.assert_not_called()
+
+
+@pytest.fixture
+def session(local_postgres):
+    from sqlalchemy.orm import Session
+    connection = local_postgres.connect()
+    outer = connection.begin()
+    session = Session(bind=connection, join_transaction_mode="create_savepoint")
+    try:
+        yield session
+    finally:
+        session.close()
+        outer.rollback()
+        connection.close()
+
+
+def _crear(session, **cambios):
+    return servicios.crear_producto(
+        session, modelo="MOD-0001", cuero="MAT-CU01", color=None, quien_lo_confecciona="INTERNA",
+        fecha_de_alta=date(2026, 9, 3), nombre_propio=None, es_kit=False, **cambios)["codigo"]
+
+
+def _fila(session, codigo):
+    return next(f for f in servicios.listar_productos(session, limit=500) if f["codigo"] == codigo)
+
+
+def test_the_list_shows_the_cost_of_the_newest_quote_with_the_dollar_of_that_date_not_todays(session):
+    quoted = _crear(session)
+    servicios.crear_dolar(session, fecha=date(2026, 10, 1), ars_por_usd=D("1700"), fuente="MANUAL", tipo="VENDEDOR", nota=None)
+    servicios.guardar_cotizacion(session, quoted, "INICIAL", date(2026, 9, 3))  # dollar 1545 (seed)
+    nueva = servicios.guardar_cotizacion(session, quoted, "RECOTIZACION", date(2026, 10, 1))  # dollar 1700
+    servicios.crear_dolar(session, fecha=date(2026, 10, 20), ars_por_usd=D("1900"), fuente="MANUAL", tipo="VENDEDOR", nota=None)
+    fila = _fila(session, quoted)
+    assert fila["cotizacion_fecha"] == date(2026, 10, 1) and fila["cotizacion_dolar"] == D("1700")
+    assert fila["costo_cotizado_ars"] == nueva["total_ars"] == D("22310.6000")
+    assert fila["costo_cotizado_usd"] == nueva["total_usd"]
+    assert fila["costo_hoy_ars"] != fila["costo_cotizado_ars"]  # today the dollar is 1900: the cost of today moved, the quoted one did not
+    assert fila["modelo_codigo"] == "MOD-0001" and fila["modelo"] == "MOD-0001"
+    assert fila["modelo_nombre"].startswith("Portafolio Simple Ch.")
+
+
+def test_a_product_without_quote_keeps_todays_cost_and_empty_quote_fields(session):
+    codigo = _crear(session)
+    fila = _fila(session, codigo)
+    assert fila["costo_hoy_ars"] is not None
+    assert (fila["cotizacion_fecha"], fila["cotizacion_dolar"], fila["costo_cotizado_ars"], fila["costo_cotizado_usd"]) == (None,) * 4
+
+
+def test_the_list_keeps_every_previous_field(session):
+    codigo = _crear(session, nota=None)
+    fila = _fila(session, codigo)
+    assert {"codigo", "nombre", "categoria", "modelo", "estado_del_ciclo", "es_kit", "costo_hoy_ars", "costo_hoy_usd", "avisos",
+            "revisar", "motivos_revisar", "precio_venta_ars", "margen_pct", "precio_final_ars"} <= set(fila)
+    assert fila["codigo"] == codigo and fila["categoria"] == "Portafolios" and fila["avisos"] == []
+    sin_precios = next(f for f in servicios.listar_productos(session, limit=500, con_precios=False) if f["codigo"] == codigo)
+    assert sin_precios["precio_venta_ars"] is None and sin_precios["margen_pct"] is None  # the taller still sees no sale prices
+
+
+def test_the_list_reads_the_quotes_with_one_query_whatever_the_number_of_products(session):
+    from sqlalchemy import event
+    for dia in (3, 4, 5):
+        servicios.guardar_cotizacion(session, _crear(session), "INICIAL", date(2026, 9, dia))
+    consultas = []
+    motor = session.get_bind()
+    def contar(conn, cursor, statement, *a):
+        if "FROM costos.cotizacion" in statement or "FROM cotizacion" in statement:
+            consultas.append(statement)
+    event.listen(motor, "before_cursor_execute", contar)
+    try:
+        filas = servicios.listar_productos(session, limit=500)
+    finally:
+        event.remove(motor, "before_cursor_execute", contar)
+    assert sum(1 for f in filas if f["cotizacion_fecha"] is not None) == 3
+    assert len(consultas) == 1

@@ -123,7 +123,9 @@ def test_the_summary_model_exposes_the_new_fields(monkeypatch):
             "motivos_revisar": ["sin nombre"], "precio_venta_ars": None, "margen_pct": None, "precio_final_ars": None}
     monkeypatch.setattr(servicios, "listar_productos", lambda *a, **k: [fila])
     cuerpo = _cliente().get("/productos").json()
-    assert cuerpo == [fila]
+    nuevos = {"modelo_codigo": None, "modelo_nombre": None, "cotizacion_fecha": None, "cotizacion_dolar": None,
+              "costo_cotizado_ars": None, "costo_cotizado_usd": None}
+    assert cuerpo == [{**fila, **nuevos}]
 
 
 # --- Query filter -------------------------------------------------------------------------------------------------
