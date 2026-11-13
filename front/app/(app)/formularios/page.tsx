@@ -22,7 +22,7 @@ import {
   estadoTone,
   parseEstado,
 } from "@/lib/formulario";
-import { canWrite } from "@/lib/permissions";
+import { canWrite, isTallerOnly } from "@/lib/permissions";
 import { requireSession } from "@/lib/session";
 import type { FormularioEstado, FormularioResumen, Taller } from "@/lib/types";
 import { NuevoFormularioForm } from "./nuevo-form";
@@ -48,6 +48,7 @@ export default async function FormulariosPage({
   const q = first(params.q);
   const estado = parseEstado(first(params.estado));
   const writer = canWrite(user.role);
+  const tallerOnly = isTallerOnly(user.role);
 
   const filter = new URLSearchParams();
   if (q) filter.set("q", q);
@@ -60,7 +61,15 @@ export default async function FormulariosPage({
 
   return (
     <>
-      <PageHeader eyebrow="Producción" title="Formularios de consumos" />
+      <PageHeader
+        eyebrow="Producción"
+        title={tallerOnly ? "Planillas de consumos" : "Formularios de consumos"}
+        description={
+          tallerOnly
+            ? "Planillas para completar: cargá lo que lleva cada modelo (consumos y herrajes) y tocá Completar. Podés practicar con la de ejemplo."
+            : undefined
+        }
+      />
       {writer ? (
         <details className="mb-8 rounded-card border border-line bg-surface p-4 sm:p-6">
           <summary className="cursor-pointer text-sm uppercase tracking-caps-sm">
@@ -81,7 +90,11 @@ export default async function FormulariosPage({
       ) : null}
       <SearchForm q={q} estado={estado} estados={estadosVisibles(user.role)} />
       {result.ok ? (
-        <Lista formularios={result.data} filtered={filter.size > 0} />
+        tallerOnly && !estado && !q ? (
+          <ListaTaller formularios={result.data} />
+        ) : (
+          <Lista formularios={result.data} filtered={filter.size > 0} />
+        )
       ) : (
         <ErrorNotice message={result.message} />
       )}
@@ -165,6 +178,43 @@ function SearchForm({
 
 const linkClass = "underline decoration-gold underline-offset-4";
 
+/** Taller: the sheets waiting for it first (ENVIADO), then the ones it already completed. */
+function ListaTaller({ formularios }: { formularios: FormularioResumen[] }) {
+  const porCompletar = formularios.filter(
+    (formulario) => formulario.estado === "ENVIADO",
+  );
+  const resto = formularios.filter(
+    (formulario) => formulario.estado !== "ENVIADO",
+  );
+  return (
+    <div className="space-y-10">
+      <section aria-labelledby="para-completar">
+        <h2 id="para-completar" className="mb-4 text-xl">
+          Planillas para completar
+        </h2>
+        {porCompletar.length === 0 ? (
+          <Notice
+            tone="info"
+            title="No hay planillas para completar por ahora."
+          >
+            Cuando el administrador te envíe una, aparece acá.
+          </Notice>
+        ) : (
+          <Lista formularios={porCompletar} filtered={false} />
+        )}
+      </section>
+      {resto.length > 0 ? (
+        <section aria-labelledby="ya-completadas">
+          <h2 id="ya-completadas" className="mb-4 text-xl">
+            Ya completadas
+          </h2>
+          <Lista formularios={resto} filtered={false} />
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
 function Lista({
   formularios,
   filtered,
@@ -210,7 +260,11 @@ function Lista({
                     </span>
                   </div>
                   <p className="mt-1 text-xs text-muted">
-                    {[formulario.modelo, formulario.producto, formulario.taller]
+                    {[
+                      formulario.modelo ? `Modelo ${formulario.modelo}` : null,
+                      formulario.producto,
+                      formulario.taller,
+                    ]
                       .filter(Boolean)
                       .join(" · ") || "Sin modelo, producto ni taller"}
                     {" · "}
@@ -236,6 +290,9 @@ function Lista({
                   </th>
                   <th scope="col" className={thClass}>
                     Artículo
+                  </th>
+                  <th scope="col" className={thClass}>
+                    Modelo
                   </th>
                   <th scope="col" className={thClass}>
                     Estado
@@ -267,14 +324,13 @@ function Lista({
                         {formulario.articulo}
                       </div>
                     </td>
+                    <td className={tdClass}>{formulario.modelo ?? "—"}</td>
                     <td className={tdClass}>
                       <Badge tone={estadoTone(formulario.estado)}>
                         {estadoLabel(formulario.estado)}
                       </Badge>
                     </td>
-                    <td className={tdClass}>
-                      {formulario.producto ?? formulario.modelo ?? "—"}
-                    </td>
+                    <td className={tdClass}>{formulario.producto ?? "—"}</td>
                     <td className={tdClass}>{formulario.taller ?? "—"}</td>
                     <td className={tdClass}>
                       {formatDate(formulario.created_at)}

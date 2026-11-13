@@ -114,7 +114,7 @@ export default async function FichaPage({
       </p>
 
       <div className="space-y-10">
-        <CostToday ficha={ficha} />
+        {isTallerOnly(user.role) ? null : <CostToday ficha={ficha} />}
         {isTallerOnly(user.role) ? null : (
           <PrecioBlock
             codigo={ficha.codigo}
@@ -126,7 +126,7 @@ export default async function FichaPage({
         {canWrite(user.role) && ficha.modelo ? (
           <ModeloBlock codigo={ficha.modelo} />
         ) : (
-          <Recipe ficha={ficha} />
+          <Recipe ficha={ficha} showMoney={!isTallerOnly(user.role)} />
         )}
         {seesValidatedFormulario(user.role) ? (
           <FormularioValidado codigo={ficha.codigo} />
@@ -147,8 +147,12 @@ export default async function FichaPage({
             {isTallerOnly(user.role) ? null : (
               <PriceHistory codigo={ficha.codigo} />
             )}
-            <StoredQuotes ficha={ficha} />
-            <Comparison ficha={ficha} />
+            {isTallerOnly(user.role) ? null : (
+              <>
+                <StoredQuotes ficha={ficha} />
+                <Comparison ficha={ficha} />
+              </>
+            )}
             <Actions ficha={ficha} writer={canWrite(user.role)} />
           </div>
         </details>
@@ -463,7 +467,13 @@ function CostToday({ ficha }: { ficha: Ficha }) {
   );
 }
 
-function Recipe({ ficha }: { ficha: Ficha }) {
+function Recipe({
+  ficha,
+  showMoney = true,
+}: {
+  ficha: Ficha;
+  showMoney?: boolean;
+}) {
   return (
     <section>
       <SectionTitle>Receta</SectionTitle>
@@ -500,9 +510,11 @@ function Recipe({ ficha }: { ficha: Ficha }) {
           </table>
         </TableWrap>
       )}
-      <p className="mt-3 text-sm text-muted">
-        Confección estimada: {formatArs(ficha.confeccion_estimada_ars)}
-      </p>
+      {showMoney ? (
+        <p className="mt-3 text-sm text-muted">
+          Confección estimada: {formatArs(ficha.confeccion_estimada_ars)}
+        </p>
+      ) : null}
     </section>
   );
 }

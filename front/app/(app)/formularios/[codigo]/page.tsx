@@ -121,6 +121,10 @@ export default async function FormularioPage({
           </div>
         ) : null}
         <Aviso formulario={formulario} />
+        <Intro
+          formulario={formulario}
+          tallerCompleta={isTallerOnly(user.role) && acciones.editar}
+        />
         {formulario.estado === "VALIDADO" &&
         formulario.modelo &&
         !formulario.producto &&
@@ -182,6 +186,39 @@ function Aviso({ formulario }: { formulario: Formulario }) {
         <p className="whitespace-pre-wrap break-words">
           {formulario.comentario_revision}
         </p>
+      </Notice>
+    </div>
+  );
+}
+
+/** The note or the article says EJEMPLO: the sheet is a made-up example to practice with. */
+function esEjemplo(formulario: Formulario): boolean {
+  return /ejemplo/i.test(`${formulario.nota ?? ""} ${formulario.articulo}`);
+}
+
+/** Short guide above the sheet: what the taller does here, and that an example can be practiced freely. */
+function Intro({
+  formulario,
+  tallerCompleta,
+}: {
+  formulario: Formulario;
+  tallerCompleta: boolean;
+}) {
+  const ejemplo = esEjemplo(formulario);
+  if (!ejemplo && !tallerCompleta) return null;
+  return (
+    <div className="mb-6">
+      <Notice
+        tone="info"
+        title={
+          ejemplo
+            ? "Esta planilla es un ejemplo para practicar."
+            : "Completá la planilla."
+        }
+      >
+        {tallerCompleta
+          ? "Cargá la cantidad de cada fila de consumos (en m²) y de herrajes (en unidades). Cuando termines, tocá Completar."
+          : "Es un ejemplo: sirve para ver cómo se ve una planilla de consumos."}
       </Notice>
     </div>
   );

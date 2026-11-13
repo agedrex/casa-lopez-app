@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { desktopNavForRole, mobileTabs, navForRole } from "./nav";
-import { canAccessPath, homePath } from "./permissions";
+import { canAccessPath, homePath, isTallerOnly } from "./permissions";
 
 test("gerente opens nothing under /admin, not even the Panel (S8)", () => {
   for (const path of [
@@ -74,28 +74,51 @@ test("taller and users without a role are refused the scenario simulator; admin 
   assert.equal(canAccessPath("admin", "/escenarios"), true);
 });
 
-test("taller keeps Corte, Cueros and Voz and reads what quoting a product needs", () => {
+test("taller has one entry (Lotes): it opens lots, Formularios, Voz and the product sheet only", () => {
   for (const path of [
-    "/corte",
-    "/cueros",
+    "/fabricacion",
+    "/fabricacion/LOT-1",
+    "/formularios",
+    "/formularios/FCO-1",
     "/voz",
-    "/productos",
     "/productos/PRD-1",
-    "/productos/modelos",
-    "/materiales",
   ]) {
     assert.equal(canAccessPath("taller", path), true, path);
   }
   for (const path of [
+    "/productos",
+    "/productos/modelos",
+    "/productos/modelos/MOD-1",
     "/productos/nuevo",
-    "/productos/modelos/nuevo",
     "/productos/catalogos",
-    "/fabricacion",
+    "/fabricacion/nuevo",
+    "/corte",
+    "/cueros",
+    "/cueros/PZC-1",
+    "/materiales",
     "/talleres",
     "/proveedores",
     "/costos-fijos",
+    "/escenarios",
+    "/admin/panel",
   ]) {
     assert.equal(canAccessPath("taller", path), false, path);
+  }
+});
+
+test("taller lands on the lots list", () => {
+  assert.equal(homePath("taller"), "/fabricacion");
+  assert.equal(homePath("corte"), "/fabricacion");
+});
+
+test("a user with admin and taller keeps the admin access (the taller holes do not apply)", () => {
+  for (const path of [
+    "/productos",
+    "/productos/modelos",
+    "/corte",
+    "/fabricacion/nuevo",
+  ]) {
+    assert.equal(canAccessPath("taller,admin", path), true, path);
   }
 });
 
@@ -122,16 +145,28 @@ test("the gerente menu lists only Productos, Modelos and Escenarios, and each en
   );
 });
 
-test("the taller menu is unchanged by S8", () => {
-  const hrefs = desktopNavForRole(["taller"]).flatMap((group) =>
-    group.items.map((item) => item.href),
+test("the taller menu lists only Lotes and Formularios, and each entry is a path it can open", () => {
+  const hrefs = (groups: { items: { href: string }[] }[]) =>
+    groups.flatMap((group) => group.items.map((item) => item.href));
+  for (const groups of [
+    desktopNavForRole(["taller"]),
+    navForRole(["taller"]),
+  ]) {
+    assert.deepEqual(hrefs(groups), ["/fabricacion", "/formularios"]);
+    for (const href of hrefs(groups)) {
+      assert.equal(canAccessPath("taller", href), true, href);
+    }
+  }
+  const tabs = mobileTabs(navForRole(["taller"]), ["taller"]);
+  assert.deepEqual(
+    tabs.map((tab) => tab.href),
+    ["/fabricacion", "/formularios"],
   );
-  assert.deepEqual(hrefs, [
-    "/corte",
-    "/cueros",
-    "/formularios",
-    "/productos",
-    "/productos/modelos",
-    "/materiales",
-  ]);
+});
+
+test("taller is a taller-only user; admin is not", () => {
+  assert.equal(isTallerOnly("taller"), true);
+  assert.equal(isTallerOnly("corte"), true);
+  assert.equal(isTallerOnly("taller,admin"), false);
+  assert.equal(isTallerOnly("gerente"), false);
 });

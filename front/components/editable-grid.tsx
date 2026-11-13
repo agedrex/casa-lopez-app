@@ -54,6 +54,8 @@ export type GridRow = {
   warn?: boolean;
   /** Read-only cells after the editable ones, one per `extraHeaders` entry. */
   extras?: ReactNode[];
+  /** Read-only cells between the first column and the editable ones, one per `extraHeadersBefore` entry. */
+  extrasBefore?: ReactNode[];
   /** Rows are listed in the order given; a heading row is shown whenever this changes from the previous row. */
   group?: string;
   /** Every cell of a saved row is plain text (for example, a blocked item). */
@@ -140,6 +142,7 @@ type RowViewProps = {
   onToggleSelect?: (id: string) => void;
   selected?: boolean;
   extraHeaders: string[];
+  extraHeadersBefore: string[];
 };
 
 // Memoized: typing in one cell re-renders only its row, not the 300+ others.
@@ -160,6 +163,7 @@ const RowView = memo(function RowView({
   onToggleSelect,
   selected = false,
   extraHeaders,
+  extraHeadersBefore,
 }: RowViewProps) {
   const rowTone = deleting
     ? "bg-blush/40 line-through opacity-60"
@@ -209,6 +213,14 @@ const RowView = memo(function RowView({
           </button>
         ) : null}
       </th>
+      {row.extrasBefore?.map((extra, index) => (
+        <td
+          key={extraHeadersBefore[index] ?? `${row.id}-${index}`}
+          className="border-b border-line/70 px-3 py-2 align-top text-sm"
+        >
+          {extra}
+        </td>
+      ))}
       {columns.map((column, columnIndex) => {
         const base = original[column.key] ?? "";
         const value = edit?.[column.key] ?? base;
@@ -341,6 +353,7 @@ export function EditableGrid({
   rowHeader,
   columns,
   extraHeaders = NO_HEADERS,
+  extraHeadersBefore = NO_HEADERS,
   rows,
   noun,
   allowNew = false,
@@ -361,7 +374,10 @@ export function EditableGrid({
   label: string;
   rowHeader: string;
   columns: GridColumn[];
+  /** Headers of the read-only cells after the editable columns (`GridRow.extras`). */
   extraHeaders?: string[];
+  /** Headers of the read-only cells between the first column and the editable ones (`GridRow.extrasBefore`). */
+  extraHeadersBefore?: string[];
   rows: GridRow[];
   /** What a row is, for the counters: `{ one: "modelo", many: "modelos" }`. */
   noun: { one: string; many: string };
@@ -938,6 +954,14 @@ export function EditableGrid({
               <th className="sticky left-0 top-0 z-30 border-b border-line bg-paper-mid px-3 py-3 text-sm font-normal uppercase tracking-caps-sm text-muted sm:px-4 sm:text-xs">
                 {rowHeader}
               </th>
+              {extraHeadersBefore.map((header) => (
+                <th
+                  key={header}
+                  className="sticky top-0 z-20 border-b border-line bg-paper-mid px-3 py-3 text-sm font-normal uppercase tracking-caps-sm text-muted sm:text-xs"
+                >
+                  {header}
+                </th>
+              ))}
               {columns.map((column) => (
                 <th
                   key={column.key}
@@ -968,7 +992,12 @@ export function EditableGrid({
                 row.group !== rows[index - 1]?.group ? (
                   <GroupHeading
                     label={row.group}
-                    span={1 + columns.length + extraHeaders.length}
+                    span={
+                      1 +
+                      columns.length +
+                      extraHeaders.length +
+                      extraHeadersBefore.length
+                    }
                   />
                 ) : null}
                 <RowView
@@ -991,13 +1020,19 @@ export function EditableGrid({
                   }
                   selected={selected.includes(row.id)}
                   extraHeaders={extraHeaders}
+                  extraHeadersBefore={extraHeadersBefore}
                 />
               </Fragment>
             ))}
             {draftGroup && drafts.length > 0 ? (
               <GroupHeading
                 label={draftGroup}
-                span={1 + columns.length + extraHeaders.length}
+                span={
+                  1 +
+                  columns.length +
+                  extraHeaders.length +
+                  extraHeadersBefore.length
+                }
               />
             ) : null}
             {drafts.map((draft, index) => (
@@ -1024,6 +1059,7 @@ export function EditableGrid({
                 onChange={handleChange}
                 onRemove={removeDraft}
                 extraHeaders={extraHeaders}
+                extraHeadersBefore={extraHeadersBefore}
               />
             ))}
           </tbody>
