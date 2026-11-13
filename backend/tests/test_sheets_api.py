@@ -64,7 +64,7 @@ def limpiar():
 
 # --- Access -----------------------------------------------------------------------------------------------------
 
-def test_grilla_joins_export_tabs_by_code_and_filters_for_read_only_role(monkeypatch):
+def test_grilla_joins_export_tabs_by_code_and_filters(monkeypatch):
     source = FuenteEnMemoria(productos_costeados_=[
         producto_costeado(),
         producto_costeado(codigo="PRD-0002", nombre="Billetera", categoria="Billeteras", costo=None,
@@ -77,7 +77,7 @@ def test_grilla_joins_export_tabs_by_code_and_filters_for_read_only_role(monkeyp
         return Tab(tab.name, tab.headers, tuple(reversed(tab.rows)))
 
     monkeypatch.setattr(api_module, "_costos_variables", reversed_costs)
-    with cliente_http("gerente", fuente=source) as http:
+    with cliente_http("admin", fuente=source) as http:
         response = http.get("/grilla")
         assert response.status_code == 200, response.text
         data = response.json()
@@ -91,6 +91,13 @@ def test_grilla_joins_export_tabs_by_code_and_filters_for_read_only_role(monkeyp
         assert [row["codigo"] for row in http.get("/grilla", params={"texto": "bIlLe"}).json()["filas"]] == ["PRD-0002"]
         assert [row["codigo"] for row in http.get("/grilla", params={"categoria": "portafolios"}).json()["filas"]] == ["PRD-0001"]
         assert http.get("/grilla", params={"texto": "ausente"}).json()["filas"] == []
+
+
+@pytest.mark.parametrize("rol", ["gerente", "taller", None])
+def test_grilla_is_admin_only(rol):
+    # S8: no page of the gerente reads the grid, so the API closes it as well.
+    with cliente_http(rol, fuente=FuenteEnMemoria(productos_costeados_=[producto_costeado()])) as http:
+        assert http.get("/grilla").status_code == 403
 
 
 @pytest.mark.parametrize("metodo, ruta", [

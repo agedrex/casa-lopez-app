@@ -39,12 +39,14 @@ router = APIRouter(dependencies=[Depends(require_user)])
 # `require_role` builds on `require_user`, so no session still answers 401, not 403. SUPUESTO: validar.
 #   admin    everything.
 #   gerente  read only, and only Productos, Modelos and the scenario simulator: product and quote data
-#            (LECTURA_PRODUCTOS, which also holds the POST /cvu/escenario calculation: it saves nothing) and the plain
-#            catalogs (LECTURA_GENERAL). Lots, workshops, suppliers, leather stock, consumption forms and the Panel's
-#            alerts are closed to it.
+#            (LECTURA_PRODUCTOS, which also holds GET /cvu/periodo and the POST /cvu/escenario calculation: it saves
+#            nothing) and what those pages read (LECTURA_GENERAL: products, models, materials, catalogs). Exactly that:
+#            Panel, grid, prices, dollar, colors, categories, lots, workshops, suppliers, leather stock and consumption
+#            forms are closed to it (S8, test_roles.py fixes the list).
 #   taller   voice, cutting and leather stock (CORTES, LECTURA_CORTE), plus, read only, everything needed to quote or
-#            assemble a new product: products and their sheet, models, materials, prices, catalogs, dollar (LECTURA_GENERAL),
-#            but not profitability / sale prices (gerente + admin) nor the workshop history (admin only).
+#            assemble a new product: products and their sheet, models, materials, catalogs (LECTURA_GENERAL) and prices,
+#            dollar, colors, categories (LECTURA_CORTE, which the gerente does not read), but not profitability / sale
+#            prices (gerente + admin) nor the workshop history (admin only).
 # Every write is admin only (ESCRITURA) except cutting and the voice interpreter (CORTES).
 ESCRITURA = [Depends(SOLO_ADMIN)]
 CORTES = [Depends(CORTE)]
@@ -818,6 +820,10 @@ class PanelAvisoOut(Salida):
     texto: str
 
 
+class PeriodoEscenarioOut(Salida):
+    periodo: str
+
+
 class PanelCostosOut(Salida):
     periodo: str
     periodo_anterior: str
@@ -1325,7 +1331,7 @@ def sobrante_cuero(codigo: str, cuerpo: SobranteCueroIn, session: Sesion):
     return cueros.decidir_sobrante(session, codigo, decision=cuerpo.decision, fecha=cuerpo.fecha or date.today())
 
 
-@router.get("/precios", dependencies=LECTURA_GENERAL, response_model=list[PrecioOut])
+@router.get("/precios", dependencies=LECTURA_CORTE, response_model=list[PrecioOut])
 def precios(session: Sesion, material: str | None = None, a_fecha: date | None = None):
     return servicios.listar_precios(session, material, a_fecha)
 
@@ -1344,12 +1350,12 @@ def catalogos(session: Sesion):
     return servicios.listar_catalogos(session)
 
 
-@router.get("/colores", dependencies=LECTURA_GENERAL, response_model=list[CatalogoItemOut])
+@router.get("/colores", dependencies=LECTURA_CORTE, response_model=list[CatalogoItemOut])
 def colores(session: Sesion):
     return servicios.listar_colores(session)
 
 
-@router.get("/categorias", dependencies=LECTURA_GENERAL, response_model=list[CatalogoItemOut])
+@router.get("/categorias", dependencies=LECTURA_CORTE, response_model=list[CatalogoItemOut])
 def categorias(session: Sesion):
     return servicios.listar_categorias(session)
 
@@ -1360,7 +1366,7 @@ def impuestos(session: Sesion):
     return servicios.listar_impuestos(session)
 
 
-@router.get("/dolar", dependencies=LECTURA_GENERAL, response_model=list[DolarOut])
+@router.get("/dolar", dependencies=LECTURA_CORTE, response_model=list[DolarOut])
 def dolar(session: Sesion):
     return servicios.listar_dolar(session)
 
@@ -1396,7 +1402,7 @@ def costos_fijos(session: Sesion, periodo: Annotated[str | None, Query(pattern=P
     return servicios.costos_fijos(session, periodo)
 
 
-@router.get("/panel/costos", dependencies=LECTURA_PRODUCTOS, response_model=PanelCostosOut)
+@router.get("/panel/costos", dependencies=LECTURA_ADMIN, response_model=PanelCostosOut)
 def panel_de_costos(
     session: Sesion, periodo: Annotated[str | None, Query(pattern=PERIODO)] = None,
     precio: Annotated[Decimal | None, Query(gt=0, max_digits=14, decimal_places=4)] = None,
@@ -1498,6 +1504,12 @@ def guardar_precios_por_margen(cuerpo: PreciosLoteIn, session: Sesion, usuario: 
     """Grid save: a new sale price per product = today's cost / (1 - margin). All rows or none; history is only appended."""
     return servicios.guardar_precios_por_margen(
         session, [item.model_dump() for item in cuerpo.items], quien=usuario.id)
+
+
+@router.get("/cvu/periodo", dependencies=LECTURA_PRODUCTOS, response_model=PeriodoEscenarioOut)
+def periodo_del_escenario():
+    """The month the simulator starts on (this calendar month). Nothing else of the Panel: that one is admin only."""
+    return {"periodo": servicios.mes_de(date.today())}
 
 
 @router.post("/cvu/escenario", dependencies=LECTURA_PRODUCTOS, response_model=EscenarioOut)
@@ -1790,7 +1802,7 @@ def _texto_de_celda(valor: object) -> str:
     return format(valor, "f") if isinstance(valor, Decimal) else str(valor)
 
 
-@router.get("/grilla", dependencies=LECTURA_PRODUCTOS, response_model=GrillaOut)
+@router.get("/grilla", dependencies=LECTURA_ADMIN, response_model=GrillaOut)
 def obtener_grilla(
     fuente: Annotated[Fuente, Depends(get_fuente_sheets)],
     texto: str = "",
