@@ -16,10 +16,10 @@ Branch: feature/modelos-lotes-proveedores. Delivery: ask-on-risk. Tests: pytest 
 - T2 S2 — inline — done
 - T3 S3 — delegated (worker, rama feature/modelo-taller) — done (pytest ok con Postgres local, lint ok, build ok; pantalla sin probar en navegador)
 - T4 S4 — delegated (worker, rama feature/lotes-buscador) — done (pytest ok, lint ok, build ok; buscador sin probar en navegador)
-- T5 S5 — pending (requiere tabla nueva + migración)
+- T5 S5 — delegated (rama feature/proveedor-productos) — done (verificador independiente: migración 0020 ok; bug de edición corregido en 5b9fe16)
 - T6 S6 — delegated (worker) — done (pytest 2261 ok, lint ok, build ok; grilla sin probar en navegador)
-- T7 S7 — pending
-- T8 S8 — pending (esperar al worker de T6: ambos tocan api.py/permisos)
+- T7 S7 — delegated (rama feature/materiales-grilla) — done
+- T8 S8 — delegated — done (d46c073 + cierre de API en feature/gerente-cierre-api; verificador y revisión nativa aprobados)
 
 
 ## Delivery
@@ -30,3 +30,4 @@ L1 (2026-11-13) Pedido original del usuario: "Cambios que quiero que hagamos: ..
 L2 (2026-11-13) Usuario: "Una cosa más que quisiera ... es que el gerente solo pueda ver productos, modelos y todo lo que es el simulador de escenarios". Usuario confirmó ("si") grilla de Productos editable con Margen % y Precio final.
 L3 (2026-11-13) S4: el form de "Nuevo lote" busca en toda la base (server action `buscarProductos` -> `GET /productos?q=`, hasta 20 resultados, solo admin, sin costos ni precios), permite agregar varios productos con cantidad por fila y elige "Fábrica (en casa)" (INTERNA) o un taller (EXTERNA) en un solo select. Sin cambios de backend: el endpoint ya existía y entra en `LECTURA_GENERAL`. SUPUESTO: validar con el usuario que "Fábrica" = `INTERNA` sin persona (la persona sigue opcional en "Más opciones"). El alta de productos a un lote ya creado (`/fabricacion/[codigo]`) sigue con el datalist de 500 productos.
 L4 (2026-11-13) S3: un solo alta de modelo (`POST /productos/nuevo`: nombre + categoría + tamaño + notas, sin consumos) crea el modelo y su formulario `ENVIADO`; la nota se copia a la hoja del taller. La ficha del modelo lista sus formularios (`GET /formularios?modelo=`). Sin migración: `modelo.nota` ya existía. `POST /modelos` (con consumos) queda en la API sin pantalla. SUPUESTO: validar que la categoría sea obligatoria.
+L5 (2026-11-13) Todo mergeado a main (sin push). main: pytest 2354 passed (2792 con Postgres), lint, tsx 70/70, build ok. Pendiente: probar en navegador (grilla de Productos, costos fijos con mes nuevo, buscador de lotes, alta de modelo, Proveedores, Materiales, login como gerente); limpiar temporales; push/PRs.
