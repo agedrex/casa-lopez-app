@@ -22,6 +22,9 @@ Branch: feature/modelos-lotes-proveedores. Delivery: ask-on-risk. Tests: pytest 
 - T8 S8 — pending (esperar al worker de T6: ambos tocan api.py/permisos)
 
 
+## Delivery
+Estrategia: stacked-to-main (elegida 2026-11-13). Slice 1 = d1dcae6 + a0a30e4 (T1, T2, T6; ~1200 líneas, por encima de 400 porque T6 es una unidad coherente). Próximos slices: T8 (permisos, commit propio), luego T3, T4, T5, T7.
+
 ## Log
 L1 (2026-11-13) Pedido original del usuario: "Cambios que quiero que hagamos: ..." (ver S1-S7).
 L2 (2026-11-13) Usuario: "Una cosa más que quisiera ... es que el gerente solo pueda ver productos, modelos y todo lo que es el simulador de escenarios". Usuario confirmó ("si") grilla de Productos editable con Margen % y Precio final.
