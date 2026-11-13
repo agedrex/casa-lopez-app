@@ -359,6 +359,7 @@ class CopiaIn(Entrada):
     desde: Annotated[str, Field(pattern=PERIODO)]
     hasta: Annotated[str, Field(pattern=PERIODO)]
     con_montos: bool = True
+    categorias: list[str] | None = None
 
 
 class ParametroIn(Entrada):
@@ -1559,7 +1560,8 @@ def anular_gasto(codigo: str, session: Sesion):
 @router.post("/costos-fijos/copiar", dependencies=ESCRITURA, response_model=CostosFijosOut, status_code=201)
 def copiar_mes_de_gastos(cuerpo: CopiaIn, session: Sesion):
     """Copies the current rows of `desde` into `hasta`; 422 if `desde` is empty, 409 if `hasta` already has rows."""
-    return servicios.copiar_mes_de_gastos(session, cuerpo.desde, cuerpo.hasta, con_montos=cuerpo.con_montos)
+    return servicios.copiar_mes_de_gastos(session, cuerpo.desde, cuerpo.hasta, con_montos=cuerpo.con_montos,
+                                           categorias=cuerpo.categorias)
 
 
 @router.post("/parametros/{codigo}", response_model=ParametroOut)

@@ -298,3 +298,14 @@ def test_a_month_with_every_row_annulled_leaves_the_period_list(api):
     codigo = api.get("/costos-fijos", params={"periodo": "2027-10"}).json()["gastos"][0]["codigo"]
     assert api.post(f"/costos-fijos/{codigo}/anular").status_code == 200
     assert "2027-10" not in api.get("/costos-fijos/periodos").json()["periodos"]
+
+
+def test_copying_only_some_categories_leaves_the_rest_out(api):
+    como("admin")
+    origen = mes(api)["gastos"]
+    categoria = origen[0]["categoria"]
+    esperado = [g for g in origen if g["categoria"] == categoria]
+    copia = api.post("/costos-fijos/copiar", json={"desde": PERIODO, "hasta": "2027-08", "categorias": [categoria]})
+    assert copia.status_code == 201, copia.text
+    assert len(copia.json()["gastos"]) == len(esperado)
+    assert {g["categoria"] for g in copia.json()["gastos"]} == {categoria}

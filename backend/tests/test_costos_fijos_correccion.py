@@ -236,7 +236,7 @@ def test_the_copy_route_passes_the_body_to_the_service(monkeypatch):
             "periodo": hasta, "total_fabrica": D("0"), "total_tienda": D("0"), "total": D("0"), "pendientes": 0,
             "incluye_ficticios": False, "gastos": []})
     assert client.post("/costos-fijos/copiar", json={"desde": "2026-10", "hasta": "2026-11"}).status_code == 201
-    assert visto == {"desde": "2026-10", "hasta": "2026-11", "con_montos": True}
+    assert visto == {"desde": "2026-10", "hasta": "2026-11", "con_montos": True, "categorias": None}
     client.post("/costos-fijos/copiar", json={"desde": "2026-10", "hasta": "2026-11", "con_montos": False})
     assert visto["con_montos"] is False
 

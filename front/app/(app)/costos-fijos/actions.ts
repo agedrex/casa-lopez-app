@@ -79,42 +79,6 @@ export async function corregirGasto(
   return ok("Monto corregido. El anterior quedó en el historial.");
 }
 
-/** Creates the month's rows from the previous month's current rows (with their amounts or pending). */
-export async function copiarMes(
-  _previous: FormState,
-  formData: FormData,
-): Promise<FormState> {
-  const denied = await denyUnlessWriter();
-  if (denied) return denied;
-
-  const desde = text(formData, "desde");
-  const hasta = text(formData, "hasta");
-  const modo = text(formData, "modo");
-  if (!PERIODO.test(desde) || !PERIODO.test(hasta)) {
-    return error("No se pudo leer el mes. Recargue la página.");
-  }
-  if (modo !== "con_montos" && modo !== "pendientes") {
-    return error("Elija si quiere copiar los montos o dejarlos pendientes.");
-  }
-  const result = await apiPost<CostosFijos>("/costos-fijos/copiar", {
-    desde,
-    hasta,
-    con_montos: modo === "con_montos",
-  });
-  if (!result.ok) {
-    if (result.status === 422) {
-      return error("El mes anterior no tiene gastos para copiar.", [
-        result.message,
-      ]);
-    }
-    return fromFailure(result, {
-      409: "Este mes ya tiene gastos cargados. No se copia encima de lo que hay.",
-    });
-  }
-  refresh();
-  return ok("Listo: se copiaron los gastos del mes anterior.");
-}
-
 /** What the grid sends for a saved row: only the cells that changed, as typed. */
 export type CambioGastoLote = {
   codigo: string;

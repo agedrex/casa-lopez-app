@@ -2111,10 +2111,12 @@ def guardar_gastos_en_lote(
     return costos_fijos(session, periodo)
 
 
-def copiar_mes_de_gastos(session: Session, desde: str, hasta: str, *, con_montos: bool = True) -> dict:
+def copiar_mes_de_gastos(session: Session, desde: str, hasta: str, *, con_montos: bool = True,
+                          categorias: list[str] | None = None) -> dict:
     """Create the rows of month `hasta` from the current rows of month `desde` (S2).
 
     Refuses an empty source or a target that already has rows. `ficticio` is copied; without amounts every copy is pending.
+    With `categorias` only the rows of those categories are copied (the page carries over payroll this way).
     """
     for periodo in (desde, hasta):
         if not PERIODO_AAAA_MM.fullmatch(periodo):
@@ -2124,6 +2126,8 @@ def copiar_mes_de_gastos(session: Session, desde: str, hasta: str, *, con_montos
     origen = session.scalars(
         select(GastoPeriodo).where(GastoPeriodo.periodo == desde, _gastos_vigentes()).order_by(GastoPeriodo.id)
     ).all()
+    if categorias is not None:
+        origen = [g for g in origen if g.categoria in categorias]
     if not origen:
         raise DatosInvalidos(f"No hay gastos cargados en {desde} para copiar.")
     if session.scalar(select(func.count()).select_from(GastoPeriodo).where(GastoPeriodo.periodo == hasta, _gastos_vigentes())):

@@ -3,7 +3,6 @@ import Link from "next/link";
 import { inputClass } from "@/components/form";
 import {
   Badge,
-  Card,
   ErrorNotice,
   Notice,
   numClass,
@@ -19,7 +18,7 @@ import {
   type View,
   ViewSelector,
 } from "@/components/view-selector";
-import { apiGet } from "@/lib/api";
+import { apiGet, apiPost } from "@/lib/api";
 import {
   EXPENSE_CATEGORIES,
   expenseCategoryLabel,
@@ -35,7 +34,6 @@ import type {
   Persona,
 } from "@/lib/types";
 import { CostosGrid } from "./costos-grid";
-import { CopiarMesForm } from "./forms";
 import { PeriodSelect } from "./period-select";
 
 export const metadata: Metadata = { title: "Costos fijos" };
@@ -137,12 +135,26 @@ export default async function CostosFijosPage({
   const query = PERIODO.test(requested)
     ? `?periodo=${encodeURIComponent(requested)}`
     : "";
-  const [periodos, result, personas] = await Promise.all([
+  const [periodos, loaded, personas] = await Promise.all([
     apiGet<PeriodosCostosFijos>("/costos-fijos/periodos"),
     apiGet<CostosFijos>(`/costos-fijos${query}`),
     apiGet<Persona[]>("/personas"),
   ]);
   const writer = canWrite(user.role);
+  // La mano de obra se mantiene mes a mes: un mes vacío arranca con los sueldos del anterior.
+  // Los servicios y el resto quedan vacíos, listos para completar.
+  let result = loaded;
+  const previousMonth = loaded.ok ? previousPeriod(loaded.data.periodo) : null;
+  if (writer && loaded.ok && loaded.data.gastos.length === 0 && previousMonth) {
+    const carried = await apiPost<CostosFijos>("/costos-fijos/copiar", {
+      desde: previousMonth,
+      hasta: loaded.data.periodo,
+      con_montos: true,
+      categorias: PERSONAL,
+    });
+    // Si el mes anterior no tiene sueldos (422) o ya se cargó algo (409), se sigue con el mes vacío.
+    if (carried.ok) result = carried;
+  }
   const people = personas.ok ? personas.data : [];
 
   return (
@@ -332,28 +344,8 @@ function Month({
     }))
     .filter((group) => group.gastos.length > 0);
 
-  const previous = previousPeriod(data.periodo);
-
   return (
     <>
-      {data.gastos.length === 0 ? (
-        <section aria-label="Mes sin gastos">
-          <Card>
-            <SectionTitle>
-              {formatPeriod(data.periodo)} todavía no tiene gastos
-            </SectionTitle>
-            {writer && previous ? (
-              <div className="space-y-4">
-                <CopiarMesForm desde={previous} hasta={data.periodo} />
-              </div>
-            ) : (
-              <p className="text-sm text-muted">
-                Cuando se carguen los gastos de este mes, van a aparecer acá.
-              </p>
-            )}
-          </Card>
-        </section>
-      ) : null}
       <section aria-label={`Totales de ${formatPeriod(data.periodo)}`}>
         {/* El API solo totaliza el mes entero: en una pestaña de un bloque no se repite. */}
         {bloque ? null : (

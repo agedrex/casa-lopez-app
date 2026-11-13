@@ -178,6 +178,8 @@ export function ReventaGrid({
       rows={rows}
       noun={NOUN}
       allowNew
+      startWithDraft={false}
+      addLabel="Agregar producto"
       newRowLabel="Producto nuevo"
       onSave={onSave}
     />
