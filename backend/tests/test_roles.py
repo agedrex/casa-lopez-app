@@ -133,7 +133,7 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
         "/personas", "/personas/{codigo}/activo", "/colores", "/categorias", "/modelos", "/modelos/{codigo}/validado",
         "/impuestos", "/impuestos/{codigo}/alicuota", "/impuestos/{codigo}/activo",
         "/modelos/{codigo}/consumos", "/sync/sheets", "/costos-fijos/lote", "/modelos/consumos/lote",
-        "/productos/precios-lote")},
+        "/productos/precios-lote", "/materiales/lote")},
     # The scenario simulator: a POST only because of its body, it computes and saves nothing (test_escenarios_gerente.py).
     ("POST", "/cvu/escenario"): PRODUCTOS,
     # Suppliers: admin only (reads and writes), the gerente has no access to the module.

@@ -165,3 +165,10 @@ The digital version of the paper sheet "consumos y herrajes": one form per artic
 The preloaded rows (14 CONSUMOS and 16 HERRAJES, in the order of the paper sheet) are the constant `LINEAS_PRECARGADAS` in `backend/src/backend/formulario.py`; creating a form copies them with empty quantity and comment.
 
 State machine: `BORRADOR` -> `ENVIADO` (admin sends) -> `COMPLETADO` (taller or admin completes) -> `VALIDADO` (admin validates), or `COMPLETADO` -> `ENVIADO` with a comment. `VALIDADO` is immutable (409); duplicating it creates a new `BORRADOR` with the same rows. A `taller` user edits only the rows, only while `ENVIADO`, and only sees `ENVIADO` and `COMPLETADO` forms. The endpoints (`/formularios...`) are documented in the module docstring of `formulario.py`. Downgrade of 0016 drops both tables: the forms and every quantity loaded are lost.
+
+## Materials grid (`/materiales`)
+
+The materials page is one grid grouped by stage (no separate price form). It does not change the schema: `POST /materiales/lote` (admin only, all or nothing, `backend/src/backend/materiales.py`) saves two things in one transaction.
+
+- **Price changes** of saved materials: a changed price, currency or supplier is a **new** `precio_material` row dated today (for all colors, `color_id` NULL), written by `servicios.crear_precio`; nothing is updated. What is not sent stays as in the price in force today; a change that leaves price, currency and supplier as they are adds no row. Prices by color are never touched. A second price for the same material and day is a `409` naming the material (one price per material + color + date). A non-`cotizable` material is refused (`422`). The unit of the price is always the consumption unit of the material.
+- **New materials**: `nombre`, `etapa` (only stages of type `MATERIAL`) and `unidad_de_consumo`, with an optional first price. The code is `MAT-NNNN` (SUPUESTO: validar; the seeded `MAT-CU01`... keep their sheet codes and do not count for the sequence). Names are unique ignoring case (`409`). `cotizable` is true and `controla_inventario` false; nothing else of an existing material is edited from the grid.
