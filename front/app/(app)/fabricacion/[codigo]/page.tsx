@@ -106,6 +106,7 @@ export default async function LotePage({
         actions={<LotStateBadge estado={orden.estado} />}
       />
       <div className="space-y-10">
+        <QueHayQueHacer orden={orden} />
         <Summary orden={orden} />
         {orden.avisos.length > 0 ? (
           <Notice title="Para revisar en este lote">
@@ -414,47 +415,52 @@ function TallerLote({ orden }: { orden: OrdenDetalle }) {
           </p>
           {orden.nota ? <p className="mt-2 text-sm">{orden.nota}</p> : null}
         </section>
-        <section>
-          <SectionTitle>Qué hay que hacer</SectionTitle>
-          {orden.items.length === 0 ? (
-            <Notice tone="info" title="Este lote todavía no tiene productos." />
-          ) : (
-            <>
-              <p className="mb-3 text-sm text-muted">
-                Tocá un producto para ver sus materiales y consumos.
-              </p>
-              <ul className="divide-y divide-line/70 rounded-card border border-line bg-surface shadow-card">
-                {orden.items.map((item) => (
-                  <li key={item.codigo}>
-                    <Link
-                      href={`/productos/${encodeURIComponent(item.producto)}`}
-                      className="flex min-h-14 items-center justify-between gap-4 px-4 py-3"
-                    >
-                      <span className="min-w-0">
-                        <span className="line-clamp-2 break-words underline decoration-gold underline-offset-4">
-                          {collapseSpaces(item.producto_nombre)}
-                        </span>
-                        <span className="block text-xs text-muted">
-                          {item.producto}
-                        </span>
-                      </span>
-                      <span className="shrink-0 text-right">
-                        <span className="font-display text-3xl tabular-nums">
-                          {formatQuantity(item.cantidad)}
-                        </span>
-                        <span className="block text-xs text-muted">
-                          a hacer
-                        </span>
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-        </section>
+        <QueHayQueHacer orden={orden} />
         <Timeline orden={orden} />
       </div>
     </>
+  );
+}
+
+/** The list of products to make, with how many of each; every row opens the product sheet. Shared by the taller and the admin. */
+function QueHayQueHacer({ orden }: { orden: OrdenDetalle }) {
+  return (
+    <section>
+      <SectionTitle>Qué hay que hacer</SectionTitle>
+      {orden.items.length === 0 ? (
+        <Notice tone="info" title="Este lote todavía no tiene productos." />
+      ) : (
+        <>
+          <p className="mb-3 text-sm text-muted">
+            Tocá un producto para ver sus materiales y consumos.
+          </p>
+          <ul className="divide-y divide-line/70 rounded-card border border-line bg-surface shadow-card">
+            {orden.items.map((item) => (
+              <li key={item.codigo}>
+                <Link
+                  href={`/productos/${encodeURIComponent(item.producto)}`}
+                  className="flex min-h-14 items-center justify-between gap-4 px-4 py-3"
+                >
+                  <span className="min-w-0">
+                    <span className="line-clamp-2 break-words underline decoration-gold underline-offset-4">
+                      {collapseSpaces(item.producto_nombre)}
+                    </span>
+                    <span className="block text-xs text-muted">
+                      {item.producto}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-right">
+                    <span className="font-display text-3xl tabular-nums">
+                      {formatQuantity(item.cantidad)}
+                    </span>
+                    <span className="block text-xs text-muted">a hacer</span>
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
   );
 }
