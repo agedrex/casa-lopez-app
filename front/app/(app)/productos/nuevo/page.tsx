@@ -7,7 +7,6 @@ import { todayIso } from "@/lib/format";
 import { canWrite } from "@/lib/permissions";
 import { requireSession } from "@/lib/session";
 import type { Catalogos, Material, Modelo } from "@/lib/types";
-import { ModeloNuevoForm } from "../modelos/modelo-nuevo-form";
 import { ProductoForm } from "./producto-form";
 
 export const metadata: Metadata = { title: "Nuevo producto" };
@@ -31,12 +30,8 @@ export default async function NuevoProductoPage({
       </p>
       <PageHeader
         eyebrow="Productos"
-        title={modeloInicial ? "Producto del modelo" : "Nuevo modelo"}
-        description={
-          modeloInicial
-            ? "Elija el cuero y el color: las medidas ya están validadas en el modelo."
-            : "Escriba el nombre, la categoría y las notas del modelo: el taller recibe la hoja para cargar los consumos y usted la valida. Después se crea el producto (cuero y color)."
-        }
+        title="Nuevo producto"
+        description="Elija un modelo y defina lo propio del producto (cuero, color y demás). Las medidas y consumos los dicta el modelo."
       />
     </>
   );
@@ -72,30 +67,31 @@ export default async function NuevoProductoPage({
     <>
       {header}
       <Card>
-        <ModeloNuevoForm categorias={catalogos.data.categorias} />
-      </Card>
-      <details className="mt-6" open={Boolean(modeloInicial)}>
-        <summary className="cursor-pointer text-sm text-muted">
-          Avanzado: kit, o producto de un modelo que ya existe
-        </summary>
-        <Card>
-          <ProductoForm
-            modeloInicial={modeloInicial}
-            modelos={modelos.data.map((modelo) => ({
-              codigo: modelo.codigo,
-              label: `${modelo.nombre_del_modelo}${modelo.categoria ? ` · ${modelo.categoria}` : ""}`,
+        <ProductoForm
+          modeloInicial={modeloInicial}
+          modelos={modelos.data.map((modelo) => ({
+            codigo: modelo.codigo,
+            label: `${modelo.nombre_del_modelo}${modelo.categoria ? ` · ${modelo.categoria}` : ""}`,
+          }))}
+          cueros={materiales.data
+            .filter((m) => m.etapa === "CUERO" && m.cotizable)
+            .map((m) => ({
+              codigo: m.codigo,
+              label: `${m.nombre} (${m.codigo})`,
             }))}
-            cueros={materiales.data
-              .filter((m) => m.etapa === "CUERO" && m.cotizable)
-              .map((m) => ({
-                codigo: m.codigo,
-                label: `${m.nombre} (${m.codigo})`,
-              }))}
-            colores={catalogos.data.colores}
-            today={todayIso()}
-          />
-        </Card>
-      </details>
+          colores={catalogos.data.colores}
+          today={todayIso()}
+        />
+      </Card>
+      <p className="mt-6 text-sm text-muted">
+        ¿No existe el modelo?{" "}
+        <Link
+          href="/productos/modelos/nuevo"
+          className="underline decoration-gold underline-offset-4"
+        >
+          Crear un modelo nuevo
+        </Link>
+      </p>
     </>
   );
 }
