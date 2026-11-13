@@ -161,11 +161,25 @@ export type ModeloLista = Modelo & {
 /** Answer of `POST /modelos/consumos/lote`. */
 export type ResultadoLoteConsumos = { guardados: number; modelos: string[] };
 
+// A supply the model carries per unit (filled when its consumption sheet is validated), mirrors InsumoModeloOut.
+// `precio_unitario` is the generic price in force today, in `moneda`; null when the material has none.
+export type InsumoModelo = {
+  codigo: string;
+  material: string;
+  nombre: string;
+  etapa: string;
+  unidad_de_consumo: string;
+  cantidad_por_unidad: string;
+  precio_unitario: string | null;
+  moneda: string | null;
+};
+
 export type ModeloDetalle = ModeloLista & {
   nota: string | null;
   modelo_excel_viejo: string | null;
   fila_excel_viejo: number | null;
   productos: number;
+  insumos: InsumoModelo[];
 };
 
 export type Parametro = {
@@ -1022,4 +1036,6 @@ export type Formulario = FormularioResumen & {
   completado_por: string | null;
   validado_por: string | null;
   lineas: FormularioLinea[];
+  // Only the answer of `validar` fills it: rows with a quantity that matched no material (not saved as supplies).
+  sin_material?: string[] | null;
 };

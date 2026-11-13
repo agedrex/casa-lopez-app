@@ -209,3 +209,20 @@ def test_a_model_without_supplies_is_costed_exactly_as_before():
 def test_a_supply_with_zero_quantity_is_ignored():
     q = cotizar_con_insumos(InsumoModelo(CIERRE, "HERRAJES", D("0")))
     assert q.desglose.etapas["HERRAJES"] == D("2") * D("1545")  # the model's own herrajes stays
+
+
+def test_supplies_in_other_stages_add_lines_without_removing_model_lines():
+    from backend.receta import InsumoModelo, ModeloReceta, generar_receta
+    modelo = ModeloReceta(D("0.25"), "MAT-FO02", D("0.2"), D("0.45"), None, D("2"), D("1"), D("12000"),
+                          (InsumoModelo("MAT-ZZ02", "FLEX", D("0.3")),))
+    receta = generar_receta(modelo, ProductoReceta("MAT-CU01", None, "EXTERNA", False), [])
+    etapas = [(linea.etapa, linea.material) for linea in receta.lineas]
+    assert ("FLEX", "MAT-ZZ02") in etapas and any(etapa == "FLEX" and material != "MAT-ZZ02" for etapa, material in etapas)
+
+
+def test_only_herrajes_supplies_keep_the_missing_hilo_warning():
+    from backend.receta import InsumoModelo, ModeloReceta, generar_receta
+    modelo = ModeloReceta(D("0.24"), "MAT-FO02", D("0.18"), None, None, None, None, None,
+                          (InsumoModelo("MAT-ZZ01", "HERRAJES", D("1")),))
+    receta = generar_receta(modelo, ProductoReceta("MAT-CU01", None, "INTERNA", False), [])
+    assert "Falta hilo y cemento" in receta.avisos

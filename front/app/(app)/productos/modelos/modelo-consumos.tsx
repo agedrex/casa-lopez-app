@@ -8,7 +8,13 @@ import {
   thClass,
 } from "@/components/ui";
 import { apiGet } from "@/lib/api";
-import { formatArs, formatQuantity, formatUsd } from "@/lib/format";
+import {
+  formatArs,
+  formatMoney,
+  formatQuantity,
+  formatUsd,
+  stageLabel,
+} from "@/lib/format";
 import { CONSUMPTION_FIELDS } from "@/lib/modelos";
 import type { Material, ModeloDetalle } from "@/lib/types";
 import { ConsumosForm } from "./[codigo]/modelo-forms";
@@ -64,7 +70,58 @@ export function ConsumosTable({ modelo }: { modelo: ModeloDetalle }) {
         &quot;Falta el dato&quot; es un consumo sin cargar; 0 significa que el
         modelo no lleva ese insumo.
       </p>
+      <InsumosTable insumos={modelo.insumos} />
     </>
+  );
+}
+
+function unitLabel(unit: string): string {
+  return unit === "m2" ? "m²" : unit;
+}
+
+/** Supplies the model carries per unit (from its validated consumption sheet); nothing is shown when there are none. */
+function InsumosTable({ insumos }: { insumos: ModeloDetalle["insumos"] }) {
+  if (insumos.length === 0) return null;
+  return (
+    <div className="mt-6">
+      <h3 className="mb-2 text-sm font-bold text-ink-soft">
+        Insumos por unidad
+      </h3>
+      <TableWrap>
+        <table className={tableClass}>
+          <thead>
+            <tr>
+              <th className={thClass}>Material</th>
+              <th className={thClass}>Etapa</th>
+              <th className={`${thClass} ${numClass}`}>Cantidad</th>
+              <th className={`${thClass} ${numClass}`}>Precio unitario</th>
+            </tr>
+          </thead>
+          <tbody>
+            {insumos.map((insumo) => (
+              <tr key={insumo.codigo}>
+                <td className={tdClass}>
+                  {insumo.nombre}
+                  <span className="ml-2 text-xs text-muted">
+                    {insumo.material}
+                  </span>
+                </td>
+                <td className={tdClass}>{stageLabel(insumo.etapa)}</td>
+                <td className={`${tdClass} ${numClass}`}>
+                  {formatQuantity(insumo.cantidad_por_unidad)}{" "}
+                  {unitLabel(insumo.unidad_de_consumo)}
+                </td>
+                <td className={`${tdClass} ${numClass}`}>
+                  {insumo.precio_unitario !== null && insumo.moneda !== null
+                    ? formatMoney(insumo.precio_unitario, insumo.moneda)
+                    : "sin precio"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </TableWrap>
+    </div>
   );
 }
 

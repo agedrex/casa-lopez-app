@@ -11,8 +11,9 @@ Objective: que el costo use los precios unitarios de los pedidos de proveedor. B
 - Fuera: stock, edición manual de insumos, abrir la ficha de proveedores al gerente.
 
 ## Tasks
-- T1 (S1-S4) backend: migración 0019, modelo, motor, formulario, tests, docs. Route: delegated (high risk item 3/1: toca el motor; verifier after).
-- T2 (S5) front: ficha del modelo + aviso `sin_material`. Route: delegated.
+- T1 (S1-S4) backend: migración 0019, modelo, motor, formulario, tests, docs. Route: delegated (toca el motor; verifier independiente). DONE (ff04348; suite 2607 passed, 6 skipped; verifier: sin blockers, comparación de 1300 cotizaciones idéntica a la base).
+- T2 (S5) front: ficha del modelo + aviso `sin_material`. Route: delegated. DONE.
 
 ## Log
 - L1 (2026-11-13): "avanza con todo lo que quede y lleguemos a staging". Paso 2 del plan aprobado ("si", 2026-11-13).
+- L2 (2026-11-13): verifier advisories (no se corrigen ahora): insumos viejos no se borran al revalidar; la ficha del modelo busca precio a date.today() y el costo a la fecha del dólar más nuevo; el desperdicio aplica también a insumos (hoy 0); duplicar_formulario no copia modelo_id. Se agregaron 2 tests de regresión en test_receta.py.

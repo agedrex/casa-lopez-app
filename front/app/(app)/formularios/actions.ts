@@ -111,6 +111,13 @@ export async function trabajarFormulario(
       : failure;
   }
   refresh();
+  const sinMaterial = moved.data.sin_material ?? [];
+  if (accion === "validar" && sinMaterial.length > 0) {
+    // The sheet leaves edit mode once validated, so a form state would be lost: carry the warning in the URL.
+    const params = new URLSearchParams();
+    for (const nombre of sinMaterial) params.append("sin_material", nombre);
+    redirect(`${base}?${params.toString()}`);
+  }
   return ok(HECHO[accion]);
 }
 

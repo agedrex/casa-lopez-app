@@ -23,12 +23,28 @@ function decodeCode(raw: string): string | null {
   }
 }
 
+type Search = Promise<{ sin_material?: string | string[] }>;
+
 export default async function FormularioPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ codigo: string }>;
+  searchParams: Search;
 }) {
   const { user } = await requireSession();
+  // Set by the validate action: the rows with a quantity that matched no material.
+  const { sin_material } = await searchParams;
+  const sinMaterial = (
+    Array.isArray(sin_material)
+      ? sin_material
+      : sin_material
+        ? [sin_material]
+        : []
+  )
+    .map((nombre) => nombre.trim().slice(0, 200))
+    .filter(Boolean)
+    .slice(0, 50);
   const codigo = decodeCode((await params).codigo);
   if (codigo === null) notFound();
 
@@ -96,6 +112,14 @@ export default async function FormularioPage({
             .map(([etiqueta, fecha]) => `${etiqueta} ${formatDate(fecha)}`)
             .join(" · ")}
         </p>
+        {sinMaterial.length > 0 && formulario.estado === "VALIDADO" ? (
+          <div className="mb-6">
+            <Notice title="Formulario validado, con filas sin vincular">
+              Estas filas no se pudieron vincular a un material y no cuentan en
+              el costo: {sinMaterial.join(", ")}.
+            </Notice>
+          </div>
+        ) : null}
         <Aviso formulario={formulario} />
         {formulario.estado === "VALIDADO" &&
         formulario.modelo &&
