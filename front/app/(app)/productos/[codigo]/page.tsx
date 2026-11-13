@@ -82,7 +82,7 @@ export default async function FichaPage({
     // client-side swap here because the page already sits inside a Suspense boundary.
     return (
       <>
-        <BackLink />
+        <BackLink taller={isTallerOnly(user.role)} />
         {result.status === 404 ? (
           <Notice tone="info" title="No encontramos ese producto">
             Revise el código o vuelva al listado de productos.
@@ -97,7 +97,7 @@ export default async function FichaPage({
   const ficha = result.data;
   return (
     <>
-      <BackLink />
+      <BackLink taller={isTallerOnly(user.role)} />
       <PageHeader
         eyebrow={`Producto ${ficha.codigo}`}
         title={collapseSpaces(ficha.nombre)}
@@ -294,14 +294,14 @@ async function Actions({ ficha, writer }: { ficha: Ficha; writer: boolean }) {
   );
 }
 
-function BackLink() {
+function BackLink({ taller }: { taller: boolean }) {
   return (
     <p className="mb-6 text-sm">
       <Link
-        href="/productos"
+        href={taller ? "/fabricacion" : "/productos"}
         className="text-muted underline decoration-gold underline-offset-4"
       >
-        ← Productos
+        {taller ? "← Lotes" : "← Productos"}
       </Link>
     </p>
   );

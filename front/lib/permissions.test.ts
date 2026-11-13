@@ -170,3 +170,36 @@ test("taller is a taller-only user; admin is not", () => {
   assert.equal(isTallerOnly("taller,admin"), false);
   assert.equal(isTallerOnly("gerente"), false);
 });
+
+test("admin and gerente matrices hold; taller cannot reach admin-only product paths", () => {
+  for (const p of [
+    "/productos",
+    "/productos/modelos",
+    "/escenarios",
+    "/productos/PRD-1",
+  ]) {
+    assert.equal(canAccessPath("gerente", p), true, p);
+  }
+  for (const p of [
+    "/fabricacion",
+    "/formularios",
+    "/corte",
+    "/cueros",
+    "/materiales",
+    "/proveedores",
+    "/admin/panel",
+  ]) {
+    assert.equal(canAccessPath("gerente", p), false, p);
+  }
+  for (const p of [
+    "/productos/modelos",
+    "/productos/nuevo",
+    "/productos/catalogos",
+    "/fabricacion/nuevo",
+    "/materiales",
+    "/talleres",
+  ]) {
+    assert.equal(canAccessPath("taller", p), false, p);
+  }
+  assert.equal(homePath("gerente,taller"), "/productos");
+});
