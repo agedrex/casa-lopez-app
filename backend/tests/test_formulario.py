@@ -189,8 +189,8 @@ def fila(estado="ENVIADO", articulo="Cartera Lucía", nota=None):
 def con_formulario(monkeypatch, instancia):
     """Replace the loader and the serializer; returns the session mock so the test can see what was written."""
     session = MagicMock()
-    monkeypatch.setattr(formulario, "_cargar", lambda s, codigo, roles, bloquear=False: (instancia, None, None))
-    monkeypatch.setattr(formulario, "_detalle", lambda s, f, p, t: {"estado": f.estado, "articulo": f.articulo, "nota": f.nota})
+    monkeypatch.setattr(formulario, "_cargar", lambda s, codigo, roles, bloquear=False: (instancia, None, None, None))
+    monkeypatch.setattr(formulario, "_detalle", lambda s, f, p, t, m=None: {"estado": f.estado, "articulo": f.articulo, "nota": f.nota})
     return session
 
 
@@ -363,7 +363,7 @@ def test_invalid_bodies_are_422_without_calling_the_service(monkeypatch, cuerpo)
 def test_quantities_travel_as_exact_decimals_and_come_back_as_strings(monkeypatch):
     visto = {}
     salida = {
-        "codigo": "FCO-0001", "articulo": "A", "estado": "ENVIADO", "producto": None, "taller": None, "creado_por": "u",
+        "codigo": "FCO-0001", "articulo": "A", "estado": "ENVIADO", "producto": None, "modelo": None, "taller": None, "creado_por": "u",
         "created_at": AHORA, "enviado_en": AHORA, "completado_en": None, "validado_en": None, "nota": None,
         "comentario_revision": None, "completado_por": None, "validado_por": None,
         "lineas": [{"seccion": "CONSUMO", "orden": 1, "nombre": "CUERO", "cantidad": D("0.250000"), "comentario": None}],
@@ -419,6 +419,12 @@ def test_the_models_follow_the_conventions_of_the_schema():
     unicas = [tuple(c.columns.keys()) for c in linea_tabla.constraints if isinstance(c, UniqueConstraint)]
     assert ("formulario_id", "seccion", "orden") in unicas
     assert {"formulario_consumo", "formulario_consumo_linea"} <= {t.name for t in Base.metadata.tables.values()}
+
+
+def test_revision_0017_adds_the_nullable_model_link_and_the_downgrade_drops_it(monkeypatch):
+    revision = runpy.run_path(str(Path(__file__).parents[1] / "migrations" / "versions" / "0017_formulario_modelo.py"))
+    assert revision["revision"] == "0017_formulario_modelo" and revision["down_revision"] == "0016_formulario_consumo"
+    assert FormularioConsumo.__table__.c.modelo_id.nullable
 
 
 def test_revision_0016_creates_the_two_tables_and_the_downgrade_drops_the_child_first(monkeypatch):
@@ -662,3 +668,65 @@ def test_pg_a_form_written_through_the_real_session_is_committed(local_postgres,
         conexion.execute(text("delete from costos.formulario_consumo_linea"))
         conexion.execute(text("delete from costos.formulario_consumo"))
         conexion.commit()
+
+
+# --- Alta rápida (S1-S4 of odd/tasks/producto-alta-simple.md) ---------------------------------------------------------
+
+def test_names_are_normalized_to_single_spaces_and_capitals_and_an_empty_one_is_refused():
+    assert formulario.normalizar_nombre("  cartera   lucía chica ") == "CARTERA LUCÍA CHICA"
+    for vacio in ("", "   ", None):
+        with pytest.raises(DatosInvalidos):
+            formulario.normalizar_nombre(vacio)
+
+
+def alta(api, nombre="cartera  lucía"):
+    como("admin", "admin-1")
+    return api.post("/productos/nuevo", json={"nombre": nombre})
+
+
+def test_pg_the_quick_create_makes_a_model_and_a_form_already_sent_but_no_product(api):
+    respuesta = alta(api)
+    assert respuesta.status_code == 201, respuesta.text
+    datos = respuesta.json()
+    assert datos["nombre"] == "CARTERA LUCÍA" and datos["modelo"].startswith("MOD-") and "producto" not in datos
+    form = api.get(f"/formularios/{datos['formulario']}").json()
+    assert (form["estado"], form["articulo"], form["modelo"], form["producto"]) == (
+        "ENVIADO", "CARTERA LUCÍA", datos["modelo"], None)
+    assert form["enviado_en"] is not None and len(form["lineas"]) == 30
+    assert api.get(f"/modelos/{datos['modelo']}").json()["nombre_del_modelo"] == "CARTERA LUCÍA"
+    como("taller")
+    assert api.get(f"/formularios/{datos['formulario']}").status_code == 200  # the taller already sees it
+
+
+def test_pg_the_quick_create_refuses_a_repeated_name_and_leaves_nothing_behind(api):
+    assert alta(api, "Zz Billetera de prueba").status_code == 201
+    antes = len(api.get("/formularios").json())
+    assert alta(api, " zz billetera  de PRUEBA ").status_code == 409
+    assert alta(api, "   ").status_code == 422
+    assert len(api.get("/formularios").json()) == antes
+
+
+def test_pg_only_the_admin_can_use_the_quick_create(api):
+    for rol in ("taller", "gerente"):
+        como(rol)
+        assert api.post("/productos/nuevo", json={"nombre": "X"}).status_code == 403
+
+
+def test_pg_validating_copies_the_measures_to_the_model_once(api):
+    datos = alta(api, "Zz Mochila de prueba").json()
+    codigo = datos["formulario"]
+    como("taller")
+    form = api.get(f"/formularios/{codigo}").json()
+    for l in form["lineas"]:
+        if l["nombre"] == "CUERO":
+            l["cantidad"] = "0.5"
+        if l["nombre"] == "FLEX":
+            l["cantidad"] = "0.25"
+    assert api.put(f"/formularios/{codigo}", json=cuerpo_de(form)).status_code == 200
+    assert api.post(f"/formularios/{codigo}/completar").status_code == 200
+    como("admin", "admin-1")
+    assert api.post(f"/formularios/{codigo}/validar").status_code == 200
+    modelo = api.get(f"/modelos/{datos['modelo']}").json()
+    assert (D(modelo["cuero_m2_por_unidad"]), D(modelo["flex_m2_por_unidad"])) == (D("0.5"), D("0.25"))
+    assert modelo["goma_eva_m2_por_unidad"] is None  # blank row = missing data, not "no lleva"
+    assert (modelo["validado"], modelo["origen_de_los_consumos"]) == (True, "MEDIDO")

@@ -978,6 +978,7 @@ export type FormularioResumen = {
   articulo: string;
   estado: FormularioEstado;
   producto: string | null;
+  modelo: string | null;
   taller: string | null;
   creado_por: string;
   created_at: string;

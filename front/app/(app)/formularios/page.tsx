@@ -214,9 +214,9 @@ function Lista({
                     </span>
                   </div>
                   <p className="mt-1 text-xs text-muted">
-                    {[formulario.producto, formulario.taller]
+                    {[formulario.modelo, formulario.producto, formulario.taller]
                       .filter(Boolean)
-                      .join(" · ") || "Sin producto ni taller"}
+                      .join(" · ") || "Sin modelo, producto ni taller"}
                     {" · "}
                     {formatDate(formulario.created_at)}
                   </p>
@@ -276,7 +276,9 @@ function Lista({
                         {estadoLabel(formulario.estado)}
                       </Badge>
                     </td>
-                    <td className={tdClass}>{formulario.producto ?? "—"}</td>
+                    <td className={tdClass}>
+                      {formulario.producto ?? formulario.modelo ?? "—"}
+                    </td>
                     <td className={tdClass}>{formulario.taller ?? "—"}</td>
                     <td className={tdClass}>
                       {formatDate(formulario.created_at)}

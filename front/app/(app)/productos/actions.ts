@@ -58,3 +58,23 @@ export async function createProducto(
   );
   redirect(`/formularios/${encodeURIComponent(formulario.data.codigo)}`);
 }
+
+type AltaRapida = {
+  modelo: string;
+  formulario: string;
+  nombre: string;
+};
+
+// Name only: the backend makes the model, its code and the form already sent to the workshop.
+export async function createProductoRapido(
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const denied = await denyUnlessWriter();
+  if (denied) return denied;
+  const nombre = collapseSpaces(text(formData, "nombre"));
+  if (!nombre) return error("Escriba el nombre del modelo.");
+  const result = await apiPost<AltaRapida>("/productos/nuevo", { nombre });
+  if (!result.ok) return fromFailure(result);
+  redirect(`/formularios/${encodeURIComponent(result.data.formulario)}`);
+}

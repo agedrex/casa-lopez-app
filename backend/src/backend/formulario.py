@@ -40,7 +40,7 @@ from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
 from backend.auth import ADMIN, GERENTE, TALLER
-from backend.models import FORM_SECTIONS, FORM_STATES, FormularioConsumo, FormularioConsumoLinea, Producto, Taller
+from backend.models import FORM_SECTIONS, FORM_STATES, FormularioConsumo, FormularioConsumoLinea, Modelo, Producto, Taller
 from backend.servicios import (
     Conflicto, DatosInvalidos, NoEncontrado, _insertar, _patron, _por_codigo, _siguiente_numero, _texto_o_nada,
 )
@@ -162,21 +162,23 @@ def _articulo(valor: str | None) -> str:
 
 # --- Reads ------------------------------------------------------------------------------------------------------------
 
-def _resumen(fila: FormularioConsumo, producto: str | None, taller: str | None) -> dict:
+def _resumen(fila: FormularioConsumo, producto: str | None, taller: str | None, modelo: str | None = None) -> dict:
     return {
-        "codigo": fila.codigo, "articulo": fila.articulo, "estado": fila.estado, "producto": producto, "taller": taller,
+        "codigo": fila.codigo, "articulo": fila.articulo, "estado": fila.estado, "producto": producto, "taller": taller, "modelo": modelo,
         "creado_por": fila.creado_por, "created_at": fila.created_at, "enviado_en": fila.enviado_en,
         "completado_en": fila.completado_en, "validado_en": fila.validado_en,
     }
 
 
-def _detalle(session: Session, fila: FormularioConsumo, producto: str | None, taller: str | None) -> dict:
+def _detalle(
+    session: Session, fila: FormularioConsumo, producto: str | None, taller: str | None, modelo: str | None = None,
+) -> dict:
     lineas = session.scalars(
         select(FormularioConsumoLinea).where(FormularioConsumoLinea.formulario_id == fila.id)
         .order_by(FormularioConsumoLinea.seccion, FormularioConsumoLinea.orden)  # CONSUMO sorts before HERRAJE
     ).all()
     return {
-        **_resumen(fila, producto, taller),
+        **_resumen(fila, producto, taller, modelo),
         "nota": fila.nota, "comentario_revision": fila.comentario_revision,
         "completado_por": fila.completado_por, "validado_por": fila.validado_por,
         "lineas": [{"seccion": l.seccion, "orden": l.orden, "nombre": l.nombre, "cantidad": l.cantidad,
@@ -186,8 +188,9 @@ def _detalle(session: Session, fila: FormularioConsumo, producto: str | None, ta
 
 def _consulta_base():
     return (
-        select(FormularioConsumo, Producto.codigo, Taller.codigo)
+        select(FormularioConsumo, Producto.codigo, Taller.codigo, Modelo.codigo)
         .outerjoin(Producto, Producto.id == FormularioConsumo.producto_id)
+        .outerjoin(Modelo, Modelo.id == FormularioConsumo.modelo_id)
         .outerjoin(Taller, Taller.id == FormularioConsumo.taller_id)
     )
 
@@ -257,11 +260,59 @@ def crear_formulario(
     return _detalle(session, fila, producto, taller)
 
 
+# Rows of the form whose measure goes to the model when the admin validates (m2 per unit). FORRO is not copied: the model also
+# needs the lining material, a choice a person makes. HERRAJES are quantities, not the USD amount the model keeps.
+MEDIDAS_AL_VALIDAR = {"CUERO": "cuero_m2_por_unidad", "FLEX": "flex_m2_por_unidad", "GOMA EVA": "goma_eva_m2_por_unidad"}
+
+
+def normalizar_nombre(nombre: str | None) -> str:
+    """One house style for names: single spaces and CAPITALS."""
+    limpio = " ".join((nombre or "").split()).upper()
+    if not limpio:
+        raise DatosInvalidos("Falta el nombre del producto.")
+    return limpio
+
+
+def alta_rapida(session: Session, *, nombre: str, quien: str) -> dict:
+    """New model from its name alone, with its consumption form already sent to the workshop, in one transaction.
+
+    The model is what gets designed and measured; the product (model + leather + colour) is created after validation.
+    """
+    nombre = normalizar_nombre(nombre)
+    if any(existente.casefold() == nombre.casefold() for existente in session.scalars(select(Modelo.nombre_del_modelo))):
+        raise Conflicto(f"Ya hay un modelo llamado {nombre}: agregá algo que lo distinga.")
+    # SUPUESTO: validar. Category and size stay empty until someone completes them.
+    modelo = Modelo(
+        codigo=f"MOD-{_siguiente_numero(session, Modelo.codigo, 'MOD'):04d}", nombre_del_modelo=nombre, validado=False)
+    _insertar(session, modelo, "Ya hay un modelo con ese nombre, o no se pudo asignar el código; intentá de nuevo.")
+    fila = _nuevo(
+        session, articulo=nombre, producto_id=None, taller_id=None, nota=None, quien=quien, lineas=lineas_precargadas())
+    fila.modelo_id, fila.estado, fila.enviado_en = modelo.id, ENVIADO, datetime.now(timezone.utc)
+    session.commit()
+    return {"modelo": modelo.codigo, "formulario": fila.codigo, "nombre": nombre}
+
+
+def _aplicar_medidas(session: Session, fila: FormularioConsumo) -> None:
+    """On validation, copy the measured m2 to the sheet's model, unless that model was already validated by hand."""
+    modelo_id = fila.modelo_id
+    if modelo_id is None and fila.producto_id is not None:  # forms made before 0017 only know their product
+        modelo_id = session.scalar(select(Producto.modelo_id).where(Producto.id == fila.producto_id))
+    modelo = session.get(Modelo, modelo_id) if modelo_id is not None else None
+    if modelo is None or modelo.validado:
+        return
+    for linea in session.scalars(select(FormularioConsumoLinea).where(
+            FormularioConsumoLinea.formulario_id == fila.id, FormularioConsumoLinea.seccion == CONSUMO)):
+        campo = MEDIDAS_AL_VALIDAR.get(linea.nombre.strip().upper())
+        if campo and linea.cantidad is not None:
+            setattr(modelo, campo, linea.cantidad)
+    modelo.origen_de_los_consumos, modelo.validado = "MEDIDO", True
+
+
 def guardar_formulario(
     session: Session, codigo: str, *, articulo: str, nota: str | None, lineas: list[dict], roles: frozenset[str],
 ) -> dict:
     """Replace articulo / nota and the FULL set of rows. A taller user may change only the rows (it sends articulo / nota as they are)."""
-    fila, producto, taller = _cargar(session, codigo, roles, bloquear=True)
+    fila, producto, taller, modelo = _cargar(session, codigo, roles, bloquear=True)
     solo_lineas = comprobar_edicion(fila.estado, roles)
     nuevas = armar_lineas(lineas)
     articulo = _articulo(articulo)
@@ -274,7 +325,7 @@ def guardar_formulario(
     session.execute(delete(FormularioConsumoLinea).where(FormularioConsumoLinea.formulario_id == fila.id))
     session.add_all(FormularioConsumoLinea(formulario_id=fila.id, **linea) for linea in nuevas)
     session.commit()  # get_session rolls back whatever is not committed
-    return _detalle(session, fila, producto, taller)
+    return _detalle(session, fila, producto, taller, modelo)
 
 
 def cambiar_estado(
@@ -283,7 +334,7 @@ def cambiar_estado(
 ) -> dict:
     """Apply one action of `ACCIONES` and stamp who / when. `devolver` needs a non-empty comment."""
     ahora = ahora or datetime.now(timezone.utc)
-    fila, producto, taller = _cargar(session, codigo, roles, bloquear=True)
+    fila, producto, taller, modelo = _cargar(session, codigo, roles, bloquear=True)
     nuevo = siguiente_estado(accion, fila.estado, roles)
     if accion == "devolver":
         comentario = _texto_o_nada(comentario)
@@ -296,9 +347,10 @@ def cambiar_estado(
         fila.completado_por, fila.completado_en = quien, ahora
     elif accion == "validar":
         fila.validado_por, fila.validado_en = quien, ahora
+        _aplicar_medidas(session, fila)
     fila.estado = nuevo
     session.commit()  # get_session rolls back whatever is not committed
-    return _detalle(session, fila, producto, taller)
+    return _detalle(session, fila, producto, taller, modelo)
 
 
 def duplicar_formulario(session: Session, codigo: str, *, articulo: str, quien: str, roles: frozenset[str]) -> dict:
@@ -309,7 +361,7 @@ def duplicar_formulario(session: Session, codigo: str, *, articulo: str, quien: 
     if ADMIN not in roles:
         raise SinPermiso("No tenés permiso para esta acción.")
     articulo = _articulo(articulo)
-    origen, _, _ = _cargar(session, codigo, roles)
+    origen, _, _, _ = _cargar(session, codigo, roles)
     copiadas = [
         {"seccion": l.seccion, "orden": l.orden, "nombre": l.nombre, "cantidad": l.cantidad, "comentario": l.comentario}
         for l in session.scalars(select(FormularioConsumoLinea).where(FormularioConsumoLinea.formulario_id == origen.id))

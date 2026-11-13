@@ -17,11 +17,13 @@ export function ProductoForm({
   cueros,
   colores,
   today,
+  modeloInicial,
 }: {
   modelos: ModeloOption[];
   cueros: CueroOption[];
   colores: string[];
   today: string;
+  modeloInicial?: string;
 }) {
   const { state, pending, onSubmit } = useActionForm(createProducto);
   // No form key: on success the action redirects to the new product's page.
@@ -36,6 +38,7 @@ export function ProductoForm({
           <input
             id="producto-modelo"
             name="modelo"
+            defaultValue={modeloInicial}
             list="producto-modelos"
             autoComplete="off"
             aria-describedby="producto-modelo-hint"
@@ -160,7 +163,7 @@ export function ProductoForm({
           id="producto-formulario"
           name="enviar_formulario"
           type="checkbox"
-          defaultChecked
+          defaultChecked={!modeloInicial}
           className="mt-0.5 size-5 accent-ink"
         />
         <label htmlFor="producto-formulario" className="text-sm">

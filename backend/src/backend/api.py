@@ -2127,6 +2127,7 @@ class FormularioResumenOut(Salida):
     articulo: str
     estado: Literal[*FORM_STATES]
     producto: str | None
+    modelo: str | None
     taller: str | None
     creado_por: str
     created_at: datetime
@@ -2147,6 +2148,22 @@ class FormularioOut(FormularioResumenOut):
 def crear_formulario(cuerpo: FormularioNuevoIn, session: Sesion, usuario: SoloAdmin):
     """A BORRADOR with the preloaded rows (CONSUMOS and HERRAJES, empty quantities)."""
     return formulario.crear_formulario(session, quien=usuario.id, **cuerpo.model_dump())
+
+
+class ProductoNuevoIn(Entrada):
+    nombre: str
+
+
+class ProductoNuevoOut(BaseModel):
+    modelo: str
+    formulario: str
+    nombre: str
+
+
+@router.post("/productos/nuevo", response_model=ProductoNuevoOut, status_code=201)
+def crear_producto_solo_con_nombre(cuerpo: ProductoNuevoIn, session: Sesion, usuario: SoloAdmin):
+    """Name only: the app makes the model code and its consumption form, already sent to the workshop. The product comes later."""
+    return formulario.alta_rapida(session, nombre=cuerpo.nombre, quien=usuario.id)
 
 
 @router.get("/formularios", response_model=list[FormularioResumenOut])

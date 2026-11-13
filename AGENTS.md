@@ -252,7 +252,7 @@ Son las reglas que el Excel aplica sin decirlo: de fórmula, de criterio o de fo
 
 **La fuente de verdad es el código:** `backend/src/backend/models.py` y las migraciones, explicados en `docs/der-v3.md`. Su origen es la pestaña `Diccionario` de `Plantilla Costos Casa Lopez v4.1 (trabajo).xlsx`, que el 2026-10-27 reemplazó al DER v1 y a las reglas del Excel viejo [V: `odd/tasks/app-casa-lopez-v3.md`, S1 y L1]. Si este archivo y el código no coinciden, **gana el código** y se corrige este. `docs/der-v3.md` está algo atrasado: no lista `precio_venta`, `proveedor` ni `documento_proveedor` (migraciones 0006 y 0007) y dice consumos `NUMERIC(10,4)` cuando son `(12,6)` [V: `models.py`]. `docs/der.md`, `der-borrador.sql`, `wo1-modelo-conceptual.md`, `wo2-decisiones.md` y `wo2-staging.md` hablan del DER v1 (11 tablas, `cotizacion_linea`, GG): son **históricos**, no se implementan.
 
-### Migraciones (16, cabeza `0016_formulario_consumo`) [V: `backend/migrations/versions`]
+### Migraciones (17, cabeza `0017_formulario_modelo`) [V: `backend/migrations/versions`]
 | Revisión | Qué hace |
 |---|---|
 | `0001_esquema_costos`, `0002_semillas` | DER v1 y sus semillas. Históricas. |
@@ -270,8 +270,9 @@ Son las reglas que el Excel aplica sin decirlo: de fórmula, de criterio o de fo
 | `0014_gastos_venta_pct` | Agrega la fila de `parametro` `GASTOS_VENTA_PCT` (gastos variables de venta, fracción del precio neto, en 0, sin confirmar). No cambia tablas. Su `downgrade` borra solo esa fila. |
 | `0015_precio_venta_margen` | Agrega `precio_venta.margen` (`NUMERIC(6,3)`, fracción del precio, 0.30 = 30 %, NULL = precio tipeado a mano) y un check `margen IS NULL OR (margen >= 0 AND margen < 1)`. Su `downgrade` borra el check y la columna: se pierden los márgenes guardados. |
 | `0016_formulario_consumo` | Tablas `formulario_consumo` (código `FCO-nnnn`, artículo, estado `BORRADOR` / `ENVIADO` / `COMPLETADO` / `VALIDADO`, comentario de revisión, quién y cuándo envió, completó y validó) y `formulario_consumo_linea` (sección `CONSUMO` / `HERRAJE`, orden, nombre, cantidad `NUMERIC(12,6)` nullable y >= 0, comentario): la planilla digital de consumos y herrajes de un artículo nuevo. No calcula nada. Su `downgrade` borra las dos tablas: se pierden los formularios y las cantidades cargadas. |
+| `0017_formulario_modelo` | Agrega `formulario_consumo.modelo_id` (FK nullable a `modelo`, con índice): la planilla de consumos mide un **modelo**; el producto (modelo + cuero + color) se crea después de validarla. Su `downgrade` borra la columna: se pierde el vínculo hoja-modelo, no las hojas. |
 
-Todas tienen `downgrade`, pero bajar de 0016 (borra los dos formularios de consumos y todo lo que cargó el taller), 0015 (borra los márgenes guardados en `precio_venta.margen`), 0014 (borra el valor cargado de `GASTOS_VENTA_PCT`), 0013 (vuelve a crear los impuestos sembrados), 0012 (los impuestos desactivados vuelven a estar activos), 0011 (pierde el vínculo al proveedor), 0010 (falla si hay filas sin unidades), 0009, 0007, 0006 o 0005 borra datos o cambia totales (0009: las filas anuladas vuelven a contar) (ver `docs/produccion.md`, sección 5).
+Todas tienen `downgrade`, pero bajar de 0017 (pierde el vínculo hoja-modelo), 0016 (borra los dos formularios de consumos y todo lo que cargó el taller), 0015 (borra los márgenes guardados en `precio_venta.margen`), 0014 (borra el valor cargado de `GASTOS_VENTA_PCT`), 0013 (vuelve a crear los impuestos sembrados), 0012 (los impuestos desactivados vuelven a estar activos), 0011 (pierde el vínculo al proveedor), 0010 (falla si hay filas sin unidades), 0009, 0007, 0006 o 0005 borra datos o cambia totales (0009: las filas anuladas vuelven a contar) (ver `docs/produccion.md`, sección 5).
 
 ### Tablas (32 en el schema `costos`) [V: `models.py`, `docs/der-v3.md`]
 | Grupo | Tablas | Lo que no hay que romper |

@@ -90,12 +90,26 @@ export default async function FormularioPage({
               {" · "}
             </>
           ) : null}
+          {formulario.modelo ? `Modelo ${formulario.modelo} · ` : ""}
           {formulario.taller ? `Taller ${formulario.taller} · ` : ""}
           {hechos
             .map(([etiqueta, fecha]) => `${etiqueta} ${formatDate(fecha)}`)
             .join(" · ")}
         </p>
         <Aviso formulario={formulario} />
+        {formulario.estado === "VALIDADO" &&
+        formulario.modelo &&
+        !formulario.producto &&
+        !isTallerOnly(user.role) ? (
+          <p className="mb-6 text-sm">
+            <Link
+              href={`/productos/nuevo?modelo=${encodeURIComponent(formulario.modelo)}`}
+              className="font-medium underline decoration-gold underline-offset-4"
+            >
+              Crear el producto de este modelo (cuero y color) →
+            </Link>
+          </p>
+        ) : null}
       </div>
       <div className="space-y-6">
         {acciones.editar ? (

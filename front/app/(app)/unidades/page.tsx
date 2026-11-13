@@ -11,7 +11,7 @@ import {
   thClass,
 } from "@/components/ui";
 import { apiGet } from "@/lib/api";
-import { formatPeriod, formatQuantity } from "@/lib/format";
+import { formatPeriod, formatQuantity, todayIso } from "@/lib/format";
 import { requireSession } from "@/lib/session";
 import type { UnidadesProducidas } from "@/lib/types";
 
@@ -27,7 +27,13 @@ export default async function UnidadesPage({
   await requireSession();
   const raw = (await searchParams).periodo;
   const requested = (Array.isArray(raw) ? raw[0] : raw)?.trim() ?? "";
-  const periodo = PERIODO.test(requested) ? requested : "";
+  // The calendar starts on the current month; "todo" is the explicit way to see every month.
+  const verTodo = requested === "todo";
+  const periodo = verTodo
+    ? ""
+    : PERIODO.test(requested)
+      ? requested
+      : todayIso().slice(0, 7);
   const result = await apiGet<UnidadesProducidas>(
     `/ordenes/unidades-por-producto${periodo ? `?periodo=${periodo}` : ""}`,
   );
@@ -56,7 +62,10 @@ export default async function UnidadesPage({
           Ver
         </button>
         {periodo ? (
-          <Link href="/unidades" className="py-2.5 text-sm underline">
+          <Link
+            href="/unidades?periodo=todo"
+            className="py-2.5 text-sm underline"
+          >
             Ver todo
           </Link>
         ) : null}

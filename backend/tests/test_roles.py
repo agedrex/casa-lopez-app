@@ -119,7 +119,7 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
     ("GET", "/formularios"): TODOS, ("GET", "/formularios/{codigo}"): TODOS,
     ("PUT", "/formularios/{codigo}"): CORTE, ("POST", "/formularios/{codigo}/completar"): CORTE,
     **{("POST", ruta): ADMIN for ruta in (
-        "/formularios", "/formularios/{codigo}/enviar", "/formularios/{codigo}/devolver", "/formularios/{codigo}/validar",
+        "/productos/nuevo", "/formularios", "/formularios/{codigo}/enviar", "/formularios/{codigo}/devolver", "/formularios/{codigo}/validar",
         "/formularios/{codigo}/duplicar")},
     # The only write the voice grants a taller: the price a workshop quoted or was paid for a lot line.
     ("POST", "/ordenes/{codigo}/items/{item}/precios"): CORTE,

@@ -614,12 +614,14 @@ class FormularioConsumo(BusinessKey, Base):
 
     `codigo` is `FCO-NNNN`. The state moves BORRADOR -> ENVIADO -> COMPLETADO -> VALIDADO (or back to ENVIADO with a
     review comment); a VALIDADO form is immutable (duplicate it to change it). The `*_por` columns hold the auth user id
-    as text (no FK: Better Auth lives in `public`). The sheet is per article, not per `modelo`: the product is optional.
+    as text (no FK: Better Auth lives in `public`). The sheet is per article; `modelo_id` is what it measures and the product is optional.
     """
     __tablename__ = "formulario_consumo"
     __table_args__ = (one_of("estado", FORM_STATES, "estado"),)
     articulo: Mapped[str] = mapped_column(Text)
     producto_id: Mapped[int | None] = mapped_column(ForeignKey("costos.producto.id"), index=True)
+    # The sheet measures a model; the product (model + leather + colour) is created after it is validated.
+    modelo_id: Mapped[int | None] = mapped_column(ForeignKey("costos.modelo.id"), index=True)
     taller_id: Mapped[int | None] = mapped_column(ForeignKey("costos.taller.id"))
     estado: Mapped[str] = mapped_column(Text)
     # Why the admin sent it back to the workshop (kept after the workshop completes it again).
