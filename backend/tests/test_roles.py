@@ -49,7 +49,7 @@ def test_roles_are_normalized_when_read(leido, esperado):
 @pytest.mark.parametrize("leido, rutas", [
     ("cotizador", [("GET", "/panel/costos"), ("POST", "/productos"), ("GET", "/voz/estado")]),
     ("corte", [("GET", "/cueros"), ("POST", "/cueros/PZC-1/cortes")]),
-    ("consulta", [("GET", "/productos"), ("GET", "/grilla")]),
+    ("consulta", [("GET", "/productos"), ("GET", "/cvu/periodo")]),
 ])
 def test_a_legacy_role_passes_the_gates_of_its_new_name(leido, rutas):
     cliente = _cliente(leido)
@@ -81,21 +81,22 @@ def test_require_role_accepts_legacy_names_in_its_arguments():
 
 ACCESO: dict[tuple[str, str], frozenset[str]] = {
     # Product and quote data: admin and gerente. /materiales has no prices, so every role reads it.
-    # The gerente opens ONLY Productos, Modelos and the scenario simulator (S8): everything else it used to read is closed.
+    # The gerente opens ONLY Productos, Modelos and the scenario simulator (S8) and what those pages read: everything else it
+    # used to read (Panel costs, grid, prices, dollar, colors, categories) is closed. test_s8_the_gerente_matrix_is_exactly_*.
     ("GET", "/productos"): TODOS,  # taller: the "alcanza" selector of the cut pages and the product list
     ("GET", "/productos/conteo"): TODOS,  # taller: the pagination of that list (the sheet itself stays admin / gerente)
     ("GET", "/productos/{codigo}"): TODOS,
     ("GET", "/productos/{codigo}/rentabilidad"): PRODUCTOS,
     ("GET", "/productos/{codigo}/precio-sugerido"): PRODUCTOS,
     ("GET", "/productos/{codigo}/precio-venta"): PRODUCTOS,
-    ("GET", "/grilla"): PRODUCTOS,
+    ("GET", "/grilla"): ADMIN,  # no page of the gerente reads it
     ("GET", "/catalogos"): TODOS,
     ("GET", "/materiales"): TODOS,
     # What the corte / cueros / voz pages read (leather stock and lots: not the gerente).
     ("GET", "/cueros"): CORTE,
     ("GET", "/cueros/alcanza"): CORTE,
     ("GET", "/cueros/{codigo}"): CORTE,
-    ("GET", "/colores"): TODOS,
+    ("GET", "/colores"): CORTE,  # taller keeps it; the gerente pages read /catalogos instead
     ("GET", "/ordenes"): CORTE,
     ("GET", "/ordenes/{codigo}"): CORTE,
     ("GET", "/ordenes/unidades-por-producto"): ADMIN,
@@ -104,12 +105,12 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
     ("GET", "/db/estado"): ADMIN,
     ("GET", "/productos/{codigo}/precios-talleres"): ADMIN,
     ("GET", "/modelos"): TODOS, ("GET", "/modelos/{codigo}"): TODOS,
-    ("GET", "/precios"): TODOS, ("GET", "/precios/chequeo"): ADMIN,
-    ("GET", "/categorias"): TODOS, ("GET", "/impuestos"): ADMIN, ("GET", "/dolar"): TODOS, ("GET", "/parametros"): ADMIN,
+    ("GET", "/precios"): CORTE, ("GET", "/precios/chequeo"): ADMIN,
+    ("GET", "/categorias"): CORTE, ("GET", "/impuestos"): ADMIN, ("GET", "/dolar"): CORTE, ("GET", "/parametros"): ADMIN,
     ("GET", "/talleres"): ADMIN, ("GET", "/talleres/{codigo}"): ADMIN, ("GET", "/personas"): ADMIN,
     ("GET", "/talleres/{codigo}/historial"): ADMIN,
     ("GET", "/costos-fijos"): ADMIN, ("GET", "/costos-fijos/periodos"): ADMIN,
-    ("GET", "/panel/costos"): PRODUCTOS, ("GET", "/panel/tendencia"): ADMIN,
+    ("GET", "/panel/costos"): ADMIN, ("GET", "/panel/tendencia"): ADMIN,
     ("GET", "/fabricacion/casa-vs-taller"): ADMIN, ("GET", "/calidad"): ADMIN,
     ("GET", "/sync/sheets/estado"): ADMIN, ("GET", "/sync/sheets/vista/{pestana}"): ADMIN,
     # Writes: admin only, except cutting and the voice interpreter.
@@ -136,6 +137,8 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
         "/productos/precios-lote")},
     # The scenario simulator: a POST only because of its body, it computes and saves nothing (test_escenarios_gerente.py).
     ("POST", "/cvu/escenario"): PRODUCTOS,
+    # What /escenarios needs of the Panel, and nothing more: the month it starts on (S8). /panel/costos is admin only.
+    ("GET", "/cvu/periodo"): PRODUCTOS,
     # Suppliers: admin only (reads and writes), the gerente has no access to the module.
     ("GET", "/reventa"): ADMIN, ("GET", "/reventa/{codigo}"): ADMIN,
     ("GET", "/proveedores"): ADMIN, ("GET", "/proveedores/{codigo}"): ADMIN,
@@ -223,10 +226,10 @@ def test_admin_only_routes_refuse_everyone_else_without_calling_the_service(monk
     # Productos (list and sheet), Modelos and the scenario simulator, and what those pages read.
     ("gerente", [("GET", "/productos"), ("GET", "/productos/conteo"), ("GET", "/productos/X-1"),
                  ("GET", "/productos/X-1/rentabilidad"), ("GET", "/productos/X-1/precio-venta"),
-                 ("GET", "/productos/X-1/precio-sugerido"), ("GET", "/grilla"),
+                 ("GET", "/productos/X-1/precio-sugerido"),
                  ("GET", "/modelos"), ("GET", "/modelos/MOD-1"),
-                 ("GET", "/catalogos"), ("GET", "/materiales"), ("GET", "/dolar"),
-                 ("GET", "/panel/costos"), ("POST", "/cvu/escenario")]),
+                 ("GET", "/catalogos"), ("GET", "/materiales"),
+                 ("GET", "/cvu/periodo"), ("POST", "/cvu/escenario")]),
     ("taller", [("GET", "/productos"), ("GET", "/productos/conteo"), ("GET", "/materiales"), ("GET", "/cueros"), ("GET", "/cueros/PZC-1"),
                 ("GET", "/cueros/alcanza?producto=P&cantidad=1"), ("GET", "/colores"), ("GET", "/ordenes"),
                 ("GET", "/ordenes/LOT-1"), ("GET", "/voz/estado"),
@@ -235,7 +238,8 @@ def test_admin_only_routes_refuse_everyone_else_without_calling_the_service(monk
                 ("POST", "/cueros/PZC-1/cortes"), ("POST", "/cueros/PZC-1/sobrante"), ("POST", "/voz/interpretar"),
                 ("GET", "/formularios"), ("GET", "/formularios/FCO-0001"), ("PUT", "/formularios/FCO-0001"),
                 ("POST", "/formularios/FCO-0001/completar")]),
-    ("admin", [("GET", "/panel/costos"), ("GET", "/costos-fijos"), ("GET", "/ordenes"), ("GET", "/productos"),
+    ("admin", [("GET", "/panel/costos"), ("GET", "/grilla"), ("GET", "/precios"), ("GET", "/dolar"), ("GET", "/colores"),
+               ("GET", "/categorias"), ("GET", "/cvu/periodo"), ("GET", "/costos-fijos"), ("GET", "/ordenes"), ("GET", "/productos"),
                ("GET", "/cueros"), ("GET", "/voz/estado"), ("POST", "/cvu/escenario"), ("POST", "/ordenes"),
                ("POST", "/productos"), ("POST", "/cueros/PZC-1/cortes"), ("POST", "/formularios"),
                ("POST", "/proveedores/PRV-1/pedidos"), ("GET", "/proveedores/PRV-1/pedidos"), ("PUT", "/formularios/FCO-0001"), ("POST", "/formularios/FCO-0001/validar")]),
@@ -284,7 +288,27 @@ CERRADO_PARA_GERENTE = {
                     ("GET", "/proveedores/PRV-1/pedidos"), ("GET", "/proveedores/PRV-1/documentos"),
                     ("POST", "/proveedores"), ("POST", "/proveedores/PRV-1/pedidos")],
     "talleres": [("GET", "/talleres"), ("GET", "/talleres/TAL-1"), ("GET", "/talleres/TAL-1/historial"), ("POST", "/talleres")],
+    # What the simulator does not need of the Panel: costs of the month, the grid, prices, the dollar, colors and categories.
+    "panel-costos": [("GET", "/panel/costos"), ("GET", "/grilla")],
+    "precios-y-dolar": [("GET", "/precios"), ("GET", "/precios/chequeo"), ("GET", "/dolar"), ("POST", "/precios"),
+                        ("POST", "/dolar"), ("POST", "/dolar/actualizar-bna")],
+    "colores-y-categorias": [("GET", "/colores"), ("GET", "/categorias"), ("POST", "/colores"), ("POST", "/categorias")],
 }
+
+# Everything the gerente may call (S8): Productos (list and sheet), Modelos, the scenario simulator and what those pages read
+# (/materiales for the consumption lines, /catalogos for the filters). The two public routes need no role.
+RUTAS_DEL_GERENTE = frozenset({
+    ("GET", "/productos"), ("GET", "/productos/conteo"), ("GET", "/productos/{codigo}"),
+    ("GET", "/productos/{codigo}/rentabilidad"), ("GET", "/productos/{codigo}/precio-venta"),
+    ("GET", "/productos/{codigo}/precio-sugerido"),
+    ("GET", "/modelos"), ("GET", "/modelos/{codigo}"),
+    ("GET", "/materiales"), ("GET", "/catalogos"),
+    ("GET", "/cvu/periodo"), ("POST", "/cvu/escenario"),
+})
+
+
+def test_s8_the_gerente_matrix_is_exactly_products_models_the_simulator_and_what_they_read():
+    assert {clave for clave, permitidos in ACCESO.items() if "gerente" in permitidos} == RUTAS_DEL_GERENTE
 
 
 @pytest.mark.parametrize("modulo", sorted(CERRADO_PARA_GERENTE))
@@ -374,3 +398,27 @@ def test_no_session_is_still_401_not_403(metodo, ruta):
         metodo, ruta.replace("{codigo}", "X-1").replace("{item}", "I-1").replace("{pestana}", "Dolar").replace("{id}", "7"),
         json={} if metodo == "POST" else None)
     assert respuesta.status_code == 401 and respuesta.json() == {"detail": "No autenticado."}
+
+
+def test_s8_the_scenario_period_is_only_the_month_and_the_service_is_not_reached():
+    from datetime import date
+    for role in ("admin", "gerente", "consulta"):
+        respuesta = _cliente(role).get("/cvu/periodo")
+        assert respuesta.status_code == 200, role
+        assert respuesta.json() == {"periodo": servicios.mes_de(date.today())}, role  # no amounts, no dollar, no lots
+
+
+@pytest.mark.parametrize("role", ["taller", "otro", None])
+def test_s8_the_scenario_period_is_closed_to_taller_and_unknown_roles(role):
+    respuesta = _cliente(role).get("/cvu/periodo")
+    assert respuesta.status_code == 403 and respuesta.json() == SIN_PERMISO
+
+
+@pytest.mark.parametrize("ruta", ["/precios", "/dolar", "/colores", "/categorias", "/materiales", "/catalogos", "/modelos"])
+def test_s8_taller_keeps_reading_what_it_read_before(ruta):
+    assert _estado(_cliente("taller"), "GET", ruta) not in (401, 403), ruta
+
+
+@pytest.mark.parametrize("ruta", ["/panel/costos", "/grilla"])
+def test_s8_taller_stays_out_of_the_panel_costs_and_the_grid(ruta):
+    assert _estado(_cliente("taller"), "GET", ruta) == 403
