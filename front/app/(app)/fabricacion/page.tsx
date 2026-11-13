@@ -72,18 +72,17 @@ export default async function FabricacionPage({
   ]);
   const filtered = Boolean(estado || donde || taller);
   // For the taller each lot card lists what to make: one detail call per lot, in parallel.
-  const detalles =
-    tallerOnly && ordenes.ok
-      ? await Promise.all(
-          ordenes.data
-            .slice(0, TALLER_DETAIL_LIMIT)
-            .map((orden) =>
-              apiGet<OrdenDetalle>(
-                `/ordenes/${encodeURIComponent(orden.codigo)}`,
-              ),
+  const detalles = ordenes.ok
+    ? await Promise.all(
+        ordenes.data
+          .slice(0, TALLER_DETAIL_LIMIT)
+          .map((orden) =>
+            apiGet<OrdenDetalle>(
+              `/ordenes/${encodeURIComponent(orden.codigo)}`,
             ),
-        )
-      : [];
+          ),
+      )
+    : [];
 
   return (
     <>
@@ -129,11 +128,7 @@ export default async function FabricacionPage({
                   {ordenes.data.length}{" "}
                   {ordenes.data.length === 1 ? "lote" : "lotes"}
                 </p>
-                {tallerOnly ? (
-                  <TallerLotes ordenes={ordenes.data} detalles={detalles} />
-                ) : (
-                  <OrdersTable ordenes={ordenes.data} />
-                )}
+                <TallerLotes ordenes={ordenes.data} detalles={detalles} />
               </>
             )
           ) : (
