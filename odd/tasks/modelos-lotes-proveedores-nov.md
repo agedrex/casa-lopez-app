@@ -9,6 +9,7 @@ Branch: feature/modelos-lotes-proveedores. Delivery: ask-on-risk. Tests: pytest 
 - S5 Proveedores: lista de productos que venden (unidad, cantidad, precio referencial).
 - S6 Productos: margen neto (%) editable que genere el precio final como campo de la grilla.
 - S7 Materiales: directamente la grilla de materiales, agrupada por categoría; sin el formulario aparte.
+- S8 Gerente: "el gerente solo pueda ver productos, modelos y todo lo que es el simulador de escenarios" (solo lectura; sin Panel, Lotes, Formularios, Cueros, Proveedores ni Talleres). Riesgo item 2 (permisos): commit propio + verificador independiente.
 
 ## Tasks
 - T1 S1 — inline — done (sin commit aún)
@@ -16,8 +17,11 @@ Branch: feature/modelos-lotes-proveedores. Delivery: ask-on-risk. Tests: pytest 
 - T3 S3 — pending
 - T4 S4 — pending
 - T5 S5 — pending (requiere tabla nueva + migración)
-- T6 S6 — pending
+- T6 S6 — delegated (worker) — done (pytest 2261 ok, lint ok, build ok; grilla sin probar en navegador)
 - T7 S7 — pending
+- T8 S8 — pending (esperar al worker de T6: ambos tocan api.py/permisos)
+
 
 ## Log
 L1 (2026-11-13) Pedido original del usuario: "Cambios que quiero que hagamos: ..." (ver S1-S7).
+L2 (2026-11-13) Usuario: "Una cosa más que quisiera ... es que el gerente solo pueda ver productos, modelos y todo lo que es el simulador de escenarios". Usuario confirmó ("si") grilla de Productos editable con Margen % y Precio final.

@@ -15,6 +15,12 @@ export type ProductoResumen = {
   /** The note has `REVISAR: <reason>` marks; `motivos_revisar` holds the reasons. */
   revisar: boolean;
   motivos_revisar: string[];
+  /** Net sale price in force; `null` without a saved price (and always for the taller role). */
+  precio_venta_ars: string | null;
+  /** Margin over the sale price, already a percentage (`"30"` = 30 %). */
+  margen_pct: string | null;
+  /** Net price plus the active taxes. */
+  precio_final_ars: string | null;
 };
 
 export type LineaReceta = {

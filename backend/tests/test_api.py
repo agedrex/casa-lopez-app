@@ -115,10 +115,11 @@ def test_an_incomplete_quote_lists_its_warnings(monkeypatch):
                        "categoria": "OTROS", "total_fabrica": "1"}),
     ("/precios", {"material": "MAT-CU01", "precio": "1", "moneda": "USD", "unidad_del_precio": "m2",
                   "vigente_desde": "2026-10-01", "codigo": "PRE-9999"}),
+    ("/productos/precios-lote", {"items": [{"codigo": "PRD-0001", "margen_pct": "30", "precio_ars": "1"}]}),
 ])
 def test_calculated_or_unknown_fields_are_rejected_before_reaching_the_service(monkeypatch, ruta, cuerpo):
     client, _ = con_usuario()
-    for nombre in ("crear_producto", "guardar_cotizacion", "crear_gasto", "crear_precio"):
+    for nombre in ("crear_producto", "guardar_cotizacion", "crear_gasto", "crear_precio", "guardar_precios_por_margen"):
         monkeypatch.setattr(servicios, nombre, lambda *a, **k: pytest.fail("the service must not be called"))
     assert client.post(ruta, json=cuerpo).status_code == 422
 
@@ -136,7 +137,7 @@ def test_invalid_period_is_rejected():
 # /cvu/escenario is a POST only because of its body: it computes and saves nothing, but it is admin only anyway.
 SOLO_ADMIN = {"/parametros/{codigo}", "/personas", "/personas/{codigo}/activo", "/colores", "/categorias",
               "/impuestos", "/impuestos/{codigo}/alicuota", "/impuestos/{codigo}/activo",
-              "/modelos/{codigo}/consumos", "/sync/sheets", "/cvu/escenario",
+              "/modelos/{codigo}/consumos", "/sync/sheets", "/cvu/escenario", "/productos/precios-lote",
               # Suppliers and documents (see test_proveedores_api.py and test_roles.py).
               "/proveedores", "/proveedores/{codigo}", "/proveedores/{codigo}/activo",
               "/proveedores/{codigo}/documentos", "/proveedores/{codigo}/precios", "/proveedores/{codigo}/pedidos",

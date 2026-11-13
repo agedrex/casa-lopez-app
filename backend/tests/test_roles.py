@@ -131,7 +131,8 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
         "/talleres", "/talleres/{codigo}/activo", "/parametros/{codigo}",
         "/personas", "/personas/{codigo}/activo", "/colores", "/categorias", "/modelos", "/modelos/{codigo}/validado",
         "/impuestos", "/impuestos/{codigo}/alicuota", "/impuestos/{codigo}/activo",
-        "/modelos/{codigo}/consumos", "/sync/sheets", "/costos-fijos/lote", "/modelos/consumos/lote")},
+        "/modelos/{codigo}/consumos", "/sync/sheets", "/costos-fijos/lote", "/modelos/consumos/lote",
+        "/productos/precios-lote")},
     # Suppliers: gerente reads (Abastecimiento), the invoice file and every write stay admin only.
     ("GET", "/reventa"): ADMIN, ("GET", "/reventa/{codigo}"): ADMIN,
     ("GET", "/proveedores"): PRODUCTOS, ("GET", "/proveedores/{codigo}"): PRODUCTOS,

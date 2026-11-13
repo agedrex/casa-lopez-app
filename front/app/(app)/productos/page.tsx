@@ -18,7 +18,12 @@ import {
   thClass,
 } from "@/components/ui";
 import { apiGet } from "@/lib/api";
-import { formatArs, formatUsd, lifecycleLabel } from "@/lib/format";
+import {
+  formatArs,
+  formatPercent,
+  formatUsd,
+  lifecycleLabel,
+} from "@/lib/format";
 import { canOpenProductSheet, canWrite } from "@/lib/permissions";
 import {
   collapseSpaces,
@@ -29,6 +34,7 @@ import {
 } from "@/lib/productos";
 import { requireSession } from "@/lib/session";
 import type { Catalogos, Conteo, ProductoResumen } from "@/lib/types";
+import { ProductosGrid } from "./productos-grid";
 import { ProductosNav } from "./productos-nav";
 
 export const metadata: Metadata = { title: "Productos" };
@@ -91,7 +97,11 @@ export default async function ProductosPage({
       <PageHeader
         eyebrow="Catálogo"
         title="Productos"
-        description="Costo de hoy de cada producto, calculado con el dólar y los precios vigentes."
+        description={
+          canWrite(user.role)
+            ? "Costo de hoy de cada producto, calculado con el dólar y los precios vigentes. Escriba el margen que quiere ganar y la grilla calcula el precio de venta."
+            : "Costo de hoy de cada producto, calculado con el dólar y los precios vigentes."
+        }
         actions={
           canWrite(user.role) ? (
             <Link
@@ -120,6 +130,7 @@ export default async function ProductosPage({
           filter={filter}
           filtered={filter.size > 0}
           openSheet={openSheet}
+          editable={canWrite(user.role)}
         />
       ) : (
         <ErrorNotice message={result.message} />
@@ -323,6 +334,48 @@ function restoDeAvisos(producto: ProductoResumen): string[] {
     : producto.avisos;
 }
 
+/** First column of the admin grid: code, name, model, category, state, badges and warnings of the product. */
+function EtiquetaProducto({
+  producto,
+  openSheet,
+}: {
+  producto: ProductoResumen;
+  openSheet: boolean;
+}) {
+  return (
+    <div className="max-w-sm">
+      <SheetLink
+        codigo={producto.codigo}
+        openSheet={openSheet}
+        className={`text-sm ${openSheet ? "underline decoration-gold underline-offset-4" : ""}`}
+      >
+        {producto.codigo}
+      </SheetLink>
+      <div className="mt-0.5">
+        <NombreProducto nombre={producto.nombre} />
+      </div>
+      <p className="mt-0.5 text-xs text-muted">
+        {producto.modelo ? `Modelo ${producto.modelo} · ` : ""}
+        {producto.categoria ?? "—"} ·{" "}
+        {lifecycleLabel(producto.estado_del_ciclo)}
+      </p>
+      {producto.es_kit || producto.revisar ? (
+        <div className="mt-1 flex flex-wrap items-start gap-2">
+          {producto.es_kit ? <Badge>Kit</Badge> : null}
+          {producto.revisar ? (
+            <MarcaRevisar motivos={producto.motivos_revisar} />
+          ) : null}
+        </div>
+      ) : null}
+      {restoDeAvisos(producto).length > 0 ? (
+        <div className="mt-1">
+          <Avisos avisos={restoDeAvisos(producto)} wrap />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function ProductTable({
   productos,
   page,
@@ -330,6 +383,7 @@ function ProductTable({
   filter,
   filtered,
   openSheet,
+  editable,
 }: {
   productos: ProductoResumen[];
   page: number;
@@ -337,6 +391,8 @@ function ProductTable({
   filter: URLSearchParams;
   filtered: boolean;
   openSheet: boolean;
+  /** Admin: the table becomes a grid where the margin is edited. */
+  editable: boolean;
 }) {
   if (productos.length === 0) {
     return (
@@ -354,6 +410,8 @@ function ProductTable({
   }
   const hasNext =
     total === null ? productos.length === PAGE_SIZE : page * PAGE_SIZE < total;
+  // Sale prices are for the roles that open the sheet (admin, gerente); the taller never gets them.
+  const showPrices = openSheet;
   return (
     <>
       {total !== null ? (
@@ -400,6 +458,14 @@ function ProductTable({
                       </span>
                     </p>
                   )}
+                  {showPrices && producto.precio_final_ars !== null ? (
+                    <p className="mt-1 flex items-baseline justify-between gap-3 text-sm text-muted tabular-nums">
+                      <span>
+                        Precio final {formatArs(producto.precio_final_ars)}
+                      </span>
+                      <span>Margen {formatPercent(producto.margen_pct)}</span>
+                    </p>
+                  ) : null}
                 </SheetLink>
                 {/* Badges and warnings stay outside the link: they are not part of its name. */}
                 {producto.es_kit || producto.revisar ? (
@@ -420,103 +486,141 @@ function ProductTable({
           </CardList>
         }
         table={
-          <TableWrap>
-            <table className={tableClass}>
-              <thead>
-                <tr>
-                  <th scope="col" className={thClass}>
-                    Código
-                  </th>
-                  <th scope="col" className={thClass}>
-                    Modelo
-                  </th>
-                  <th scope="col" className={thClass}>
-                    Nombre
-                  </th>
-                  <th scope="col" className={thClass}>
-                    Categoría
-                  </th>
-                  <th scope="col" className={thClass}>
-                    Estado
-                  </th>
-                  <th scope="col" className={`${thClass} ${numClass}`}>
-                    Costo hoy (ARS)
-                  </th>
-                  <th scope="col" className={`${thClass} ${numClass}`}>
-                    Costo hoy (USD)
-                  </th>
-                  <th scope="col" className={thClass}>
-                    Avisos
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {productos.map((producto) => (
-                  <tr key={producto.codigo} className="hover:bg-paper-mid/50">
-                    <td className={tdClass}>
-                      {openSheet ? (
-                        <Link
-                          href={`/productos/${encodeURIComponent(producto.codigo)}`}
-                          className="underline decoration-gold underline-offset-4"
-                        >
-                          {producto.codigo}
-                        </Link>
-                      ) : (
-                        producto.codigo
-                      )}
-                    </td>
-                    <td className={tdClass}>
-                      {producto.modelo ? (
-                        <Link
-                          href={`/productos?q=${encodeURIComponent(producto.modelo)}`}
-                          title="Ver los productos de este modelo"
-                          className="underline decoration-gold underline-offset-4"
-                        >
-                          {producto.modelo}
-                        </Link>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td className={tdClass}>
-                      <div className="max-w-sm">
-                        <NombreProducto nombre={producto.nombre} />
-                      </div>
-                      {producto.es_kit || producto.revisar ? (
-                        <div className="mt-1 flex flex-wrap items-start gap-2">
-                          {producto.es_kit ? <Badge>Kit</Badge> : null}
-                          {producto.revisar ? (
-                            <MarcaRevisar motivos={producto.motivos_revisar} />
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </td>
-                    <td className={tdClass}>{producto.categoria ?? "—"}</td>
-                    <td className={tdClass}>
-                      {lifecycleLabel(producto.estado_del_ciclo)}
-                    </td>
-                    {producto.costo_hoy_ars === null ? (
-                      <td className={`${tdClass} text-muted`} colSpan={2}>
-                        {costoFaltante(producto.avisos)}
-                      </td>
-                    ) : (
+          editable ? (
+            <ProductosGrid
+              productos={productos}
+              etiquetas={Object.fromEntries(
+                productos.map((producto) => [
+                  producto.codigo,
+                  <EtiquetaProducto
+                    key={producto.codigo}
+                    producto={producto}
+                    openSheet={openSheet}
+                  />,
+                ]),
+              )}
+            />
+          ) : (
+            <TableWrap>
+              <table className={tableClass}>
+                <thead>
+                  <tr>
+                    <th scope="col" className={thClass}>
+                      Código
+                    </th>
+                    <th scope="col" className={thClass}>
+                      Modelo
+                    </th>
+                    <th scope="col" className={thClass}>
+                      Nombre
+                    </th>
+                    <th scope="col" className={thClass}>
+                      Categoría
+                    </th>
+                    <th scope="col" className={thClass}>
+                      Estado
+                    </th>
+                    <th scope="col" className={`${thClass} ${numClass}`}>
+                      Costo hoy (ARS)
+                    </th>
+                    <th scope="col" className={`${thClass} ${numClass}`}>
+                      Costo hoy (USD)
+                    </th>
+                    {showPrices ? (
                       <>
-                        <td className={`${tdClass} ${numClass}`}>
-                          {formatArs(producto.costo_hoy_ars)}
-                        </td>
-                        <td className={`${tdClass} ${numClass}`}>
-                          {formatUsd(producto.costo_hoy_usd)}
-                        </td>
+                        <th scope="col" className={`${thClass} ${numClass}`}>
+                          Margen
+                        </th>
+                        <th scope="col" className={`${thClass} ${numClass}`}>
+                          Precio final (ARS)
+                        </th>
                       </>
-                    )}
-                    <td className={tdClass}>
-                      <Avisos avisos={restoDeAvisos(producto)} wrap />
-                    </td>
+                    ) : null}
+                    <th scope="col" className={thClass}>
+                      Avisos
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </TableWrap>
+                </thead>
+                <tbody>
+                  {productos.map((producto) => (
+                    <tr key={producto.codigo} className="hover:bg-paper-mid/50">
+                      <td className={tdClass}>
+                        {openSheet ? (
+                          <Link
+                            href={`/productos/${encodeURIComponent(producto.codigo)}`}
+                            className="underline decoration-gold underline-offset-4"
+                          >
+                            {producto.codigo}
+                          </Link>
+                        ) : (
+                          producto.codigo
+                        )}
+                      </td>
+                      <td className={tdClass}>
+                        {producto.modelo ? (
+                          <Link
+                            href={`/productos?q=${encodeURIComponent(producto.modelo)}`}
+                            title="Ver los productos de este modelo"
+                            className="underline decoration-gold underline-offset-4"
+                          >
+                            {producto.modelo}
+                          </Link>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className={tdClass}>
+                        <div className="max-w-sm">
+                          <NombreProducto nombre={producto.nombre} />
+                        </div>
+                        {producto.es_kit || producto.revisar ? (
+                          <div className="mt-1 flex flex-wrap items-start gap-2">
+                            {producto.es_kit ? <Badge>Kit</Badge> : null}
+                            {producto.revisar ? (
+                              <MarcaRevisar
+                                motivos={producto.motivos_revisar}
+                              />
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </td>
+                      <td className={tdClass}>{producto.categoria ?? "—"}</td>
+                      <td className={tdClass}>
+                        {lifecycleLabel(producto.estado_del_ciclo)}
+                      </td>
+                      {producto.costo_hoy_ars === null ? (
+                        <td className={`${tdClass} text-muted`} colSpan={2}>
+                          {costoFaltante(producto.avisos)}
+                        </td>
+                      ) : (
+                        <>
+                          <td className={`${tdClass} ${numClass}`}>
+                            {formatArs(producto.costo_hoy_ars)}
+                          </td>
+                          <td className={`${tdClass} ${numClass}`}>
+                            {formatUsd(producto.costo_hoy_usd)}
+                          </td>
+                        </>
+                      )}
+                      {showPrices ? (
+                        <>
+                          <td className={`${tdClass} ${numClass}`}>
+                            {formatPercent(producto.margen_pct)}
+                          </td>
+                          <td className={`${tdClass} ${numClass}`}>
+                            {formatArs(producto.precio_final_ars)}
+                          </td>
+                        </>
+                      ) : null}
+                      <td className={tdClass}>
+                        <Avisos avisos={restoDeAvisos(producto)} wrap />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableWrap>
+          )
         }
       />
 

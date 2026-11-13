@@ -97,7 +97,7 @@ def test_the_filter_pattern_and_the_parser_accept_the_same_notes(nota):
 # --- Row of the list ----------------------------------------------------------------------------------------------
 
 def _datos(codigo, nota, modelo_codigo="MOD-0001"):
-    return SimpleNamespace(codigo=codigo, nombre=f"Producto {codigo}", categoria="Carteras", estado_del_ciclo="ACTIVO",
+    return SimpleNamespace(id=int(codigo[-4:]), codigo=codigo, nombre=f"Producto {codigo}", categoria="Carteras", estado_del_ciclo="ACTIVO",
                            es_kit=False, nota=nota, modelo_codigo=modelo_codigo)
 
 
@@ -120,7 +120,7 @@ def test_the_list_row_carries_the_model_and_the_review_marks(monkeypatch):
 def test_the_summary_model_exposes_the_new_fields(monkeypatch):
     fila = {"codigo": "PRD-0001", "nombre": "x", "categoria": None, "estado_del_ciclo": "ACTIVO", "es_kit": False,
             "costo_hoy_ars": None, "costo_hoy_usd": None, "avisos": [], "modelo": "MOD-0001", "revisar": True,
-            "motivos_revisar": ["sin nombre"]}
+            "motivos_revisar": ["sin nombre"], "precio_venta_ars": None, "margen_pct": None, "precio_final_ars": None}
     monkeypatch.setattr(servicios, "listar_productos", lambda *a, **k: [fila])
     cuerpo = _cliente().get("/productos").json()
     assert cuerpo == [fila]

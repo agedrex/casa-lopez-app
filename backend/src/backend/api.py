@@ -263,6 +263,16 @@ class PrecioVentaIn(Entrada):
     margen: Annotated[Decimal, Field(ge=0, lt=1, max_digits=6, decimal_places=3)] | None = None
 
 
+class PrecioPorMargenIn(Entrada):
+    codigo: str
+    # Margin over the sale price in percent (30 = 30 %). One decimal so it is stored exactly as a fraction (0.305).
+    margen_pct: Annotated[Decimal, Field(ge=0, lt=100, max_digits=4, decimal_places=1)]
+
+
+class PreciosLoteIn(Entrada):
+    items: list[PrecioPorMargenIn]
+
+
 class EscenarioItemIn(Entrada):
     codigo: str
     unidades: Annotated[Decimal, Field(gt=0, max_digits=12, decimal_places=6)]
@@ -471,6 +481,10 @@ class ProductoResumen(Salida):
     avisos: list[str]
     revisar: bool
     motivos_revisar: list[str]
+    # Sale price columns of the grid: None without a saved price, and always None for the taller role.
+    precio_venta_ars: Decimal | None = None
+    margen_pct: Decimal | None = None
+    precio_final_ars: Decimal | None = None
 
 
 class LineaRecetaOut(Salida):
@@ -1200,15 +1214,19 @@ def _filtros_extra_de_productos(sin_cuero: bool, sin_color: bool, estado: str | 
 
 @router.get("/productos", dependencies=LECTURA_GENERAL, response_model=list[ProductoResumen])
 def productos(
-    session: Sesion, limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0),
+    session: Sesion, usuario: Annotated[Usuario, Depends(require_user)], limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0),
     q: str | None = Query(None, max_length=100), categoria: str | None = None,
     revisar: bool = Query(False, description="true: only products whose note has a `REVISAR:` mark; false: no filter."),
     sin_cuero: bool = Query(False, description="true: only products with no leather chosen; false: no filter."),
     sin_color: bool = Query(False, description="true: only products with no color chosen; false: no filter."),
     estado: EstadoDelCiclo | None = Query(None, description="Only the products in this lifecycle state."),
 ):
+    # Sale prices are for admin and gerente (PRODUCTOS); the taller reads the same list without them.
+    # Only sent when it is False, like the filters above: admin and gerente call the service as before.
+    sin_precios = {} if usuario.roles & PRODUCTOS.roles_permitidos else {"con_precios": False}
     return servicios.listar_productos(
         session, limit, offset, q, categoria, revisar, **_filtros_extra_de_productos(sin_cuero, sin_color, estado),
+        **sin_precios,
     )
 
 
@@ -1448,6 +1466,13 @@ def guardar_precio_de_venta(codigo: str, cuerpo: PrecioVentaIn, session: Sesion,
         session, codigo, precio_ars=cuerpo.precio_ars, vigente_desde=cuerpo.vigente_desde, nota=cuerpo.nota,
         margen=cuerpo.margen, quien=usuario.id,
     )
+
+
+@router.post("/productos/precios-lote", dependencies=ESCRITURA, response_model=list[ProductoResumen])
+def guardar_precios_por_margen(cuerpo: PreciosLoteIn, session: Sesion, usuario: Escritor):
+    """Grid save: a new sale price per product = today's cost / (1 - margin). All rows or none; history is only appended."""
+    return servicios.guardar_precios_por_margen(
+        session, [item.model_dump() for item in cuerpo.items], quien=usuario.id)
 
 
 @router.post("/cvu/escenario", dependencies=ESCRITURA, response_model=EscenarioOut)

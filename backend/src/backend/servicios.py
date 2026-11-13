@@ -508,25 +508,34 @@ def contar_productos(
 def listar_productos(
     session: Session, limit: int = 100, offset: int = 0, q: str | None = None, categoria: str | None = None,
     revisar: bool = False, sin_cuero: bool = False, sin_color: bool = False, estado: str | None = None,
+    con_precios: bool = True,
 ) -> list[dict]:
+    """`con_precios=False` (the taller role) leaves the sale price fields empty and reads no sale price."""
     base = cargar_productos(
         session, limit=limit, offset=offset, q=q, categoria=categoria, revisar=revisar,
         sin_cuero=sin_cuero, sin_color=sin_color, estado=estado,
     )
+    return _filas_de_productos(session, base, con_precios)
+
+
+def _filas_de_productos(session: Session, base: list[DatosProducto], con_precios: bool) -> list[dict]:
     catalogo = expandir_kits(session, base)
     ctx = cargar_contexto(session)
+    precios = _ultimos_precios_de_venta_completos(session, {datos.id for datos in base}) if con_precios else {}
+    impuestos = _impuestos_activos(session) if precios else []
     filas = []
     for datos in base:
         resultado, avisos = _costo_hoy_seguro(datos, ctx, catalogo)
         costo = _desglose_a_dict(resultado)
         motivos = motivos_de_revision(datos.nota)
+        venta = _precio_de_venta_de_grilla(precios.get(datos.id), costo["total_ars"] if costo else None, impuestos)
         filas.append({
             "codigo": datos.codigo, "nombre": datos.nombre, "categoria": datos.categoria,
             "modelo": datos.modelo_codigo,
             "estado_del_ciclo": datos.estado_del_ciclo, "es_kit": datos.es_kit,
             "costo_hoy_ars": costo["total_ars"] if costo else None,
             "costo_hoy_usd": costo["total_usd"] if costo else None,
-            "avisos": avisos, "revisar": bool(motivos), "motivos_revisar": motivos,
+            "avisos": avisos, "revisar": bool(motivos), "motivos_revisar": motivos, **venta,
         })
     return filas
 
@@ -2897,14 +2906,26 @@ def guardar_precio_de_venta(
     if precio_ars is None or precio_ars <= 0:
         raise DatosInvalidos("El precio de venta tiene que ser mayor que cero.")
     producto = _producto_o_404(session, codigo_producto)
-    fila = PrecioVenta(
-        producto_id=producto.id, precio_ars=precio_ars, vigente_desde=vigente_desde or hoy or date.today(),
-        creado_por=quien, nota=nota or None, margen=margen,
+    fila = _agregar_precio_de_venta(
+        session, producto, precio_ars=precio_ars, vigente_desde=vigente_desde or hoy or date.today(), nota=nota,
+        margen=margen, quien=quien,
     )
-    _insertar(session, fila, "Ya hay un precio de venta cargado para ese producto en esa fecha.")
     session.commit()
     session.refresh(fila)
     return _precio_de_venta_a_dict(fila, codigo_producto, _impuestos_activos(session))
+
+
+def _agregar_precio_de_venta(
+    session: Session, producto: Producto, *, precio_ars: Decimal, vigente_desde: date, nota: str | None,
+    margen: Decimal | None, quien: str | None,
+) -> PrecioVenta:
+    """Adds one dated sale price row without committing, so a caller can save many prices in one transaction."""
+    fila = PrecioVenta(
+        producto_id=producto.id, precio_ars=precio_ars, vigente_desde=vigente_desde,
+        creado_por=quien, nota=nota or None, margen=margen,
+    )
+    _insertar(session, fila, "Ya hay un precio de venta cargado para ese producto en esa fecha.")
+    return fila
 
 
 def listar_precios_de_venta(session: Session, codigo_producto: str) -> list[dict]:
@@ -2918,18 +2939,104 @@ def listar_precios_de_venta(session: Session, codigo_producto: str) -> list[dict
     return [_precio_de_venta_a_dict(fila, codigo_producto, impuestos) for fila in filas]
 
 
-def _ultimos_precios_de_venta(session: Session, producto_ids: set[int]) -> dict[int, Decimal]:
-    """The latest saved price per product id already in force today: highest `vigente_desde`, then highest id."""
+def _ultimos_precios_de_venta_completos(session: Session, producto_ids: set[int]) -> dict[int, PrecioVenta]:
+    """The latest saved price row per product id already in force today: highest `vigente_desde`, then highest id."""
     if not producto_ids:
         return {}
     filas = session.scalars(
         select(PrecioVenta).where(PrecioVenta.producto_id.in_(producto_ids), PrecioVenta.vigente_desde <= date.today())
         .order_by(PrecioVenta.vigente_desde.desc(), PrecioVenta.id.desc())
     ).all()
-    ultimos: dict[int, Decimal] = {}
+    ultimos: dict[int, PrecioVenta] = {}
     for fila in filas:
-        ultimos.setdefault(fila.producto_id, fila.precio_ars)
+        ultimos.setdefault(fila.producto_id, fila)
     return ultimos
+
+
+def _ultimos_precios_de_venta(session: Session, producto_ids: set[int]) -> dict[int, Decimal]:
+    """The latest saved price per product id already in force today: highest `vigente_desde`, then highest id."""
+    return {id_: fila.precio_ars for id_, fila in _ultimos_precios_de_venta_completos(session, producto_ids).items()}
+
+
+def armar_precio_de_grilla(
+    precio: Decimal | None, margen: Decimal | None, costo: Decimal | None, impuestos: list[dict],
+) -> dict:
+    """Pure: the sale price columns of the products grid, all None when the product has no saved price.
+
+    `margen_pct` is the margin the person saved (a fraction of the price, shown as a percentage) or, when the price was
+    typed by hand, the margin it leaves over today's cost; None if that cost cannot be computed.
+    SUPUESTO: validar. The saved margin is shown as saved even if the cost moved since; the price is not recomputed.
+    """
+    vacio = {"precio_venta_ars": None, "margen_pct": None, "precio_final_ars": None}
+    if precio is None:
+        return vacio
+    if margen is not None:
+        margen_pct = margen * 100
+    elif costo is not None and precio > 0:
+        margen_pct = ((precio - costo) / precio * 100).quantize(Decimal("0.01"), ROUND_HALF_UP)
+    else:
+        margen_pct = None
+    return {
+        "precio_venta_ars": precio, "margen_pct": margen_pct,
+        "precio_final_ars": armar_precio_con_impuestos(precio, impuestos)["precio_final"],
+    }
+
+
+def _precio_de_venta_de_grilla(fila: PrecioVenta | None, costo: Decimal | None, impuestos: list[dict]) -> dict:
+    return armar_precio_de_grilla(
+        None if fila is None else fila.precio_ars, None if fila is None else fila.margen, costo, impuestos)
+
+
+NOTA_PRECIO_DE_GRILLA = "Margen desde la grilla de productos"
+
+
+def guardar_precios_por_margen(
+    session: Session, items: list[dict], *, quien: str | None = None, hoy: date | None = None,
+) -> list[dict]:
+    """Grid save: for each `{codigo, margen_pct}` append a sale price = today's cost / (1 - margin), in ONE transaction
+    (all or nothing). The price is a new dated row, never an update; a product whose cost cannot be computed refuses the
+    whole save naming its code. Returns the saved products as the products list shows them.
+
+    SUPUESTO: validar. Saving twice the same day adds a second row (the newest id wins, like the single price route).
+    """
+    if not items:
+        raise DatosInvalidos("No hay cambios para guardar.")
+    if len(items) > MAX_FILAS_POR_LOTE:
+        raise DatosInvalidos(f"Son demasiados productos de una vez (máximo {MAX_FILAS_POR_LOTE}).")
+    codigos = [item["codigo"] for item in items]
+    if len(set(codigos)) != len(codigos):
+        raise DatosInvalidos("Hay un producto repetido en los cambios.")
+    hoy = hoy or date.today()
+    try:
+        productos = {p.codigo: p for p in session.scalars(select(Producto).where(Producto.codigo.in_(codigos)))}
+        for codigo in codigos:
+            if codigo not in productos:
+                raise NoEncontrado(f"No existe el producto {codigo}.")
+        costos = _costos_totales_de_hoy(session, set(codigos))
+        for item in items:
+            codigo, margen_pct = item["codigo"], item["margen_pct"]
+            costo = costos.get(codigo)
+            if costo is None or costo <= 0:
+                raise DatosInvalidos(f"{codigo}: no se puede calcular el costo de hoy, así que tampoco el precio.")
+            try:
+                precio = precio_con_margen(costo, margen_pct)
+            except ValueError as error:
+                raise DatosInvalidos(f"{codigo}: {error}") from error
+            _agregar_precio_de_venta(
+                session, productos[codigo], precio_ars=precio, vigente_desde=hoy, nota=NOTA_PRECIO_DE_GRILLA,
+                margen=margen_pct / 100, quien=quien,
+            )
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    return listar_productos_por_codigo(session, codigos)
+
+
+def listar_productos_por_codigo(session: Session, codigos: list[str]) -> list[dict]:
+    """The same rows `listar_productos` returns, for exactly these product codes, in the given order."""
+    por_codigo = {fila["codigo"]: fila for fila in _filas_de_productos(session, cargar_productos(session, codigos), True)}
+    return [por_codigo[codigo] for codigo in codigos]
 
 
 def _precio_y_fuente(ingresado: Decimal | None, guardado: Decimal | None) -> tuple[Decimal | None, str | None]:
