@@ -23,6 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.orm import Session
 
 from backend import cueros, formulario, ocr_llm, proveedores, reventa, servicios, sheets_client, voz, voz_llm
+from backend import materiales as grilla_materiales  # `materiales` is the name of the GET /materiales route below
 from backend.auth import (
     CORTE, CUALQUIER_ROL, FORMULARIO_LEER, FORMULARIO_TRABAJAR, PRODUCTOS, SOLO_ADMIN, Usuario, require_user,
 )
@@ -467,6 +468,28 @@ class GastosLoteIn(Entrada):
     cambios: list[GastoCambioIn] = []
     nuevos: list[GastoNuevoIn] = []
     anulados: list[str] = []  # codes of current rows to delete (soft)
+
+
+class MaterialCambioIn(Entrada):
+    codigo: str
+    # What is not sent stays as in the price in force today. A new price is always a new dated row.
+    precio: Annotated[Decimal, Field(gt=0, max_digits=14, decimal_places=4)] | None = None
+    moneda: Literal[*ARS_USD] | None = None
+    proveedor: Annotated[str, Field(max_length=200)] | None = None  # "" clears it
+
+
+class MaterialNuevoIn(Entrada):
+    nombre: Annotated[str, Field(min_length=1, max_length=200)]
+    etapa: str
+    unidad_de_consumo: Literal[*UNITS]
+    precio: Annotated[Decimal, Field(gt=0, max_digits=14, decimal_places=4)] | None = None
+    moneda: Literal[*ARS_USD] | None = None
+    proveedor: Annotated[str, Field(max_length=200)] | None = None
+
+
+class MaterialesLoteIn(Entrada):
+    cambios: list[MaterialCambioIn] = []
+    nuevos: list[MaterialNuevoIn] = []
 
 
 # --- Responses -------------------------------------------------------------------------------------------
@@ -2386,6 +2409,20 @@ def interpretar_voz(
     logger.info("voz propuesta accion=%s faltantes=%d avisos=%d largo=%d", propuesta.accion, len(propuesta.faltantes),
                 len(propuesta.avisos), len(cuerpo.texto))
     return propuesta
+
+
+# --- Materials grid -------------------------------------------------------------------------------------------------------
+
+class MaterialesLoteOut(Salida):
+    precios: list[PrecioOut]  # the rows the save added (a price that did not change adds none)
+    materiales_nuevos: list[str]
+
+
+@router.post("/materiales/lote", dependencies=ESCRITURA, response_model=MaterialesLoteOut)
+def guardar_materiales_en_lote(cuerpo: MaterialesLoteIn, session: Sesion):
+    """Grid save: new prices (new dated rows, nothing is edited) and new materials, all or nothing."""
+    return grilla_materiales.guardar_en_lote(
+        session, [c.model_dump(exclude_unset=True) for c in cuerpo.cambios], [n.model_dump() for n in cuerpo.nuevos])
 
 
 # --- Errors ----------------------------------------------------------------------------------------------------
