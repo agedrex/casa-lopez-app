@@ -343,8 +343,8 @@ def separar_insumos(
 
 
 def _guardar_insumos(session: Session, modelo: Modelo, fila: FormularioConsumo) -> list[str]:
-    """Save the supplies of the form as `modelo_insumo` rows of the model (one per material, updated if it already exists)
-    and return the names with a quantity that matched no costable material (those are not saved)."""
+    """Save the supplies of the form as `modelo_insumo` rows of the model (one per material, updated if it already exists,
+    removed when the sheet no longer lists it) and return the names with a quantity that matched no costable material (those are not saved)."""
     materiales = session.execute(
         select(Material.id, Material.nombre, Material.nombre_corto)
         .join(Etapa, Etapa.id == Material.etapa_id)
@@ -365,6 +365,9 @@ def _guardar_insumos(session: Session, modelo: Modelo, fila: FormularioConsumo) 
                 codigo=f"MIN-{_siguiente_numero(session, ModeloInsumo.codigo, 'MIN'):04d}", modelo_id=modelo.id,
                 material_id=material_id, cantidad_por_unidad=cantidad,
             ), "Ya hay un insumo de ese material en el modelo: probá de nuevo.")
+    for material_id, insumo in existentes.items():  # the validated sheet is the truth: supplies it no longer lists go
+        if material_id not in cantidades:
+            session.delete(insumo)
     return sin_material
 
 

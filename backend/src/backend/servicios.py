@@ -406,9 +406,16 @@ def _cargar_uno(session: Session, codigo: str) -> tuple[DatosProducto, dict[str,
     return base[0], expandir_kits(session, base)
 
 
-def _hoy(ctx: Contexto) -> date | None:
-    """The date of "costo hoy": the newest dollar on record (the engine never reads the clock)."""
-    return max((f for f, _ in ctx.dolares), default=None)
+def _hoy(ctx: Contexto, hoy: date | None = None) -> date | None:
+    """The date of "costo hoy": today, priced with the newest dollar on or before it (the engine never reads the clock).
+
+    Without a dollar on or before today it falls back to the newest dollar on record (the previous rule); None without dollars.
+    """
+    fechas = [f for f, _ in ctx.dolares]
+    if not fechas:
+        return None
+    hoy = hoy or date.today()
+    return hoy if min(fechas) <= hoy else max(fechas)
 
 
 def _costo_hoy(datos: DatosProducto, ctx: Contexto, catalogo: dict[str, DatosProducto]) -> ResultadoCotizacion | None:
@@ -2413,8 +2420,8 @@ def _insumos_del_modelo(session: Session, modelo_id: int) -> list[dict]:
     ).all()
     if not filas:
         return []
-    precios = cargar_contexto(session).precios
-    hoy = date.today()
+    ctx = cargar_contexto(session)
+    precios, hoy = ctx.precios, _hoy(ctx) or date.today()
     insumos = []
     for insumo, material, etapa in filas:
         precio = precio_a_la_fecha(precios, material.codigo, None, hoy)

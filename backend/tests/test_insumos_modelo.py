@@ -247,3 +247,44 @@ def test_pg_a_supply_without_a_price_makes_the_product_quote_incomplete_with_a_w
 def test_pg_a_model_without_supplies_has_an_empty_list_and_keeps_its_cost(api):
     modelo = api.session.scalar(select(Modelo.codigo).where(Modelo.cuero_m2_por_unidad > 0).limit(1))
     assert api.get(f"/modelos/{modelo}").json()["insumos"] == []
+
+
+# --- "Costo hoy" uses today's date (SUPUESTO: validar), not the date of the newest dollar -----------------------------
+
+def test_cost_today_is_today_priced_with_the_newest_dollar_on_or_before_it():
+    from datetime import date
+    from types import SimpleNamespace
+
+    from backend.servicios import _hoy
+    from decimal import Decimal as D
+    ctx = SimpleNamespace(dolares=[(date(2026, 9, 1), D("1545")), (date(2026, 11, 12), D("1600"))])
+    assert _hoy(ctx, date(2026, 11, 13)) == date(2026, 11, 13)  # a price dated after the last dollar now counts
+    assert _hoy(SimpleNamespace(dolares=[]), date(2026, 11, 13)) is None
+    # Only dollars from the future: the previous rule (newest dollar on record) still applies.
+    assert _hoy(SimpleNamespace(dolares=[(date(2027, 1, 1), D("1700"))]), date(2026, 11, 13)) == date(2027, 1, 1)
+
+
+def test_pg_revalidating_removes_the_supplies_the_new_sheet_no_longer_lists(api):
+    from backend import formulario as hoja_service
+    from backend.models import FormularioConsumoLinea, Modelo
+
+    material(api, "MAT-IN01", "Cierre N5", "HERRAJES", "unidad")
+    material(api, "MAT-IN02", "Friselina", "FLEX", "m2")
+    modelo, codigo = completar_hoja(api, {"CIERRE N5": "2", "FRISELINA": "1"})
+    assert api.post(f"/formularios/{codigo}/validar").status_code == 200
+    assert {i["material"] for i in insumos_de(api, modelo)} == {"MAT-IN01", "MAT-IN02"}
+    assert api.post(f"/modelos/{modelo}/validado", json={"validado": False}).status_code == 200
+
+    nueva = hoja_service._nuevo(
+        api.session, articulo="Zz otra hoja", producto_id=None, taller_id=None, nota=None, quien="admin-1",
+        lineas=hoja_service.lineas_precargadas())
+    nueva.modelo_id = api.session.scalar(select(Modelo.id).where(Modelo.codigo == modelo))
+    nueva.estado = "COMPLETADO"
+    for linea in api.session.scalars(select(FormularioConsumoLinea).where(FormularioConsumoLinea.formulario_id == nueva.id)):
+        if linea.nombre == "CIERRE N5":
+            linea.cantidad = D("3")
+    api.session.flush()
+    como("admin")
+    assert api.post(f"/formularios/{nueva.codigo}/validar").status_code == 200
+    insumos = {i["material"]: i for i in insumos_de(api, modelo)}
+    assert set(insumos) == {"MAT-IN01"} and D(insumos["MAT-IN01"]["cantidad_por_unidad"]) == D("3")

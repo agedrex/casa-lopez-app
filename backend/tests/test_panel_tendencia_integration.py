@@ -124,7 +124,9 @@ def test_the_trend_defaults_to_six_months_ending_this_calendar_month(api):
 
 def test_the_trend_flags_pending_example_rows_and_products_without_cost(api):
     codigo = producto(api)
-    lote(api, "2027-01-10", (codigo, "10"))  # no dollar yet on record that covers the flex price: no cost
+    api.session.execute(delete(TipoCambio))  # without a dollar the product cannot be costed
+    api.session.flush()
+    lote(api, "2027-01-10", (codigo, "10"))
     gasto(api, "2027-01", "Alquiler", "1000", ficticio=True)
     gasto(api, "2027-01", "Luz", None)
     cuerpo = api.get("/panel/tendencia", params={"hasta": "2027-01", "meses": 1}).json()

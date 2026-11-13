@@ -60,11 +60,11 @@ def test_create_product_assigns_the_code_and_calculates_the_rest(api):
     assert producto(api)["codigo"] == "PRD-0002"
 
 
-def test_ficha_costs_today_at_the_newest_dollar_and_money_is_text(api):
+def test_ficha_costs_today_with_the_newest_dollar_and_money_is_text(api):
     codigo = producto(api)["codigo"]
-    # Newest dollar on record is 2026-09-01, before the flex price (09-03): the cost is not computable yet.
+    # "Today" is the real date: the seeded dollar (2026-09-01) and the flex price (09-03) both count, so the cost exists.
     ficha = api.get(f"/productos/{codigo}").json()
-    assert ficha["costo_hoy"] is None and "Sin precio para MAT-FL01 a esa fecha" in ficha["avisos"]
+    assert ficha["costo_hoy"] is not None and D(ficha["costo_hoy"]["dolar"]) == D("1545") and ficha["avisos"] == []
     dolar_nuevo(api)
     ficha = api.get(f"/productos/{codigo}").json()
     assert isinstance(ficha["costo_hoy"]["total_ars"], str)
@@ -90,7 +90,7 @@ def test_initial_quote_is_saved_once_and_never_updated(api):
 def test_a_later_quote_is_a_new_row_and_flags_recotizar(api):
     codigo = producto(api)["codigo"]
     api.post(f"/productos/{codigo}/cotizaciones", json={"tipo": "INICIAL"})
-    assert api.get(f"/productos/{codigo}").json()["recotizar"] is None  # cost today is not computable yet
+    assert api.get(f"/productos/{codigo}").json()["recotizar"] is False  # cost today equals the initial quote
     dolar_nuevo(api)
     ficha = api.get(f"/productos/{codigo}").json()
     assert ficha["recotizar"] is True  # +7.5 % cost and +10.03 % dollar against 5 % / 10 % tolerances

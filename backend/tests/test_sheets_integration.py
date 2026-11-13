@@ -9,7 +9,7 @@ from decimal import Decimal as D
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from backend import api as api_module
@@ -18,7 +18,7 @@ from backend import sheets_client
 from backend.auth import Usuario, get_verifier
 from backend.database import get_session
 from backend.main import app
-from backend.models import Material, Modelo, Parametro, Producto, Taller
+from backend.models import Material, Modelo, Parametro, Producto, Taller, TipoCambio
 from backend.sheets_export import NOMBRES_DE_PESTANAS, FuenteSQL, construir_tabs
 
 AHORA = datetime.fromisoformat("2026-10-28T12:00:00-03:00")
@@ -80,7 +80,9 @@ def test_cost_columns_are_the_ones_the_service_calculated_not_recalculated(sesio
     }).json()["codigo"]
     assert api.post(f"/productos/{codigo}/cotizaciones", json={"tipo": "INICIAL"}).status_code == 201
 
-    # Seeded dollar of 2026-09-01 is older than the flex price (09-03): no cost today yet, only warnings.
+    # Without a dollar on record there is no cost today yet, only warnings.
+    sesion.execute(delete(TipoCambio))
+    sesion.flush()
     ficha = api.get(f"/productos/{codigo}").json()
     assert ficha["costo_hoy"] is None
     tabs = tabs_por_nombre(sesion)
