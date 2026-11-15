@@ -137,6 +137,8 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
         "/productos/precios-lote", "/materiales/lote")},
     # The scenario simulator: a POST only because of its body, it computes and saves nothing (test_escenarios_gerente.py).
     ("POST", "/cvu/escenario"): PRODUCTOS,
+    # CVU of the factory and of the store and the fixed-cost summary: admin only (they show the whole business spending).
+    ("POST", "/cvu/fabrica"): ADMIN, ("POST", "/cvu/tienda"): ADMIN, ("GET", "/costos-fijos/resumen"): ADMIN,
     # What /escenarios needs of the Panel, and nothing more: the month it starts on (S8). /panel/costos is admin only.
     ("GET", "/cvu/periodo"): PRODUCTOS,
     # Suppliers: admin only (reads and writes), the gerente has no access to the module.

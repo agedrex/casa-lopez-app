@@ -1651,11 +1651,13 @@ def armar_panel_de_costos(
     }
 
 
-def _fijos_de_fabrica(session: Session, periodos: list[str]) -> dict[str, FijosDelMes]:
-    """Factory rows only, per month exactly as asked (no PERIODO_VIGENTE fallback, unlike `costos_fijos`)."""
+def _fijos_de_fabrica(session: Session, periodos: list[str], ambito: str = "FABRICA") -> dict[str, FijosDelMes]:
+    """Rows of one ámbito (the factory by default), per month exactly as asked (no PERIODO_VIGENTE fallback).
+
+    For TIENDA the total still travels in `total_fabrica`: the field name is historical, the value is that ámbito's."""
     filas = session.scalars(
         select(GastoPeriodo).where(
-            GastoPeriodo.periodo.in_(periodos), GastoPeriodo.fabrica_o_tienda == "FABRICA", _gastos_vigentes())
+            GastoPeriodo.periodo.in_(periodos), GastoPeriodo.fabrica_o_tienda == ambito, _gastos_vigentes())
     ).all()
     resultado = {}
     for periodo in periodos:
@@ -3220,3 +3222,119 @@ def escenario_cvu(session: Session, periodo: str | None, items: list[dict], hoy:
         guardados={codigo: por_id[id_] for codigo, id_ in ids.items() if id_ in por_id},
         fijos=_fijos_de_fabrica(session, [periodo]).get(periodo, SIN_FIJOS), **extras,
     )
+
+
+# --- CVU of the factory and of the store, and the business spending summary ------------------------------
+
+MARGEN_TRANSFERENCIA = "MARGEN_TRANSFERENCIA_PCT"
+CATEGORIAS_DE_GASTO = ("SUELDOS", "CARGAS_SOCIALES", "ALQUILER", "SERVICIOS", "IMPUESTOS_FIJOS", "OTROS")
+
+
+def _margen_transferencia(session: Session) -> Decimal:
+    """SUPUESTO: validar con Robert. Margin the factory earns selling to the store, as a fraction of the transfer price."""
+    return session.scalar(select(Parametro.valor).where(Parametro.codigo == MARGEN_TRANSFERENCIA)) or ZERO
+
+
+def armar_cvu_negocio(
+    *, ambito: str, periodo: str, items: list[dict], existentes: set[str], costos: dict[str, Decimal | None],
+    guardados: dict[str, Decimal], fijos: FijosDelMes, margen_transferencia_pct: Decimal,
+    iibb_alicuota: Decimal | None = ZERO, gastos_venta_pct: Decimal = ZERO,
+) -> dict:
+    """Pure: the break-even scenario of one ámbito of the business.
+
+    FABRICA: `guardados` are the transfer prices (what the store pays the factory), no selling taxes (internal sale).
+    TIENDA: `costos` already are what the store pays and `guardados` the sale prices; IIBB and selling expense apply.
+    The volume is a scenario typed by the owner, not sales. SUPUESTO: validar con Robert.
+    """
+    resultado = armar_escenario(
+        periodo=periodo, items=items, existentes=existentes, costos=costos, guardados=guardados, fijos=fijos,
+        iibb_alicuota=iibb_alicuota, gastos_venta_pct=gastos_venta_pct)
+    nombre = "de la fábrica" if ambito == "FABRICA" else "de la tienda"
+    for aviso in resultado["avisos"]:
+        aviso["texto"] = aviso["texto"].replace("de la fábrica", nombre)
+    if ambito == "FABRICA":
+        for linea in resultado["lineas"]:
+            if linea["fuente_precio"] == "GUARDADO":
+                linea["fuente_precio"] = "TRANSFERENCIA"
+    return {**resultado, "ambito": ambito, "margen_transferencia_pct": margen_transferencia_pct}
+
+
+def _precios_de_transferencia(costos: dict[str, Decimal | None], margen_pct: Decimal) -> dict[str, Decimal]:
+    return {codigo: precio_con_margen(costo, margen_pct) for codigo, costo in costos.items() if costo is not None}
+
+
+def _escenario_de_fabrica(session: Session, periodo: str, items: list[dict]) -> dict:
+    margen = _margen_transferencia(session) * 100
+    codigos = {item["codigo"] for item in items}
+    ids = dict(session.execute(select(Producto.codigo, Producto.id).where(Producto.codigo.in_(codigos))).all()) if codigos else {}
+    costos = _costos_totales_de_hoy(session, set(ids)) if ids else {}
+    return armar_cvu_negocio(
+        ambito="FABRICA", periodo=periodo, items=items, existentes=set(ids), costos=costos,
+        guardados=_precios_de_transferencia(costos, margen), margen_transferencia_pct=margen,
+        fijos=_fijos_de_fabrica(session, [periodo]).get(periodo, SIN_FIJOS), iibb_alicuota=ZERO, gastos_venta_pct=ZERO)
+
+
+def _escenario_de_tienda(session: Session, periodo: str, items: list[dict]) -> dict:
+    from backend import reventa
+
+    margen = _margen_transferencia(session) * 100
+    propios = [i for i in items if not i["codigo"].startswith("MER-")]
+    reventas = {i["codigo"] for i in items if i["codigo"].startswith("MER-")}
+    ids = dict(session.execute(
+        select(Producto.codigo, Producto.id).where(Producto.codigo.in_({i["codigo"] for i in propios}))).all()) if propios else {}
+    por_id = _ultimos_precios_de_venta(session, set(ids.values())) if ids else {}
+    costos_fabrica = _costos_totales_de_hoy(session, set(ids)) if ids else {}
+    costos: dict[str, Decimal | None] = dict(_precios_de_transferencia(costos_fabrica, margen))
+    costos.update({c: None for c, v in costos_fabrica.items() if v is None})
+    guardados = {codigo: por_id[id_] for codigo, id_ in ids.items() if id_ in por_id}
+    existentes = set(ids)
+    if reventas:
+        for producto in reventa.listar(session):
+            if producto["codigo"] in reventas:
+                existentes.add(producto["codigo"])
+                costos[producto["codigo"]] = producto["costo_unitario_ars"]
+                if producto["precio_venta_unitario_ars"] is not None:
+                    guardados[producto["codigo"]] = producto["precio_venta_unitario_ars"]
+    extras = {"iibb_alicuota": _alicuota_iibb(session), "gastos_venta_pct": _gastos_venta_pct(session)} if items else {}
+    return armar_cvu_negocio(
+        ambito="TIENDA", periodo=periodo, items=items, existentes=existentes, costos=costos, guardados=guardados,
+        fijos=_fijos_de_fabrica(session, [periodo], "TIENDA").get(periodo, SIN_FIJOS), margen_transferencia_pct=margen,
+        **extras)
+
+
+def cvu_del_negocio(session: Session, ambito: str, periodo: str | None, items: list[dict], hoy: date | None = None) -> dict:
+    """Scenario for the FABRICA or the TIENDA in `periodo` (default: this calendar month). Reads only, saves nothing."""
+    periodo = periodo or mes_de(hoy or date.today())
+    if ambito == "FABRICA":
+        return _escenario_de_fabrica(session, periodo, items)
+    return _escenario_de_tienda(session, periodo, items)
+
+
+def resumen_de_gastos_de_filas(filas: list[tuple[str, str, Decimal | None]]) -> dict:
+    """Pure: (ámbito, categoría, monto|None) rows -> totals per ámbito and category; a None amount is pending."""
+    por_ambito = []
+    for ambito in ("FABRICA", "TIENDA"):
+        propias = [f for f in filas if f[0] == ambito]
+        categorias = [
+            {"categoria": c, "total": sum((m or ZERO for a, cat, m in propias if cat == c), ZERO)}
+            for c in CATEGORIAS_DE_GASTO if any(cat == c for _, cat, _ in propias)]
+        por_ambito.append({
+            "ambito": ambito, "total": sum((m or ZERO for _, _, m in propias), ZERO),
+            "pendientes": sum(1 for _, _, m in propias if m is None), "categorias": categorias})
+    return {"por_ambito": por_ambito, "total": sum((a["total"] for a in por_ambito), ZERO)}
+
+
+def resumen_de_gastos(session: Session, periodo: str | None = None, meses: int = 6) -> dict:
+    """How much the business spends in fixed costs: this month by ámbito and category, plus the last `meses` months."""
+    periodo = periodo or mes_de(date.today())
+    filas = session.execute(
+        select(GastoPeriodo.periodo, GastoPeriodo.fabrica_o_tienda, GastoPeriodo.categoria, GastoPeriodo.monto_ars_del_mes)
+        .where(GastoPeriodo.periodo <= periodo, _gastos_vigentes())).all()
+    resumen = resumen_de_gastos_de_filas([(a, c, m) for p, a, c, m in filas if p == periodo])
+    meses_vistos = sorted({p for p, *_ in filas})[-meses:]
+    serie = []
+    for mes in meses_vistos:
+        fabrica = sum((m or ZERO for p, a, _, m in filas if p == mes and a == "FABRICA"), ZERO)
+        tienda = sum((m or ZERO for p, a, _, m in filas if p == mes and a == "TIENDA"), ZERO)
+        serie.append({"periodo": mes, "fabrica": fabrica, "tienda": tienda, "total": fabrica + tienda})
+    return {"periodo": periodo, **resumen, "serie": serie, "margen_transferencia_pct": _margen_transferencia(session) * 100}
