@@ -730,7 +730,8 @@ export type PrecioVenta = {
 
 export type VeredictoCvu = "NO_CUBRE_VARIABLE" | "MC_BAJO" | "SALUDABLE";
 
-export type FuentePrecio = "INGRESADO" | "GUARDADO";
+// TRANSFERENCIA: the price the factory charges the store (cost + transfer margin); only in /cvu/fabrica and /cvu/tienda.
+export type FuentePrecio = "INGRESADO" | "GUARDADO" | "TRANSFERENCIA";
 
 export type Rentabilidad = {
   producto: string;
@@ -800,6 +801,42 @@ export type Escenario = {
   mejor_por_hora: string | null;
   avisos: AvisoPanel[];
   confiable: boolean;
+};
+
+export type AmbitoNegocio = "FABRICA" | "TIENDA";
+
+// POST /cvu/fabrica and /cvu/tienda (CvuNegocioOut): the scenario plus the ámbito and the transfer margin.
+// `fijos.total_fabrica` holds the fixed costs of the requested ámbito (the name comes from the single-ámbito scenario).
+export type CvuNegocio = Escenario & {
+  ambito: AmbitoNegocio;
+  // A percent number as text ("20.000"), already multiplied by 100 by the API.
+  margen_transferencia_pct: string;
+};
+
+// GET /costos-fijos/resumen (ResumenGastosOut). Every amount comes calculated by the API.
+export type GastoCategoriaResumen = { categoria: string; total: string };
+
+export type GastoAmbitoResumen = {
+  ambito: AmbitoNegocio;
+  total: string;
+  pendientes: number;
+  categorias: GastoCategoriaResumen[];
+};
+
+export type GastoMesResumen = {
+  periodo: string;
+  fabrica: string;
+  tienda: string;
+  total: string;
+};
+
+export type ResumenGastos = {
+  periodo: string;
+  total: string;
+  por_ambito: GastoAmbitoResumen[];
+  // Oldest month first, at most the last six.
+  serie: GastoMesResumen[];
+  margen_transferencia_pct: string;
 };
 
 // Proveedores and their invoices/images. The API never sends the file bytes in a document;

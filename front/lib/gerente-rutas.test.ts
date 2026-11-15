@@ -79,3 +79,12 @@ test("the legacy role corte opens the same pages as taller", () => {
   const abiertas = appRoutes().filter((route) => canAccessPath("corte", route));
   assert.deepEqual(abiertas, RUTAS_DEL_TALLER);
 });
+
+// Admin only pages that must stay closed to the other roles: Negocio (gastos, fábrica and tienda scenarios).
+test("Negocio is open to admin and closed to gerente, taller and the legacy roles", () => {
+  assert.ok(appRoutes().includes("/negocio"), "the Negocio page is missing");
+  assert.equal(canAccessPath("admin", "/negocio"), true);
+  for (const role of ["gerente", "consulta", "taller", "corte", ""]) {
+    assert.equal(canAccessPath(role, "/negocio"), false, role);
+  }
+});
