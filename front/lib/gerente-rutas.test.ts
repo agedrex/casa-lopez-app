@@ -88,3 +88,12 @@ test("Negocio is open to admin and closed to gerente, taller and the legacy role
     assert.equal(canAccessPath(role, "/negocio"), false, role);
   }
 });
+
+// Admin only: Ventas y stock (real sales, transfers to the store, derived stock and real margin).
+test("Ventas y stock is open to admin and closed to gerente, taller and the legacy roles", () => {
+  assert.ok(appRoutes().includes("/ventas"), "the Ventas page is missing");
+  assert.equal(canAccessPath("admin", "/ventas"), true);
+  for (const role of ["gerente", "consulta", "taller", "corte", ""]) {
+    assert.equal(canAccessPath(role, "/ventas"), false, role);
+  }
+});

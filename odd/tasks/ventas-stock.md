@@ -16,8 +16,10 @@ Objective: close the product cycle (lote -> producto terminado -> transferencia 
 - [x] T1 mapa de lotes/producción/stock existente (explorer, read-only)
 - [x] T2 (S1-S4) modelos + migración 0022 + servicios + endpoints + tests
 - [x] T3 (S5) margen real por mes + endpoint + tests
-- [ ] T4 (S6) pantallas
-- [ ] T5 verificación y PR
+- [x] T4 (S6) pantallas
+- [x] T5 verificación y PR
+
+- Slice: PR #43 stacked on #42 (backend 284ac6d + front screen). Not rendered against the real API.
 
 ## Log
 
