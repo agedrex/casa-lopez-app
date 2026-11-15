@@ -741,3 +741,66 @@ class ProveedorProducto(BusinessKey, Base):
     vigente_desde: Mapped[date] = mapped_column(Date)
     nota: Mapped[str | None] = mapped_column(Text)
     creado_por: Mapped[str] = mapped_column(Text)
+
+
+# --- Transfers to the store and real sales (append-only: nothing is edited or deleted) ---------------------------
+
+class Transferencia(BusinessKey, Base):
+    """Units of a product the factory sends to the store (`codigo` is `TRF-NNNN`). Append-only: a correction is another row.
+
+    The row freezes the factory cost of that moment and the transfer price (cost / (1 - margin)) with the margin used, so
+    a later dollar or margin change never rewrites it. `creado_por` is the auth user id as text (no FK: Better Auth lives
+    in `public`). SUPUESTO: validar con Robert.
+    """
+    __tablename__ = "transferencia"
+    __table_args__ = (
+        CheckConstraint("unidades > 0", name="unidades_positivas"),
+        CheckConstraint("costo_fabrica_unitario_ars >= 0", name="costo_no_negativo"),
+        CheckConstraint("precio_transferencia_unitario_ars >= 0", name="precio_no_negativo"),
+        CheckConstraint("margen_transferencia_pct >= 0 AND margen_transferencia_pct < 100", name="margen_en_rango"),
+    )
+    fecha: Mapped[date] = mapped_column(Date, index=True)
+    producto_id: Mapped[int] = mapped_column(ForeignKey("costos.producto.id"), index=True)
+    unidades: Mapped[Decimal] = mapped_column(quantity())
+    costo_fabrica_unitario_ars: Mapped[Decimal] = mapped_column(money())
+    precio_transferencia_unitario_ars: Mapped[Decimal] = mapped_column(money())
+    # The margin of MARGEN_TRANSFERENCIA_PCT at that moment, in percent (20 = 20 % of the transfer price).
+    margen_transferencia_pct: Mapped[Decimal] = mapped_column(pct())
+    nota: Mapped[str | None] = mapped_column(Text)
+    creado_por: Mapped[str | None] = mapped_column(Text)
+
+
+class Venta(BusinessKey, Base):
+    """A real sale of the store (`codigo` is `VEN-NNNN`): a product of the factory (`producto_id`) or a resale product
+    (`producto_reventa_id`), exactly one of the two. Append-only: a correction is another row.
+
+    `precio_unitario_ars` is the net price actually charged. The snapshot columns freeze what the sale cost at that moment:
+    a PRD sale keeps the factory cost and the transfer price, a MER sale the unit cost of its latest purchase. They are
+    never recalculated (no dollar of today). `creado_por` is the auth user id as text. SUPUESTO: validar con Robert.
+    """
+    __tablename__ = "venta"
+    __table_args__ = (
+        CheckConstraint("(producto_id IS NULL) <> (producto_reventa_id IS NULL)", name="un_solo_producto"),
+        CheckConstraint("unidades > 0", name="unidades_positivas"),
+        CheckConstraint("precio_unitario_ars > 0", name="precio_positivo"),
+        CheckConstraint("costo_fabrica_unitario_ars IS NULL OR costo_fabrica_unitario_ars >= 0", name="costo_fabrica_no_negativo"),
+        CheckConstraint("precio_transferencia_unitario_ars IS NULL OR precio_transferencia_unitario_ars >= 0", name="transferencia_no_negativa"),
+        CheckConstraint("costo_compra_unitario_ars IS NULL OR costo_compra_unitario_ars >= 0", name="costo_compra_no_negativo"),
+        CheckConstraint(
+            "(producto_id IS NOT NULL AND costo_fabrica_unitario_ars IS NOT NULL "
+            "AND precio_transferencia_unitario_ars IS NOT NULL AND costo_compra_unitario_ars IS NULL) "
+            "OR (producto_reventa_id IS NOT NULL AND costo_compra_unitario_ars IS NOT NULL "
+            "AND costo_fabrica_unitario_ars IS NULL AND precio_transferencia_unitario_ars IS NULL)",
+            name="congelados_segun_producto"),
+    )
+    fecha: Mapped[date] = mapped_column(Date, index=True)
+    producto_id: Mapped[int | None] = mapped_column(ForeignKey("costos.producto.id"), index=True)
+    producto_reventa_id: Mapped[int | None] = mapped_column(ForeignKey("costos.producto_reventa.id"), index=True)
+    unidades: Mapped[Decimal] = mapped_column(quantity())
+    precio_unitario_ars: Mapped[Decimal] = mapped_column(money())
+    canal: Mapped[str | None] = mapped_column(Text)
+    nota: Mapped[str | None] = mapped_column(Text)
+    costo_fabrica_unitario_ars: Mapped[Decimal | None] = mapped_column(money())
+    precio_transferencia_unitario_ars: Mapped[Decimal | None] = mapped_column(money())
+    costo_compra_unitario_ars: Mapped[Decimal | None] = mapped_column(money())
+    creado_por: Mapped[str | None] = mapped_column(Text)

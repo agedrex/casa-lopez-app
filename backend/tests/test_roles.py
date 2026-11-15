@@ -141,6 +141,9 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
     ("POST", "/cvu/fabrica"): ADMIN, ("POST", "/cvu/tienda"): ADMIN, ("GET", "/costos-fijos/resumen"): ADMIN,
     # What /escenarios needs of the Panel, and nothing more: the month it starts on (S8). /panel/costos is admin only.
     ("GET", "/cvu/periodo"): PRODUCTOS,
+    # Transfers to the store, sales, derived stock and real margin: admin only (the gerente has no access).
+    ("GET", "/transferencias"): ADMIN, ("GET", "/ventas"): ADMIN, ("GET", "/stock"): ADMIN, ("GET", "/margen-real"): ADMIN,
+    ("POST", "/transferencias"): ADMIN, ("POST", "/ventas"): ADMIN,
     # Suppliers: admin only (reads and writes), the gerente has no access to the module.
     ("GET", "/reventa"): ADMIN, ("GET", "/reventa/{codigo}"): ADMIN,
     ("GET", "/proveedores"): ADMIN, ("GET", "/proveedores/{codigo}"): ADMIN,

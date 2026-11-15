@@ -13,9 +13,9 @@ Objective: close the product cycle (lote -> producto terminado -> transferencia 
 
 ## Tasks
 
-- [ ] T1 mapa de lotes/producción/stock existente (explorer, read-only)
-- [ ] T2 (S1-S4) modelos + migración 0022 + servicios + endpoints + tests
-- [ ] T3 (S5) margen real por mes + endpoint + tests
+- [x] T1 mapa de lotes/producción/stock existente (explorer, read-only)
+- [x] T2 (S1-S4) modelos + migración 0022 + servicios + endpoints + tests
+- [x] T3 (S5) margen real por mes + endpoint + tests
 - [ ] T4 (S6) pantallas
 - [ ] T5 verificación y PR
 

@@ -146,6 +146,8 @@ SOLO_ADMIN = {"/parametros/{codigo}", "/personas", "/personas/{codigo}/activo", 
               "/proveedores/{codigo}/documentos", "/proveedores/{codigo}/precios", "/proveedores/{codigo}/pedidos", "/proveedores/{codigo}/productos",
               "/documentos-proveedor/{id}/ocr",
               "/documentos-proveedor/{id}/datos",
+              # Transfers to the store and real sales (see test_ventas_stock.py and test_roles.py).
+              "/transferencias", "/ventas",
               # Resale products (see test_reventa.py and test_roles.py).
               "/reventa", "/reventa/lote", "/reventa/{codigo}/activo", "/reventa/{codigo}/compras",
               # Consumption form (see test_formulario.py and test_roles.py).
@@ -239,6 +241,8 @@ def test_reads_are_open_to_the_admin_role(monkeypatch, metodo, ruta):
     monkeypatch.setattr(servicios, "periodos_de_costos_fijos", lambda *a, **k: {"vigente": None, "periodos": []})
     monkeypatch.setattr(servicios, "resumen_de_gastos", lambda *a, **k: {
         "periodo": "2026-11", "total": 0, "por_ambito": [], "serie": [], "margen_transferencia_pct": 20})
+    monkeypatch.setattr(servicios, "margen_real", lambda *a, **k: servicios.armar_margen_real(
+        periodo="2026-11", ventas=[], fijos_fabrica=servicios.SIN_FIJOS, fijos_tienda=servicios.SIN_FIJOS))
     monkeypatch.setattr(servicios, "calidad_de_datos", lambda *a, **k: {
         "resumen": {"alta": 0, "media": 0, "baja": 0, "total": 0}, "grupos": []})
     session.execute.return_value.all.return_value = []
