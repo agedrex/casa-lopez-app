@@ -903,7 +903,7 @@ class PrecioVentaOut(Salida):
 
 class RentabilidadOut(Salida):
     producto: str
-    fuente_precio: Literal["INGRESADO", "GUARDADO"] | None
+    fuente_precio: Literal["INGRESADO", "GUARDADO", "TRANSFERENCIA"] | None
     precio: Decimal | None
     costo_variable: Decimal | None
     margen_unidad: Decimal | None
@@ -943,7 +943,7 @@ class EscenarioLineaOut(Salida):
     codigo: str
     unidades: Decimal
     precio: Decimal
-    fuente_precio: Literal["INGRESADO", "GUARDADO"]
+    fuente_precio: Literal["INGRESADO", "GUARDADO", "TRANSFERENCIA"]
     costo_variable: Decimal
     gasto_venta_unidad: Decimal
     iibb_unidad: Decimal
@@ -971,6 +971,38 @@ class EscenarioOut(Salida):
     mejor_por_hora: str | None
     avisos: list[PanelAvisoOut]
     confiable: bool
+
+
+class CvuNegocioOut(EscenarioOut):
+    ambito: Literal["FABRICA", "TIENDA"]
+    margen_transferencia_pct: Decimal
+
+
+class GastoCategoriaOut(Salida):
+    categoria: str
+    total: Decimal
+
+
+class GastoAmbitoOut(Salida):
+    ambito: Literal["FABRICA", "TIENDA"]
+    total: Decimal
+    pendientes: int
+    categorias: list[GastoCategoriaOut]
+
+
+class GastoMesOut(Salida):
+    periodo: str
+    fabrica: Decimal
+    tienda: Decimal
+    total: Decimal
+
+
+class ResumenGastosOut(Salida):
+    periodo: str
+    total: Decimal
+    por_ambito: list[GastoAmbitoOut]
+    serie: list[GastoMesOut]
+    margen_transferencia_pct: Decimal
 
 
 class TendenciaMesOut(Salida):
@@ -1525,6 +1557,24 @@ def periodo_del_escenario():
 def escenario_cvu(cuerpo: EscenarioIn, session: Sesion):
     """Break-even of the factory for a mix typed by the owner. A POST only because of the body: it reads and saves nothing."""
     return servicios.escenario_cvu(session, cuerpo.periodo, [item.model_dump() for item in cuerpo.items])
+
+
+@router.post("/cvu/fabrica", dependencies=LECTURA_ADMIN, response_model=CvuNegocioOut)
+def cvu_fabrica(cuerpo: EscenarioIn, session: Sesion):
+    """Break-even of the factory selling to the store at cost + the transfer margin. Reads and saves nothing."""
+    return servicios.cvu_del_negocio(session, "FABRICA", cuerpo.periodo, [item.model_dump() for item in cuerpo.items])
+
+
+@router.post("/cvu/tienda", dependencies=LECTURA_ADMIN, response_model=CvuNegocioOut)
+def cvu_tienda(cuerpo: EscenarioIn, session: Sesion):
+    """Break-even of the store: own products bought at the transfer price plus resale (MER-). Reads and saves nothing."""
+    return servicios.cvu_del_negocio(session, "TIENDA", cuerpo.periodo, [item.model_dump() for item in cuerpo.items])
+
+
+@router.get("/costos-fijos/resumen", dependencies=LECTURA_ADMIN, response_model=ResumenGastosOut)
+def resumen_de_gastos(session: Sesion, periodo: Annotated[str, Query(pattern=PERIODO)] | None = None):
+    """How much the business spends in fixed costs: by ámbito and category this month, plus the last six months."""
+    return servicios.resumen_de_gastos(session, periodo)
 
 
 @router.post("/productos/{codigo}/extras", dependencies=ESCRITURA, response_model=FichaOut, status_code=201)

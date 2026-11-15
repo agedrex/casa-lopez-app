@@ -138,7 +138,7 @@ def test_invalid_period_is_rejected():
 # (LECTURA_PRODUCTOS); test_roles.py and test_escenarios_gerente.py fix its gate.
 SOLO_ADMIN = {"/parametros/{codigo}", "/personas", "/personas/{codigo}/activo", "/colores", "/categorias",
               "/impuestos", "/impuestos/{codigo}/alicuota", "/impuestos/{codigo}/activo",
-              "/modelos/{codigo}/consumos", "/sync/sheets", "/cvu/escenario", "/productos/precios-lote",
+              "/modelos/{codigo}/consumos", "/sync/sheets", "/cvu/escenario", "/cvu/fabrica", "/cvu/tienda", "/productos/precios-lote",
               # Materials grid (see test_materiales_lote.py and test_roles.py).
               "/materiales/lote",
               # Suppliers and documents (see test_proveedores_api.py and test_roles.py).
@@ -237,6 +237,8 @@ def test_reads_are_open_to_the_admin_role(monkeypatch, metodo, ruta):
     monkeypatch.setattr(servicios, "tendencia_de_costos", lambda *a, **k: servicios.armar_tendencia_de_costos(
         hasta="2026-11", meses=6, lotes=[], items=[], costos={}, fijos={}))
     monkeypatch.setattr(servicios, "periodos_de_costos_fijos", lambda *a, **k: {"vigente": None, "periodos": []})
+    monkeypatch.setattr(servicios, "resumen_de_gastos", lambda *a, **k: {
+        "periodo": "2026-11", "total": 0, "por_ambito": [], "serie": [], "margen_transferencia_pct": 20})
     monkeypatch.setattr(servicios, "calidad_de_datos", lambda *a, **k: {
         "resumen": {"alta": 0, "media": 0, "baja": 0, "total": 0}, "grupos": []})
     session.execute.return_value.all.return_value = []

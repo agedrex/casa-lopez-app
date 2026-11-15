@@ -102,7 +102,8 @@ def test_revision_chain_replaces_v1_with_v3_then_seeds(monkeypatch):
                      "0011_precio_material_proveedor.py", "0012_impuesto_activo.py",
                      "0013_impuestos_vacios.py", "0014_gastos_venta_pct.py",
                      "0015_precio_venta_margen.py", "0016_formulario_consumo.py", "0017_formulario_modelo.py",
-                     "0018_pedidos_proveedor.py", "0019_modelo_insumo.py", "0020_proveedor_producto.py"):
+                     "0018_pedidos_proveedor.py", "0019_modelo_insumo.py", "0020_proveedor_producto.py",
+                     "0021_margen_transferencia.py"):
         _, revision = load_revision(monkeypatch, filename)
         chain[revision["revision"]] = revision["down_revision"]
     assert chain == {
@@ -121,6 +122,7 @@ def test_revision_chain_replaces_v1_with_v3_then_seeds(monkeypatch):
         "0018_pedidos_proveedor": "0017_formulario_modelo",
         "0019_modelo_insumo": "0018_pedidos_proveedor",
         "0020_proveedor_producto": "0019_modelo_insumo",
+        "0021_margen_transferencia": "0020_proveedor_producto",
     }
 
 
@@ -155,6 +157,7 @@ def test_der_v3_revision_matches_orm_and_reverses_dependencies(monkeypatch):
     runpy.run_path(str(VERSIONS / "0018_pedidos_proveedor.py"))["upgrade"]()
     runpy.run_path(str(VERSIONS / "0019_modelo_insumo.py"))["upgrade"]()
     runpy.run_path(str(VERSIONS / "0020_proveedor_producto.py"))["upgrade"]()
+    runpy.run_path(str(VERSIONS / "0021_margen_transferencia.py"))["upgrade"]()
     assert set(operations.metadata.tables) == set(Base.metadata.tables)
     dialect = postgresql.dialect()
     for key, declared in operations.metadata.tables.items():
