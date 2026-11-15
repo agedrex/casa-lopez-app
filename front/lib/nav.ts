@@ -38,6 +38,13 @@ export const NAV_ITEMS: NavGroup[] = [
         icon: "/escenarios",
         adminOnly: true,
       },
+      {
+        href: "/ventas",
+        label: "Ventas y stock",
+        shortLabel: "Ventas",
+        icon: "/reventa",
+        adminOnly: true,
+      },
     ],
   },
   {
@@ -183,6 +190,13 @@ const DESKTOP_NAV: NavGroup[] = [
         href: "/negocio",
         label: "Negocio",
         icon: "/escenarios",
+        adminOnly: true,
+      },
+      {
+        href: "/ventas",
+        label: "Ventas y stock",
+        shortLabel: "Ventas",
+        icon: "/reventa",
         adminOnly: true,
       },
     ],

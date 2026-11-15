@@ -289,6 +289,24 @@ class EscenarioIn(Entrada):
     items: list[EscenarioItemIn]
 
 
+class TransferenciaIn(Entrada):
+    producto: str
+    unidades: Annotated[Decimal, Field(gt=0, max_digits=12, decimal_places=6)]
+    fecha: date | None = None
+    nota: Annotated[str, Field(max_length=500)] | None = None
+
+
+class VentaIn(Entrada):
+    # PRD-nnnn (a product of the factory) or MER-nnnn (a resale product). The costs are frozen by the service.
+    producto: str
+    unidades: Annotated[Decimal, Field(gt=0, max_digits=12, decimal_places=6)]
+    # The net price actually charged per unit.
+    precio_unitario_ars: Annotated[Decimal, Field(gt=0, max_digits=14, decimal_places=4)]
+    fecha: date | None = None
+    canal: Annotated[str, Field(max_length=100)] | None = None
+    nota: Annotated[str, Field(max_length=500)] | None = None
+
+
 class DolarIn(Entrada):
     fecha: date
     ars_por_usd: Annotated[Decimal, Field(gt=0, max_digits=12, decimal_places=4)]
@@ -978,6 +996,95 @@ class CvuNegocioOut(EscenarioOut):
     margen_transferencia_pct: Decimal
 
 
+class TransferenciaOut(Salida):
+    codigo: str
+    fecha: date
+    producto: str
+    producto_nombre: str
+    unidades: Decimal
+    costo_fabrica_unitario_ars: Decimal
+    precio_transferencia_unitario_ars: Decimal
+    margen_transferencia_pct: Decimal
+    total_transferido_ars: Decimal
+    nota: str | None
+    creado_por: str | None
+    creado_en: datetime | None
+
+
+class VentaOut(Salida):
+    codigo: str
+    fecha: date
+    producto: str
+    producto_nombre: str
+    tipo: Literal["PRODUCTO", "MERCADERIA"]
+    unidades: Decimal
+    precio_unitario_ars: Decimal
+    ingresos_ars: Decimal
+    canal: str | None
+    nota: str | None
+    costo_fabrica_unitario_ars: Decimal | None
+    precio_transferencia_unitario_ars: Decimal | None
+    costo_compra_unitario_ars: Decimal | None
+    creado_por: str | None
+    creado_en: datetime | None
+
+
+class StockFilaOut(Salida):
+    codigo: str
+    nombre: str
+    tipo: Literal["PRODUCTO", "MERCADERIA"]
+    producido: Decimal | None
+    transferido: Decimal | None
+    comprado: Decimal | None
+    vendido: Decimal
+    stock_fabrica: Decimal | None
+    stock_tienda: Decimal
+    inconsistente: bool
+    aviso: str | None
+
+
+class StockOut(Salida):
+    filas: list[StockFilaOut]
+    inconsistentes: int
+
+
+class MargenFijosOut(Salida):
+    total: Decimal
+    cargados: bool
+    pendientes: int
+    ficticios: bool
+
+
+class MargenAmbitoOut(Salida):
+    margen: Decimal
+    fijos: MargenFijosOut
+    utilidad: Decimal
+
+
+class MargenLineaOut(Salida):
+    codigo: str
+    nombre: str
+    tipo: Literal["PRODUCTO", "MERCADERIA"]
+    unidades: Decimal
+    ingresos: Decimal
+    margen_fabrica: Decimal | None
+    margen_tienda: Decimal
+    margen_consolidado: Decimal
+
+
+class MargenRealOut(Salida):
+    periodo: str
+    ventas: int
+    unidades: Decimal
+    ingresos: Decimal
+    fabrica: MargenAmbitoOut
+    tienda: MargenAmbitoOut
+    consolidado: MargenAmbitoOut
+    lineas: list[MargenLineaOut]
+    avisos: list[PanelAvisoOut]
+    confiable: bool
+
+
 class GastoCategoriaOut(Salida):
     categoria: str
     total: Decimal
@@ -1569,6 +1676,47 @@ def cvu_fabrica(cuerpo: EscenarioIn, session: Sesion):
 def cvu_tienda(cuerpo: EscenarioIn, session: Sesion):
     """Break-even of the store: own products bought at the transfer price plus resale (MER-). Reads and saves nothing."""
     return servicios.cvu_del_negocio(session, "TIENDA", cuerpo.periodo, [item.model_dump() for item in cuerpo.items])
+
+
+# --- Transfers to the store, real sales, stock and real margin (admin only, append-only) --------------------------
+
+@router.post("/transferencias", dependencies=ESCRITURA, response_model=TransferenciaOut, status_code=201)
+def registrar_transferencia(cuerpo: TransferenciaIn, session: Sesion, usuario: Escritor):
+    """Appends one transfer to the store; it freezes today's factory cost and transfer price. Never blocks on stock."""
+    return servicios.registrar_transferencia(
+        session, cuerpo.producto, cuerpo.unidades, fecha=cuerpo.fecha, nota=cuerpo.nota, quien=usuario.id)
+
+
+@router.get("/transferencias", dependencies=LECTURA_ADMIN, response_model=list[TransferenciaOut])
+def listar_transferencias(session: Sesion, periodo: Annotated[str | None, Query(pattern=PERIODO)] = None):
+    """The transfers of the month (default: this month), newest first."""
+    return servicios.listar_transferencias(session, periodo)
+
+
+@router.post("/ventas", dependencies=ESCRITURA, response_model=VentaOut, status_code=201)
+def registrar_venta(cuerpo: VentaIn, session: Sesion, usuario: Escritor):
+    """Appends one real sale (PRD- or MER-) at the net price charged; it freezes the cost of that moment. Never blocks on stock."""
+    return servicios.registrar_venta(
+        session, cuerpo.producto, cuerpo.unidades, cuerpo.precio_unitario_ars, fecha=cuerpo.fecha, canal=cuerpo.canal,
+        nota=cuerpo.nota, quien=usuario.id)
+
+
+@router.get("/ventas", dependencies=LECTURA_ADMIN, response_model=list[VentaOut])
+def listar_ventas(session: Sesion, periodo: Annotated[str | None, Query(pattern=PERIODO)] = None):
+    """The sales of the month (default: this month), newest first."""
+    return servicios.listar_ventas(session, periodo)
+
+
+@router.get("/stock", dependencies=LECTURA_ADMIN, response_model=StockOut)
+def stock_derivado(session: Sesion):
+    """Derived stock: factory (finished lots - transferred), store (transferred - sold), resale (bought - sold). Negatives are flagged, never hidden."""
+    return servicios.stock(session)
+
+
+@router.get("/margen-real", dependencies=LECTURA_ADMIN, response_model=MargenRealOut)
+def margen_real(session: Sesion, periodo: Annotated[str | None, Query(pattern=PERIODO)] = None):
+    """Real margin of the factory, the store and both together for the month (default: this month), from frozen costs."""
+    return servicios.margen_real(session, periodo)
 
 
 @router.get("/costos-fijos/resumen", dependencies=LECTURA_ADMIN, response_model=ResumenGastosOut)

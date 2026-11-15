@@ -23,9 +23,9 @@ from backend.costeo import (
     equilibrio_con_mezcla, importe_sobre_precio, margen_de_contribucion, margen_por_hora, necesita_recotizar, precio_a_la_fecha, precio_con_margen, punto_de_equilibrio, resultado_cvu,
 )
 from backend.models import (
-    Categoria, Color, Cotizacion, Etapa, GastoPeriodo, Impuesto, KitComponente, Material, Modelo, ModeloInsumo,
-    OrdenEstado, OrdenFabricacion, OrdenItem, Parametro, Persona, PrecioMaterial, PrecioVenta, Producto, Proveedor,
-    RecetaLinea, Taller, TipoCambio,
+    Categoria, Color, CompraReventa, Cotizacion, Etapa, GastoPeriodo, Impuesto, KitComponente, Material, Modelo,
+    ModeloInsumo, OrdenEstado, OrdenFabricacion, OrdenItem, Parametro, Persona, PrecioMaterial, PrecioVenta, Producto,
+    ProductoReventa, Proveedor, RecetaLinea, Taller, TipoCambio, Transferencia, Venta,
 )
 from backend.receta import (
     Cotizado, Extra, InsumoModelo, ModeloReceta, ProductoReceta, Receta, cotizar_producto, generar_receta,
@@ -3338,3 +3338,349 @@ def resumen_de_gastos(session: Session, periodo: str | None = None, meses: int =
         tienda = sum((m or ZERO for p, a, _, m in filas if p == mes and a == "TIENDA"), ZERO)
         serie.append({"periodo": mes, "fabrica": fabrica, "tienda": tienda, "total": fabrica + tienda})
     return {"periodo": periodo, **resumen, "serie": serie, "margen_transferencia_pct": _margen_transferencia(session) * 100}
+
+
+# --- Transfers to the store, real sales, derived stock and real margin ---------------------------------------------
+# Two append-only tables (`transferencia`, `venta`) freeze the cost of the moment; stock and margin are computed on read
+# and never stored. Nothing here edits or deletes a row. SUPUESTO: validar con Robert (every rule of this section).
+
+ESTADOS_PRODUCIDOS = ("LISTA", "CERRADA")
+CODIGO_MERCADERIA = "MER-"
+AVISO_STOCK_NEGATIVO_FABRICA = (
+    "Se transfirió más de lo que se produjo (lotes en LISTA o CERRADA): falta terminar un lote o hay una transferencia de más."
+)
+AVISO_STOCK_NEGATIVO_TIENDA = "Se vendió más de lo que se transfirió: falta cargar una transferencia o hay una venta de más."
+AVISO_STOCK_NEGATIVO_MERCADERIA = "Se vendió más de lo que se compró: falta cargar una compra o hay una venta de más."
+AVISOS_DEL_MARGEN_REAL = {
+    "VENTAS_SIN_CARGAR": "Todavía no hay ventas cargadas en este mes: el margen real queda en cero.",
+    "SIN_FIJOS_FABRICA": "Todavía no se cargaron los costos fijos de la fábrica de este período: la utilidad no es confiable.",
+    "SIN_FIJOS_TIENDA": "Todavía no se cargaron los costos fijos de la tienda de este período: la utilidad no es confiable.",
+    "FIJOS_PENDIENTES": "Hay costos fijos sin monto cargado: la utilidad no es confiable.",
+    "FIJOS_FICTICIOS": "Algunos costos fijos son de ejemplo: la utilidad no es confiable.",
+    "MARGEN_AL_VENDER": "El margen de la fábrica se reconoce cuando la tienda vende, no cuando le transfiere.",
+}
+# Informational: they never make the month "not reliable".
+AVISOS_INFORMATIVOS_DEL_MARGEN = frozenset({"MARGEN_AL_VENDER"})
+
+
+@dataclass(frozen=True)
+class VentaCongelada:
+    """One sale with what it cost at that moment. PRD: `costo_fabrica` and `precio_transferencia`; MER: `costo_compra`."""
+    codigo: str
+    nombre: str
+    unidades: Decimal
+    precio: Decimal
+    costo_fabrica: Decimal | None = None
+    precio_transferencia: Decimal | None = None
+    costo_compra: Decimal | None = None
+
+    @property
+    def es_mercaderia(self) -> bool:
+        return self.codigo.startswith(CODIGO_MERCADERIA)
+
+
+def _rango_del_mes(periodo: str) -> tuple[date, date]:
+    """First day of `periodo` (AAAA-MM) and first day of the next month."""
+    año, mes = int(periodo[:4]), int(periodo[5:7])
+    return date(año, mes, 1), (date(año + 1, 1, 1) if mes == 12 else date(año, mes + 1, 1))
+
+
+def _unidades_validas(unidades: Decimal | None) -> None:
+    if unidades is None or unidades <= 0:
+        raise DatosInvalidos("Las unidades tienen que ser mayores que cero.")
+
+
+def _congelar_de_fabrica(session: Session, producto: Producto) -> tuple[Decimal, Decimal, Decimal]:
+    """Today's factory cost, the transfer price (cost / (1 - margin)) and the margin used, in percent.
+
+    SUPUESTO: validar con Robert. The cost is the one of today (`_costos_totales_de_hoy`); the margin is the parameter
+    MARGEN_TRANSFERENCIA_PCT of this moment. Both are frozen in the row that is saved.
+    """
+    costo = _costos_totales_de_hoy(session, {producto.codigo})[producto.codigo]
+    if costo is None:
+        raise DatosInvalidos("No se puede calcular el costo de ese producto todavía.")
+    margen_pct = (_margen_transferencia(session) * 100).quantize(Decimal("0.001"), ROUND_HALF_UP)
+    try:
+        precio = precio_con_margen(costo, margen_pct)
+    except ValueError:
+        raise DatosInvalidos("El margen de transferencia no es válido: revisá el parámetro MARGEN_TRANSFERENCIA_PCT.") from None
+    return costo.quantize(MAS_CUATRO_DECIMALES, ROUND_HALF_UP), precio, margen_pct
+
+
+def _nombres_de_productos(session: Session, codigos: set[str]) -> dict[str, str]:
+    """Display name by code, for PRD products (from the model, leather and colour) and MER resale products."""
+    propios = {c for c in codigos if not c.startswith(CODIGO_MERCADERIA)}
+    nombres = {codigo: info.nombre for codigo, info in _info_productos(session, propios, con_costo=False).items()}
+    reventas = codigos - propios
+    if reventas:
+        nombres.update(dict(session.execute(
+            select(ProductoReventa.codigo, ProductoReventa.nombre).where(ProductoReventa.codigo.in_(reventas))).all()))
+    return nombres
+
+
+def _transferencia_a_dict(fila: Transferencia, codigo_producto: str, nombre: str | None) -> dict:
+    return {
+        "codigo": fila.codigo, "fecha": fila.fecha, "producto": codigo_producto, "producto_nombre": nombre or codigo_producto,
+        "unidades": fila.unidades, "costo_fabrica_unitario_ars": fila.costo_fabrica_unitario_ars,
+        "precio_transferencia_unitario_ars": fila.precio_transferencia_unitario_ars,
+        "margen_transferencia_pct": fila.margen_transferencia_pct,
+        "total_transferido_ars": fila.unidades * fila.precio_transferencia_unitario_ars,
+        "nota": fila.nota, "creado_por": fila.creado_por, "creado_en": fila.created_at,
+    }
+
+
+def registrar_transferencia(
+    session: Session, codigo_producto: str, unidades: Decimal, fecha: date | None = None, nota: str | None = None,
+    quien: str | None = None,
+) -> dict:
+    """Append one transfer of `unidades` of a product from the factory to the store, freezing today's factory cost and
+    the transfer price. Never blocks when the factory stock would go negative: the stock screen flags it instead.
+    SUPUESTO: validar con Robert."""
+    _unidades_validas(unidades)
+    producto = _producto_o_404(session, codigo_producto)
+    costo, precio, margen_pct = _congelar_de_fabrica(session, producto)
+    fila = Transferencia(
+        codigo=f"TRF-{_siguiente_numero(session, Transferencia.codigo, 'TRF'):04d}", fecha=fecha or date.today(),
+        producto_id=producto.id, unidades=unidades, costo_fabrica_unitario_ars=costo,
+        precio_transferencia_unitario_ars=precio, margen_transferencia_pct=margen_pct,
+        nota=_texto_o_nada(nota), creado_por=quien,
+    )
+    _insertar(session, fila, "No se pudo asignar el código de la transferencia; intentá de nuevo.")
+    session.commit()
+    return _transferencia_a_dict(fila, codigo_producto, _nombres_de_productos(session, {codigo_producto}).get(codigo_producto))
+
+
+def _venta_a_dict(fila: Venta, codigo_producto: str, nombre: str | None) -> dict:
+    return {
+        "codigo": fila.codigo, "fecha": fila.fecha, "producto": codigo_producto, "producto_nombre": nombre or codigo_producto,
+        "tipo": "MERCADERIA" if codigo_producto.startswith(CODIGO_MERCADERIA) else "PRODUCTO",
+        "unidades": fila.unidades, "precio_unitario_ars": fila.precio_unitario_ars,
+        "ingresos_ars": fila.unidades * fila.precio_unitario_ars, "canal": fila.canal, "nota": fila.nota,
+        "costo_fabrica_unitario_ars": fila.costo_fabrica_unitario_ars,
+        "precio_transferencia_unitario_ars": fila.precio_transferencia_unitario_ars,
+        "costo_compra_unitario_ars": fila.costo_compra_unitario_ars,
+        "creado_por": fila.creado_por, "creado_en": fila.created_at,
+    }
+
+
+def registrar_venta(
+    session: Session, codigo: str, unidades: Decimal, precio_unitario_ars: Decimal, fecha: date | None = None,
+    canal: str | None = None, nota: str | None = None, quien: str | None = None,
+) -> dict:
+    """Append one real sale of a product (`PRD-`) or of a resale product (`MER-`) at the net price charged per unit.
+
+    A PRD sale freezes today's factory cost and transfer price; a MER sale freezes the unit cost of its latest purchase
+    (rejected when it has none). Never blocks when the stock would go negative: the stock screen flags it instead.
+    SUPUESTO: validar con Robert.
+    """
+    from backend import reventa
+
+    _unidades_validas(unidades)
+    if precio_unitario_ars is None or precio_unitario_ars <= 0:
+        raise DatosInvalidos("El precio de venta tiene que ser mayor que cero.")
+    congelados: dict = {}
+    if codigo.startswith(CODIGO_MERCADERIA):
+        mercaderia = reventa._por_codigo(session, codigo)
+        compras = reventa._compras(session, mercaderia.id)
+        if not compras:
+            raise DatosInvalidos("Ese producto de mercadería todavía no tiene un costo de compra cargado.")
+        destino = {"producto_reventa_id": mercaderia.id}
+        congelados["costo_compra_unitario_ars"] = compras[0].costo_unitario_ars
+    else:
+        producto = _producto_o_404(session, codigo)
+        costo, precio, _ = _congelar_de_fabrica(session, producto)
+        destino = {"producto_id": producto.id}
+        congelados["costo_fabrica_unitario_ars"] = costo
+        congelados["precio_transferencia_unitario_ars"] = precio
+    fila = Venta(
+        codigo=f"VEN-{_siguiente_numero(session, Venta.codigo, 'VEN'):04d}", fecha=fecha or date.today(), **destino,
+        unidades=unidades, precio_unitario_ars=precio_unitario_ars, canal=_texto_o_nada(canal), nota=_texto_o_nada(nota),
+        creado_por=quien, **congelados,
+    )
+    _insertar(session, fila, "No se pudo asignar el código de la venta; intentá de nuevo.")
+    session.commit()
+    return _venta_a_dict(fila, codigo, _nombres_de_productos(session, {codigo}).get(codigo))
+
+
+def listar_transferencias(session: Session, periodo: str | None = None, hoy: date | None = None) -> list[dict]:
+    """Transfers dated in `periodo` (AAAA-MM, default this month), newest first."""
+    desde, hasta = _rango_del_mes(periodo or mes_de(hoy or date.today()))
+    filas = session.execute(
+        select(Transferencia, Producto.codigo).join(Producto, Producto.id == Transferencia.producto_id)
+        .where(Transferencia.fecha >= desde, Transferencia.fecha < hasta)
+        .order_by(Transferencia.fecha.desc(), Transferencia.id.desc())).all()
+    nombres = _nombres_de_productos(session, {codigo for _, codigo in filas})
+    return [_transferencia_a_dict(fila, codigo, nombres.get(codigo)) for fila, codigo in filas]
+
+
+def listar_ventas(session: Session, periodo: str | None = None, hoy: date | None = None) -> list[dict]:
+    """Sales dated in `periodo` (AAAA-MM, default this month), newest first."""
+    desde, hasta = _rango_del_mes(periodo or mes_de(hoy or date.today()))
+    filas = session.execute(
+        select(Venta, Producto.codigo, ProductoReventa.codigo)
+        .outerjoin(Producto, Producto.id == Venta.producto_id)
+        .outerjoin(ProductoReventa, ProductoReventa.id == Venta.producto_reventa_id)
+        .where(Venta.fecha >= desde, Venta.fecha < hasta)
+        .order_by(Venta.fecha.desc(), Venta.id.desc())).all()
+    nombres = _nombres_de_productos(session, {propio or reventa for _, propio, reventa in filas})
+    return [_venta_a_dict(fila, propio or reventa, nombres.get(propio or reventa)) for fila, propio, reventa in filas]
+
+
+def armar_stock(
+    *, producidos: dict[str, Decimal], transferidos: dict[str, Decimal], comprados: dict[str, Decimal],
+    vendidos: dict[str, Decimal], nombres: dict[str, str],
+) -> dict:
+    """Pure: stock per code from the units moved, keyed by product code (`PRD-`) or resale code (`MER-`).
+
+    Factory stock = produced (lots LISTA or CERRADA) - transferred; store stock = transferred - sold; resale stock =
+    bought - sold. Only the codes with some movement come back. A negative quantity is never hidden or clamped: the row
+    is flagged `inconsistente` with a short `aviso`. SUPUESTO: validar con Robert. "Producido" here means finished lots,
+    unlike `unidades_por_producto`, which counts every lot except the planned ones.
+    """
+    cero = Decimal(0)
+    codigos = set(producidos) | set(transferidos) | set(comprados) | set(vendidos)
+    filas = []
+    for codigo in codigos:
+        vendido = vendidos.get(codigo, cero)
+        if codigo.startswith(CODIGO_MERCADERIA):
+            comprado = comprados.get(codigo, cero)
+            tienda = comprado - vendido
+            avisos = [AVISO_STOCK_NEGATIVO_MERCADERIA] if tienda < 0 else []
+            fila = {"tipo": "MERCADERIA", "producido": None, "transferido": None, "comprado": comprado,
+                    "stock_fabrica": None, "stock_tienda": tienda}
+        else:
+            producido, transferido = producidos.get(codigo, cero), transferidos.get(codigo, cero)
+            fabrica, tienda = producido - transferido, transferido - vendido
+            avisos = ([AVISO_STOCK_NEGATIVO_FABRICA] if fabrica < 0 else []) + (
+                [AVISO_STOCK_NEGATIVO_TIENDA] if tienda < 0 else [])
+            fila = {"tipo": "PRODUCTO", "producido": producido, "transferido": transferido, "comprado": None,
+                    "stock_fabrica": fabrica, "stock_tienda": tienda}
+        filas.append({
+            "codigo": codigo, "nombre": nombres.get(codigo, codigo), **fila, "vendido": vendido,
+            "inconsistente": bool(avisos), "aviso": " ".join(avisos) or None,
+        })
+    filas.sort(key=lambda f: (f["tipo"] != "PRODUCTO", f["nombre"].lower(), f["codigo"]))
+    return {"filas": filas, "inconsistentes": sum(1 for f in filas if f["inconsistente"])}
+
+
+def _sumas_por_codigo(session: Session, columna_codigo, suma, *condiciones, uniones=()) -> dict[str, Decimal]:
+    consulta = select(columna_codigo, func.sum(suma))
+    for tabla, on in uniones:
+        consulta = consulta.join(tabla, on)
+    return {codigo: total for codigo, total in session.execute(consulta.where(*condiciones).group_by(columna_codigo)).all()}
+
+
+def stock(session: Session) -> dict:
+    """Derived stock of finished products and resale products. Nothing is stored or edited (see `armar_stock`)."""
+    producidos = _sumas_por_codigo(
+        session, Producto.codigo, OrdenItem.cantidad, OrdenFabricacion.estado.in_(ESTADOS_PRODUCIDOS),
+        uniones=[(OrdenItem, OrdenItem.producto_id == Producto.id),
+                 (OrdenFabricacion, OrdenFabricacion.id == OrdenItem.orden_fabricacion_id)])
+    transferidos = _sumas_por_codigo(
+        session, Producto.codigo, Transferencia.unidades, uniones=[(Transferencia, Transferencia.producto_id == Producto.id)])
+    vendidos = _sumas_por_codigo(
+        session, Producto.codigo, Venta.unidades, uniones=[(Venta, Venta.producto_id == Producto.id)])
+    vendidos.update(_sumas_por_codigo(
+        session, ProductoReventa.codigo, Venta.unidades,
+        uniones=[(Venta, Venta.producto_reventa_id == ProductoReventa.id)]))
+    comprados = _sumas_por_codigo(
+        session, ProductoReventa.codigo, CompraReventa.unidades, CompraReventa.unidades.is_not(None),
+        uniones=[(CompraReventa, CompraReventa.producto_reventa_id == ProductoReventa.id)])
+    codigos = set(producidos) | set(transferidos) | set(vendidos) | set(comprados)
+    return armar_stock(
+        producidos=producidos, transferidos=transferidos, comprados=comprados, vendidos=vendidos,
+        nombres=_nombres_de_productos(session, codigos))
+
+
+def _fijos_a_dict(fijos: FijosDelMes) -> dict:
+    return {"total": fijos.total_fabrica, "cargados": fijos.cargados, "pendientes": fijos.pendientes, "ficticios": fijos.ficticios}
+
+
+def _ambito_del_margen(margen: Decimal, fijos: dict) -> dict:
+    return {"margen": margen, "fijos": fijos, "utilidad": margen - fijos["total"]}
+
+
+def armar_margen_real(
+    *, periodo: str, ventas: list[VentaCongelada], fijos_fabrica: FijosDelMes, fijos_tienda: FijosDelMes,
+) -> dict:
+    """Pure: real margin of the factory, the store and both together from the sales of one month.
+
+    Per PRD sale: factory margin = units x (transfer price - factory cost); store margin = units x (price charged -
+    transfer price); consolidated = units x (price charged - factory cost). Per MER sale there is no factory margin and
+    the store margin is units x (price charged - purchase cost). So consolidated == factory + store: the transfer margin
+    cancels and is never counted twice. Profit = margin - the fixed costs of that ámbito; the consolidated profit uses both.
+    SUPUESTO: validar con Robert y el contador. The margin is recognized when the store sells (not when the factory
+    transfers), and selling taxes (IIBB) and variable selling expenses are not deducted here.
+    """
+    cero = Decimal(0)
+    lineas: dict[str, dict] = {}
+    for v in ventas:
+        ingresos = v.unidades * v.precio
+        if v.es_mercaderia:
+            fabrica, tienda = None, ingresos - v.unidades * v.costo_compra
+            consolidado = tienda
+        else:
+            fabrica = v.unidades * (v.precio_transferencia - v.costo_fabrica)
+            tienda = ingresos - v.unidades * v.precio_transferencia
+            consolidado = ingresos - v.unidades * v.costo_fabrica
+        linea = lineas.setdefault(v.codigo, {
+            "codigo": v.codigo, "nombre": v.nombre, "tipo": "MERCADERIA" if v.es_mercaderia else "PRODUCTO",
+            "unidades": cero, "ingresos": cero, "margen_fabrica": None if v.es_mercaderia else cero,
+            "margen_tienda": cero, "margen_consolidado": cero})
+        linea["unidades"] += v.unidades
+        linea["ingresos"] += ingresos
+        if fabrica is not None:
+            linea["margen_fabrica"] += fabrica
+        linea["margen_tienda"] += tienda
+        linea["margen_consolidado"] += consolidado
+    filas = sorted(lineas.values(), key=lambda l: (-l["ingresos"], l["nombre"].lower(), l["codigo"]))
+    margen_fabrica = sum((l["margen_fabrica"] for l in filas if l["margen_fabrica"] is not None), cero)
+    margen_tienda = sum((l["margen_tienda"] for l in filas), cero)
+    margen_consolidado = sum((l["margen_consolidado"] for l in filas), cero)
+    fijos_f, fijos_t = _fijos_a_dict(fijos_fabrica), _fijos_a_dict(fijos_tienda)
+    fijos_c = {
+        "total": fijos_f["total"] + fijos_t["total"], "cargados": fijos_f["cargados"] and fijos_t["cargados"],
+        "pendientes": fijos_f["pendientes"] + fijos_t["pendientes"], "ficticios": fijos_f["ficticios"] or fijos_t["ficticios"]}
+    codigos = []
+    if not ventas:
+        codigos.append("VENTAS_SIN_CARGAR")
+    if not fijos_fabrica.cargados:
+        codigos.append("SIN_FIJOS_FABRICA")
+    if not fijos_tienda.cargados:
+        codigos.append("SIN_FIJOS_TIENDA")
+    if fijos_c["pendientes"]:
+        codigos.append("FIJOS_PENDIENTES")
+    if fijos_c["ficticios"]:
+        codigos.append("FIJOS_FICTICIOS")
+    confiable = not codigos
+    codigos.append("MARGEN_AL_VENDER")
+    return {
+        "periodo": periodo, "ventas": len(ventas), "unidades": sum((v.unidades for v in ventas), cero),
+        "ingresos": sum((l["ingresos"] for l in filas), cero),
+        "fabrica": _ambito_del_margen(margen_fabrica, fijos_f), "tienda": _ambito_del_margen(margen_tienda, fijos_t),
+        "consolidado": _ambito_del_margen(margen_consolidado, fijos_c),
+        "lineas": filas, "avisos": [{"codigo": c, "texto": AVISOS_DEL_MARGEN_REAL[c]} for c in codigos],
+        "confiable": confiable,
+    }
+
+
+def margen_real(session: Session, periodo: str | None = None, hoy: date | None = None) -> dict:
+    """Real margin of the sales of `periodo` (AAAA-MM, default this month) by their frozen costs. Reads only."""
+    periodo = periodo or mes_de(hoy or date.today())
+    desde, hasta = _rango_del_mes(periodo)
+    filas = session.execute(
+        select(Venta, Producto.codigo, ProductoReventa.codigo)
+        .outerjoin(Producto, Producto.id == Venta.producto_id)
+        .outerjoin(ProductoReventa, ProductoReventa.id == Venta.producto_reventa_id)
+        .where(Venta.fecha >= desde, Venta.fecha < hasta).order_by(Venta.id)).all()
+    nombres = _nombres_de_productos(session, {propio or reventa for _, propio, reventa in filas})
+    ventas = [
+        VentaCongelada(
+            codigo=propio or reventa, nombre=nombres.get(propio or reventa, propio or reventa), unidades=v.unidades,
+            precio=v.precio_unitario_ars, costo_fabrica=v.costo_fabrica_unitario_ars,
+            precio_transferencia=v.precio_transferencia_unitario_ars, costo_compra=v.costo_compra_unitario_ars)
+        for v, propio, reventa in filas]
+    return armar_margen_real(
+        periodo=periodo, ventas=ventas,
+        fijos_fabrica=_fijos_de_fabrica(session, [periodo], "FABRICA").get(periodo, SIN_FIJOS),
+        fijos_tienda=_fijos_de_fabrica(session, [periodo], "TIENDA").get(periodo, SIN_FIJOS))

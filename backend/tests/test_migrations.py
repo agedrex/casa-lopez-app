@@ -81,7 +81,7 @@ class RecordedOperations:
 # Tables created by revisions after 0003, so 0003 neither creates nor drops them.
 ADDED_AFTER_DER_V3 = {"precio_venta", "proveedor", "documento_proveedor", "producto_reventa", "compra_reventa",
                       "formulario_consumo", "formulario_consumo_linea", "pedido_proveedor", "pedido_linea", "modelo_insumo",
-                      "proveedor_producto"}
+                      "proveedor_producto", "transferencia", "venta"}
 
 
 # 0011 links the existing precio_material to proveedor (created by 0007), so that FK comes after both tables exist.
@@ -103,7 +103,7 @@ def test_revision_chain_replaces_v1_with_v3_then_seeds(monkeypatch):
                      "0013_impuestos_vacios.py", "0014_gastos_venta_pct.py",
                      "0015_precio_venta_margen.py", "0016_formulario_consumo.py", "0017_formulario_modelo.py",
                      "0018_pedidos_proveedor.py", "0019_modelo_insumo.py", "0020_proveedor_producto.py",
-                     "0021_margen_transferencia.py"):
+                     "0021_margen_transferencia.py", "0022_ventas_transferencias.py"):
         _, revision = load_revision(monkeypatch, filename)
         chain[revision["revision"]] = revision["down_revision"]
     assert chain == {
@@ -123,6 +123,7 @@ def test_revision_chain_replaces_v1_with_v3_then_seeds(monkeypatch):
         "0019_modelo_insumo": "0018_pedidos_proveedor",
         "0020_proveedor_producto": "0019_modelo_insumo",
         "0021_margen_transferencia": "0020_proveedor_producto",
+        "0022_ventas_transferencias": "0021_margen_transferencia",
     }
 
 
@@ -158,6 +159,7 @@ def test_der_v3_revision_matches_orm_and_reverses_dependencies(monkeypatch):
     runpy.run_path(str(VERSIONS / "0019_modelo_insumo.py"))["upgrade"]()
     runpy.run_path(str(VERSIONS / "0020_proveedor_producto.py"))["upgrade"]()
     runpy.run_path(str(VERSIONS / "0021_margen_transferencia.py"))["upgrade"]()
+    runpy.run_path(str(VERSIONS / "0022_ventas_transferencias.py"))["upgrade"]()
     assert set(operations.metadata.tables) == set(Base.metadata.tables)
     dialect = postgresql.dialect()
     for key, declared in operations.metadata.tables.items():

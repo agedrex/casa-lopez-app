@@ -1118,3 +1118,101 @@ export type ProveedorProducto = {
   cargas: number;
   precio_anterior: string | null;
 };
+
+// Transfers to the store, real sales, derived stock and real margin. Mirror the *Out models of the API.
+// Every amount and quantity is a Decimal string calculated by the backend; the front never computes with them.
+
+/** One transfer to the store. The factory cost and the transfer price are frozen at that moment. */
+export type Transferencia = {
+  codigo: string;
+  fecha: string;
+  producto: string;
+  producto_nombre: string;
+  unidades: string;
+  costo_fabrica_unitario_ars: string;
+  precio_transferencia_unitario_ars: string;
+  // A fraction: 0.2 = 20 %.
+  margen_transferencia_pct: string;
+  total_transferido_ars: string;
+  nota: string | null;
+  creado_por: string | null;
+  creado_en: string | null;
+};
+
+/** One real sale (own product or Mercadería). The costs of that moment are frozen by the API. */
+export type Venta = {
+  codigo: string;
+  fecha: string;
+  producto: string;
+  producto_nombre: string;
+  tipo: "PRODUCTO" | "MERCADERIA";
+  unidades: string;
+  precio_unitario_ars: string;
+  ingresos_ars: string;
+  canal: string | null;
+  nota: string | null;
+  costo_fabrica_unitario_ars: string | null;
+  precio_transferencia_unitario_ars: string | null;
+  costo_compra_unitario_ars: string | null;
+  creado_por: string | null;
+  creado_en: string | null;
+};
+
+export type StockFila = {
+  codigo: string;
+  nombre: string;
+  tipo: "PRODUCTO" | "MERCADERIA";
+  producido: string | null;
+  transferido: string | null;
+  comprado: string | null;
+  vendido: string;
+  // Null for a Mercadería product: it has no factory.
+  stock_fabrica: string | null;
+  stock_tienda: string;
+  // A negative stock is flagged, never hidden; `aviso` explains it.
+  inconsistente: boolean;
+  aviso: string | null;
+};
+
+export type Stock = {
+  filas: StockFila[];
+  inconsistentes: number;
+};
+
+export type MargenFijos = {
+  total: string;
+  cargados: boolean;
+  pendientes: number;
+  ficticios: boolean;
+};
+
+export type MargenAmbito = {
+  margen: string;
+  fijos: MargenFijos;
+  utilidad: string;
+};
+
+export type MargenLinea = {
+  codigo: string;
+  nombre: string;
+  tipo: "PRODUCTO" | "MERCADERIA";
+  unidades: string;
+  ingresos: string;
+  margen_fabrica: string | null;
+  margen_tienda: string;
+  margen_consolidado: string;
+};
+
+export type MargenReal = {
+  periodo: string;
+  ventas: number;
+  unidades: string;
+  ingresos: string;
+  fabrica: MargenAmbito;
+  tienda: MargenAmbito;
+  consolidado: MargenAmbito;
+  lineas: MargenLinea[];
+  avisos: { codigo: string; texto: string }[];
+  // False when the month cannot be trusted (see `avisos`).
+  confiable: boolean;
+};
