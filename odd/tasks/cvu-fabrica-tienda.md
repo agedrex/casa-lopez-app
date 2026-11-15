@@ -13,11 +13,13 @@ Objective: two cost-volume-profit models (FABRICA and TIENDA) plus a view of how
 
 ## Tasks
 
-- [ ] T1 (S2) parámetro + migración 0021 + `precio_de_transferencia`
-- [ ] T2 (S1) resumen de gastos fijos + endpoint
-- [ ] T3 (S3, S4, S5) escenarios fábrica y tienda + endpoints
-- [ ] T4 (S6) pantalla + nav
+- [x] T1 (S2) parámetro + migración 0021 + `precio_de_transferencia`
+- [x] T2 (S1) resumen de gastos fijos + endpoint
+- [x] T3 (S3, S4, S5) escenarios fábrica y tienda + endpoints
+- [x] T4 (S6) pantalla + nav
 - [ ] T5 verificación completa y estado "listo para cargar"
+
+- Slice boundary: PR1 = backend (160098e, ~400 lines), PR2 = front screen Negocio (commit below). Push/PR is the user's decision.
 
 ## Log
 

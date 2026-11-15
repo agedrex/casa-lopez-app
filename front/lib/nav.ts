@@ -30,7 +30,15 @@ export const NAV_ITEMS: NavGroup[] = [
   },
   {
     title: "Resumen",
-    items: [{ href: "/escenarios", label: "Escenarios", adminOnly: true }],
+    items: [
+      { href: "/escenarios", label: "Escenarios", adminOnly: true },
+      {
+        href: "/negocio",
+        label: "Negocio",
+        icon: "/escenarios",
+        adminOnly: true,
+      },
+    ],
   },
   {
     title: "1 · Datos de base",
@@ -169,7 +177,15 @@ const DESKTOP_NAV: NavGroup[] = [
   },
   {
     title: "Simulador",
-    items: [{ href: "/escenarios", label: "Escenarios", adminOnly: true }],
+    items: [
+      { href: "/escenarios", label: "Escenarios", adminOnly: true },
+      {
+        href: "/negocio",
+        label: "Negocio",
+        icon: "/escenarios",
+        adminOnly: true,
+      },
+    ],
   },
   {
     title: "Costos variables",

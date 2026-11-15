@@ -17,11 +17,12 @@ function positive(value: string | null): value is string {
 }
 
 /**
- * Runs the sales scenario. It saves nothing, so the API lets admin and gerente call it
- * (LECTURA_PRODUCTOS); here we only check the session and the API's 403 comes back as the error.
+ * Reads the rows of the form and posts them to `path`. It saves nothing, so the API lets admin and
+ * gerente call /cvu/escenario (LECTURA_PRODUCTOS) and only admin the fábrica and tienda ones;
+ * here we only check the session and the API's 403 comes back as the error.
  */
-export async function runEscenario(
-  _previous: EscenarioState,
+async function runCvu(
+  path: string,
   formData: FormData,
 ): Promise<EscenarioState> {
   const session = await getSession();
@@ -60,10 +61,34 @@ export async function runEscenario(
   const periodo = text(formData, "periodo");
   if (periodo && !PERIODO.test(periodo)) return error("Elegí el mes.");
 
-  const result = await apiPost<Escenario>("/cvu/escenario", {
+  const result = await apiPost<Escenario>(path, {
     periodo: periodo || null,
     items,
   });
   if (!result.ok) return fromFailure(result);
   return { status: "ok", data: result.data };
+}
+
+/** Scenario of the product list (admin and gerente). */
+export async function runEscenario(
+  _previous: EscenarioState,
+  formData: FormData,
+): Promise<EscenarioState> {
+  return runCvu("/cvu/escenario", formData);
+}
+
+/** Scenario of the factory: sells to the store at cost + transfer margin (admin only). */
+export async function runFabrica(
+  _previous: EscenarioState,
+  formData: FormData,
+): Promise<EscenarioState> {
+  return runCvu("/cvu/fabrica", formData);
+}
+
+/** Scenario of the store: own products at the transfer price plus Mercadería (admin only). */
+export async function runTienda(
+  _previous: EscenarioState,
+  formData: FormData,
+): Promise<EscenarioState> {
+  return runCvu("/cvu/tienda", formData);
 }

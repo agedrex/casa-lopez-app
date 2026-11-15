@@ -31,8 +31,13 @@ import {
   formatPeriod,
   formatQuantity,
 } from "@/lib/format";
-import type { Escenario } from "@/lib/types";
-import { type EscenarioState, runEscenario } from "./actions";
+import type { AmbitoNegocio, CvuNegocio, Escenario } from "@/lib/types";
+import {
+  type EscenarioState,
+  runEscenario,
+  runFabrica,
+  runTienda,
+} from "./actions";
 
 export type ProductOption = { codigo: string; nombre: string };
 
@@ -43,6 +48,34 @@ const OMITIDO_SENTENCE: Record<string, string> = {
   SIN_PRECIO:
     "No tiene precio de venta: escribí uno en esta fila o guardalo en su ficha.",
   SIN_COSTO_VARIABLE: "Todavía no se puede calcular cuánto cuesta fabricarlo.",
+};
+
+// Same component for the simulator (no ámbito) and the Negocio tabs; only the endpoint and the copy change.
+const AMBITO_CONFIG = {
+  FABRICA: {
+    action: runFabrica,
+    title: "Escenario de la fábrica",
+    intro:
+      "Cargá qué productos pensás fabricar para la tienda y cuántas unidades, y te decimos cuánto tiene que vender la fábrica para cubrir sus costos fijos.",
+    fijos: "Costos fijos de la fábrica",
+    pricePlaceholder: "El de transferencia",
+    codePlaceholder: "Código del producto",
+  },
+  TIENDA: {
+    action: runTienda,
+    title: "Escenario de la tienda",
+    intro:
+      "Cargá qué productos pensás vender en la tienda (propios o de Mercadería) y cuántas unidades, y te decimos cuánto tiene que vender la tienda para cubrir sus costos fijos.",
+    fijos: "Costos fijos de la tienda",
+    pricePlaceholder: "El guardado",
+    codePlaceholder: "Producto (PRD-) o Mercadería (MER-)",
+  },
+} as const;
+
+const FUENTE_PRECIO_TEXT: Record<string, string> = {
+  INGRESADO: "escrito acá",
+  GUARDADO: "guardado",
+  TRANSFERENCIA: "precio de transferencia",
 };
 
 const RESULT_SENTENCE = {
@@ -78,12 +111,18 @@ function Cifra({
   );
 }
 
+function esNegocio(data: Escenario): data is CvuNegocio {
+  return "ambito" in data;
+}
+
 function Resultado({
   data,
   puedeCorregir,
+  fijosTitulo,
 }: {
   data: Escenario;
   puedeCorregir: boolean;
+  fijosTitulo: string;
 }) {
   const { resultado, fijos } = data;
   const perdida = resultado.utilidad?.startsWith("-") ?? false;
@@ -127,9 +166,13 @@ function Resultado({
       )}
 
       <p className="text-sm text-muted">
-        Costos fijos de {formatPeriod(data.periodo)}:{" "}
+        {fijosTitulo} de {formatPeriod(data.periodo)}:{" "}
         <strong>{fijos.cargados ? formatArs(fijos.total_fabrica) : "—"}</strong>
-        . {MC_EXPLICACION}
+        .{" "}
+        {esNegocio(data)
+          ? `Margen de transferencia usado: ${formatPercent(data.margen_transferencia_pct)}. `
+          : ""}
+        {MC_EXPLICACION}
       </p>
 
       {data.lineas.length > 0 ? (
@@ -174,9 +217,8 @@ function Resultado({
                   <td className={`${tdClass} ${numClass}`}>
                     {formatArs(line.precio)}
                     <span className="block text-xs text-muted">
-                      {line.fuente_precio === "INGRESADO"
-                        ? "escrito acá"
-                        : "guardado"}
+                      {FUENTE_PRECIO_TEXT[line.fuente_precio] ??
+                        line.fuente_precio}
                     </span>
                   </td>
                   <td className={`${tdClass} ${numClass}`}>
@@ -259,13 +301,18 @@ export function EscenarioDeVentas({
   productos,
   periodo,
   puedeCorregir,
+  ambito,
 }: {
   productos: ProductOption[];
   periodo: string;
   puedeCorregir: boolean;
+  /** Without it: the simulator of /escenarios. FABRICA or TIENDA: the Negocio tabs (admin only). */
+  ambito?: AmbitoNegocio;
 }) {
+  const config = ambito ? AMBITO_CONFIG[ambito] : null;
+  const prefix = ambito ? `negocio-${ambito.toLowerCase()}` : "escenario";
   const [state, dispatch, pending] = useActionState<EscenarioState, FormData>(
-    runEscenario,
+    config ? config.action : runEscenario,
     IDLE,
   );
   const [rows, setRows] = useState([0]);
@@ -289,15 +336,16 @@ export function EscenarioDeVentas({
   return (
     <Card className="space-y-6">
       <div>
-        <h2 className="text-xl">Escenario de ventas</h2>
+        <h2 className="text-xl">{config?.title ?? "Escenario de ventas"}</h2>
         <p className="mt-2 text-sm text-muted">
-          Cargá qué productos pensás vender y cuántas unidades, y te decimos
-          cuánto tenés que vender para cubrir los costos fijos. Los volúmenes
-          son los que escribas acá, no ventas reales. {MC_EXPLICACION}
+          {config?.intro ??
+            "Cargá qué productos pensás vender y cuántas unidades, y te decimos cuánto tenés que vender para cubrir los costos fijos."}{" "}
+          Los volúmenes son los que escribas acá, no ventas reales.{" "}
+          {MC_EXPLICACION}
         </p>
       </div>
       <form onSubmit={onSubmit} className="space-y-5">
-        <datalist id="escenario-productos">
+        <datalist id={`${prefix}-productos`}>
           {productos.map((product) => (
             <option key={product.codigo} value={product.codigo}>
               {product.nombre}
@@ -305,9 +353,9 @@ export function EscenarioDeVentas({
           ))}
         </datalist>
         <div className="w-full sm:w-48">
-          <Field id="escenario-periodo" label="Costos fijos de">
+          <Field id={`${prefix}-periodo`} label="Costos fijos de">
             <input
-              id="escenario-periodo"
+              id={`${prefix}-periodo`}
               name="periodo"
               type="month"
               defaultValue={periodo}
@@ -322,21 +370,21 @@ export function EscenarioDeVentas({
               className="grid items-end gap-3 sm:grid-cols-[2fr_1fr_1fr_auto]"
             >
               <Field
-                id={`escenario-codigo-${id}`}
+                id={`${prefix}-codigo-${id}`}
                 label={`Producto ${index + 1}`}
               >
                 <input
-                  id={`escenario-codigo-${id}`}
+                  id={`${prefix}-codigo-${id}`}
                   name="codigo"
-                  list="escenario-productos"
+                  list={`${prefix}-productos`}
                   autoComplete="off"
-                  placeholder="Código del producto"
+                  placeholder={config?.codePlaceholder ?? "Código del producto"}
                   className={inputClass}
                 />
               </Field>
-              <Field id={`escenario-unidades-${id}`} label="Unidades">
+              <Field id={`${prefix}-unidades-${id}`} label="Unidades">
                 <input
-                  id={`escenario-unidades-${id}`}
+                  id={`${prefix}-unidades-${id}`}
                   name="unidades"
                   inputMode="decimal"
                   autoComplete="off"
@@ -344,13 +392,13 @@ export function EscenarioDeVentas({
                   className={inputClass}
                 />
               </Field>
-              <Field id={`escenario-precio-${id}`} label="Precio (opcional)">
+              <Field id={`${prefix}-precio-${id}`} label="Precio (opcional)">
                 <input
-                  id={`escenario-precio-${id}`}
+                  id={`${prefix}-precio-${id}`}
                   name="precio"
                   inputMode="decimal"
                   autoComplete="off"
-                  placeholder="El guardado"
+                  placeholder={config?.pricePlaceholder ?? "El guardado"}
                   className={inputClass}
                 />
               </Field>
@@ -381,7 +429,11 @@ export function EscenarioDeVentas({
         <FormFeedback state={state.data ? IDLE : state} />
       </form>
       {state.data ? (
-        <Resultado data={state.data} puedeCorregir={puedeCorregir} />
+        <Resultado
+          data={state.data}
+          puedeCorregir={puedeCorregir}
+          fijosTitulo={config?.fijos ?? "Costos fijos"}
+        />
       ) : null}
     </Card>
   );

@@ -20,6 +20,10 @@ Objective: close the open items of the production audit that code can close. Del
 - T4 (S6, S7): docs and cleanup. Route: inline (worktree `docs-limpieza`). Commit: pending
 - T5 (S8): dollar cron. Route: inline after T1-T4. Commit: pending
 
+## Estado verificado (2026-11-15)
+
+Contra el código: healthcheck real con 503 sin base (`main.py`), `/db/estado` solo admin, CI con Postgres 16, cabeceras de seguridad en `front/next.config`. Pendiente fuera del código: backups en Railway, cron del dólar, valores reales (margen de transferencia, `GASTOS_VENTA_PCT`, IIBB, costos fijos), y el deploy a production con backup y autorización.
+
 ## Log
 - L1 (2026-11-10): "hagamos todo eso antes de empezar una nueva sesion" — referring to the list: backups, probar production logueado, rotar credenciales, healthcheck real, cerrar `/db/estado` y rutas demo, cabeceras de seguridad, CI con Postgres, errores en producción, cron del dólar, filtros de la interfaz de productos, AGENTS.md desactualizado y limpieza de worktrees.
 - L2: Route declaration: T1+T2 and T3 are independent units with disjoint edit surfaces, each several files, launched together (Writer rule a). T4 is small and runs inline.
