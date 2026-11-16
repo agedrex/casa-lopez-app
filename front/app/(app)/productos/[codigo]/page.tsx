@@ -1,12 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Avisos } from "@/components/avisos";
-import { ReadOnlyNote } from "@/components/form";
-import { PrecioReferencia } from "@/components/precio-referencia";
 import {
   Badge,
-  Card,
   ErrorNotice,
   Notice,
   numClass,
@@ -18,33 +14,12 @@ import {
   thClass,
 } from "@/components/ui";
 import { apiGet } from "@/lib/api";
-import {
-  formatArs,
-  formatDate,
-  formatQuantity,
-  formatRate,
-  formatUsd,
-  lifecycleLabel,
-  quoteTypeLabel,
-  STAGE_ORDER,
-  stageLabel,
-} from "@/lib/format";
-import { parseNota } from "@/lib/notas";
-import { canWrite, isTallerOnly } from "@/lib/permissions";
-import { collapseSpaces, costoFaltante } from "@/lib/productos";
+import { formatQuantity, lifecycleLabel } from "@/lib/format";
+import { isTallerOnly } from "@/lib/permissions";
+import { collapseSpaces } from "@/lib/productos";
 import { requireSession } from "@/lib/session";
-import type {
-  Catalogos,
-  Desglose,
-  EtapaCatalogo,
-  Ficha,
-  Material,
-  PreciosTalleres,
-} from "@/lib/types";
-import { Comparison } from "./comparison";
-import { ComponenteForm, CotizacionForm, ExtraForm } from "./forms";
-import { ModeloBlock } from "./modelo-block";
-import { PrecioBlock, PriceHistory } from "./rentabilidad";
+import type { Ficha } from "@/lib/types";
+import { ConsumoBlock } from "./consumo-block";
 
 export const metadata: Metadata = { title: "Ficha de producto" };
 
@@ -56,16 +31,10 @@ function decodeCode(raw: string): string | null {
   }
 }
 
-function typedMarginOf(value: string | string[] | undefined): string {
-  return (Array.isArray(value) ? value[0] : value)?.trim() ?? "";
-}
-
 export default async function FichaPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ codigo: string }>;
-  searchParams: Promise<{ margen?: string | string[] }>;
 }) {
   const { user } = await requireSession();
   const code = decodeCode((await params).codigo);
@@ -110,136 +79,10 @@ export default async function FichaPage({
       </p>
 
       <div className="space-y-10">
-        {isTallerOnly(user.role) ? null : <CostToday ficha={ficha} />}
-        {isTallerOnly(user.role) ? null : (
-          <PrecioBlock
-            codigo={ficha.codigo}
-            costo={ficha.costo_hoy?.total_ars ?? null}
-            writer={canWrite(user.role)}
-            typedMargin={typedMarginOf((await searchParams).margen)}
-          />
-        )}
-        {canWrite(user.role) && ficha.modelo ? (
-          <ModeloBlock codigo={ficha.modelo} />
-        ) : (
-          <Recipe ficha={ficha} showMoney={!isTallerOnly(user.role)} />
-        )}
-        <details className="rounded-card border border-line p-5">
-          <summary className="cursor-pointer text-sm uppercase tracking-caps-sm text-muted">
-            Más detalle
-          </summary>
-          <div className="mt-8 space-y-10">
-            <Details ficha={ficha} />
-            {canWrite(user.role) && ficha.modelo ? (
-              <Recipe ficha={ficha} />
-            ) : null}
-            {canWrite(user.role) ? (
-              <NegotiationReference codigo={ficha.codigo} />
-            ) : null}
-            {ficha.componentes.length > 0 ? <Components ficha={ficha} /> : null}
-            {isTallerOnly(user.role) ? null : (
-              <PriceHistory codigo={ficha.codigo} />
-            )}
-            {isTallerOnly(user.role) ? null : (
-              <>
-                <StoredQuotes ficha={ficha} />
-                <Comparison ficha={ficha} />
-              </>
-            )}
-            <Actions ficha={ficha} writer={canWrite(user.role)} />
-          </div>
-        </details>
+        <ConsumoBlock ficha={ficha} />
+        {ficha.componentes.length > 0 ? <Components ficha={ficha} /> : null}
       </div>
     </>
-  );
-}
-
-async function NegotiationReference({ codigo }: { codigo: string }) {
-  const precios = await apiGet<PreciosTalleres>(
-    `/productos/${encodeURIComponent(codigo)}/precios-talleres`,
-  );
-  return (
-    <section>
-      {precios.ok ? (
-        <Card>
-          <PrecioReferencia referencia={precios.data.referencia} />
-        </Card>
-      ) : (
-        <ErrorNotice
-          title="No pudimos cargar el precio de referencia."
-          message={precios.message}
-        />
-      )}
-    </section>
-  );
-}
-
-async function Actions({ ficha, writer }: { ficha: Ficha; writer: boolean }) {
-  if (!writer) {
-    return (
-      <section>
-        <SectionTitle>Acciones</SectionTitle>
-        <ReadOnlyNote />
-      </section>
-    );
-  }
-  const [materiales, etapas, catalogos] = await Promise.all([
-    apiGet<Material[]>("/materiales"),
-    apiGet<EtapaCatalogo[]>("/catalogo/etapas"),
-    apiGet<Catalogos>("/catalogos"),
-  ]);
-  // An extra recipe line takes a quotable material of a material stage (the API checks it too).
-  const materialStages = new Set(
-    etapas.ok
-      ? etapas.data.filter((e) => e.tipo === "MATERIAL").map((e) => e.codigo)
-      : [],
-  );
-  const options = materiales.ok
-    ? materiales.data
-        .filter((m) => m.cotizable && materialStages.has(m.etapa))
-        .map((m) => ({
-          codigo: m.codigo,
-          label: `${m.nombre} (${m.codigo})`,
-          group: stageLabel(m.etapa),
-        }))
-    : [];
-
-  return (
-    <section>
-      <SectionTitle>Acciones</SectionTitle>
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <h3 className="mb-4 font-display text-lg">Guardar cotización</h3>
-          <CotizacionForm codigo={ficha.codigo} />
-        </Card>
-        <Card>
-          <h3 className="mb-4 font-display text-lg">Agregar extra</h3>
-          {materiales.ok && etapas.ok ? (
-            <ExtraForm
-              codigo={ficha.codigo}
-              materials={options}
-              colores={catalogos.ok ? catalogos.data.colores : []}
-            />
-          ) : (
-            <ErrorNotice
-              message={
-                materiales.ok
-                  ? etapas.ok
-                    ? ""
-                    : etapas.message
-                  : materiales.message
-              }
-            />
-          )}
-        </Card>
-        {ficha.es_kit ? (
-          <Card>
-            <h3 className="mb-4 font-display text-lg">Agregar componente</h3>
-            <ComponenteForm codigo={ficha.codigo} />
-          </Card>
-        ) : null}
-      </div>
-    </section>
   );
 }
 
@@ -253,218 +96,6 @@ function BackLink({ taller }: { taller: boolean }) {
         {taller ? "← Lotes" : "← Productos"}
       </Link>
     </p>
-  );
-}
-
-function Details({ ficha }: { ficha: Ficha }) {
-  const rows: [string, string][] = [
-    ["Modelo", ficha.modelo ?? "—"],
-    ["Cuero", ficha.cuero ?? "—"],
-    ["Color", ficha.color ?? "—"],
-    ["Quién lo confecciona", ficha.quien_lo_confecciona ?? "—"],
-    ["Fecha de alta", formatDate(ficha.fecha_de_alta)],
-    ["Fecha de recotización", formatDate(ficha.fecha_de_recotizacion)],
-    ["Fecha de cierre", formatDate(ficha.fecha_de_cierre)],
-  ];
-  return (
-    <Card>
-      <dl className="grid gap-x-8 gap-y-5 sm:grid-cols-2 lg:grid-cols-4">
-        {rows.map(([label, value]) => (
-          <div key={label}>
-            <dt className="text-xs uppercase tracking-caps-sm text-muted">
-              {label}
-            </dt>
-            <dd className="mt-1 text-sm">{value}</dd>
-          </div>
-        ))}
-      </dl>
-      <Nota nota={ficha.nota} />
-    </Card>
-  );
-}
-
-/** The imported note as a list of items; the REVISAR marks stand out. The stored text is not touched. */
-function Nota({ nota }: { nota: string | null }) {
-  const items = parseNota(nota);
-  if (items.length === 0) return null;
-  return (
-    <div className="mt-6 border-t border-line pt-4">
-      <h3 className="mb-2 text-xs uppercase tracking-caps-sm text-muted">
-        Nota
-      </h3>
-      <ul className="space-y-1.5 text-sm">
-        {items.map((item, index) => (
-          // The same text can repeat in a note, so the position is part of the key.
-          <li key={`${index}-${item.text}`} className="break-words">
-            {item.revisar ? (
-              <Badge tone="warn" wrap>
-                Revisar: {item.text}
-              </Badge>
-            ) : (
-              <span className="text-muted">{item.text}</span>
-            )}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function RecotizarNotice({ recotizar }: { recotizar: boolean | null }) {
-  if (recotizar !== true) return null;
-  return (
-    <Notice title="Conviene recotizar">
-      El costo de hoy se aleja de la última cotización guardada.
-    </Notice>
-  );
-}
-
-function stageRows(costo: Desglose) {
-  const known = STAGE_ORDER.filter((stage) => stage in costo.etapas);
-  const extra = Object.keys(costo.etapas).filter(
-    (stage) => !STAGE_ORDER.includes(stage),
-  );
-  return [...known, ...extra].map(
-    (stage) => [stage, costo.etapas[stage]] as const,
-  );
-}
-
-function CostRow({
-  label,
-  value,
-  strong = false,
-}: {
-  label: string;
-  value: string;
-  strong?: boolean;
-}) {
-  return (
-    <tr>
-      <td className={`${tdClass} ${strong ? "font-bold" : ""}`}>{label}</td>
-      <td className={`${tdClass} ${numClass} ${strong ? "font-bold" : ""}`}>
-        {formatArs(value)}
-      </td>
-    </tr>
-  );
-}
-
-function CostToday({ ficha }: { ficha: Ficha }) {
-  const costo = ficha.costo_hoy;
-  return (
-    <section>
-      <SectionTitle>Costo</SectionTitle>
-      <RecotizarNotice recotizar={ficha.recotizar} />
-      {costo === null ? (
-        <Card>
-          <p className="font-display text-xl">{costoFaltante(ficha.avisos)}</p>
-          {ficha.avisos.length > 1 ? (
-            <ul className="mt-4 list-disc space-y-1 pl-5 text-sm">
-              {ficha.avisos.slice(1).map((aviso) => (
-                <li key={aviso}>{aviso}</li>
-              ))}
-            </ul>
-          ) : null}
-        </Card>
-      ) : (
-        <Card>
-          <p className="font-display text-4xl">{formatArs(costo.total_ars)}</p>
-          <p className="mt-1 text-sm text-muted">
-            {formatUsd(costo.total_usd)} · dólar {formatRate(costo.dolar)} al{" "}
-            {formatDate(costo.fecha)}
-          </p>
-          {ficha.avisos.length > 0 ? (
-            <div className="mt-4">
-              <Avisos avisos={ficha.avisos} limit={3} />
-            </div>
-          ) : null}
-          <details className="mt-5">
-            <summary className="cursor-pointer text-sm underline decoration-gold underline-offset-4">
-              Ver desglose por etapa
-            </summary>
-            <div className="mt-4">
-              <TableWrap>
-                <table className={tableClass}>
-                  <tbody>
-                    {stageRows(costo).map(([stage, amount]) => (
-                      <CostRow
-                        key={stage}
-                        label={stageLabel(stage)}
-                        value={amount}
-                      />
-                    ))}
-                    {ficha.es_kit ? (
-                      <>
-                        <CostRow
-                          label="Subtotal de etapas"
-                          value={costo.subtotal}
-                        />
-                        <CostRow
-                          label="Componentes del kit"
-                          value={costo.componentes_kit}
-                        />
-                      </>
-                    ) : null}
-                    <CostRow label="Total" value={costo.total_ars} strong />
-                  </tbody>
-                </table>
-              </TableWrap>
-            </div>
-          </details>
-        </Card>
-      )}
-    </section>
-  );
-}
-
-function Recipe({
-  ficha,
-  showMoney = true,
-}: {
-  ficha: Ficha;
-  showMoney?: boolean;
-}) {
-  return (
-    <section>
-      <SectionTitle>Receta</SectionTitle>
-      {ficha.receta.length === 0 ? (
-        <Notice
-          tone="info"
-          title="Este producto todavía no tiene líneas de receta."
-        />
-      ) : (
-        <TableWrap>
-          <table className={tableClass}>
-            <thead>
-              <tr>
-                <th className={thClass}>Etapa</th>
-                <th className={thClass}>Material</th>
-                <th className={thClass}>Color</th>
-                <th className={`${thClass} ${numClass}`}>Consumo</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ficha.receta.map((linea, index) => (
-                <tr
-                  key={`${linea.etapa}-${linea.material}-${linea.color ?? ""}-${index}`}
-                >
-                  <td className={tdClass}>{stageLabel(linea.etapa)}</td>
-                  <td className={tdClass}>{linea.material}</td>
-                  <td className={tdClass}>{linea.color ?? "—"}</td>
-                  <td className={`${tdClass} ${numClass}`}>
-                    {formatQuantity(linea.consumo)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </TableWrap>
-      )}
-      {showMoney ? (
-        <p className="mt-3 text-sm text-muted">
-          Confección estimada: {formatArs(ficha.confeccion_estimada_ars)}
-        </p>
-      ) : null}
-    </section>
   );
 }
 
@@ -499,53 +130,6 @@ function Components({ ficha }: { ficha: Ficha }) {
           </tbody>
         </table>
       </TableWrap>
-    </section>
-  );
-}
-
-function StoredQuotes({ ficha }: { ficha: Ficha }) {
-  return (
-    <section>
-      <SectionTitle>Cotizaciones guardadas</SectionTitle>
-      {ficha.cotizaciones.length === 0 ? (
-        <Notice
-          tone="info"
-          title="Todavía no se guardó ninguna cotización de este producto."
-        />
-      ) : (
-        <TableWrap>
-          <table className={tableClass}>
-            <thead>
-              <tr>
-                <th className={thClass}>Fecha</th>
-                <th className={thClass}>Tipo</th>
-                <th className={`${thClass} ${numClass}`}>Dólar</th>
-                <th className={`${thClass} ${numClass}`}>Total (ARS)</th>
-                <th className={`${thClass} ${numClass}`}>Total (USD)</th>
-                <th className={thClass}>Estado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ficha.cotizaciones.map((cotizacion) => (
-                <tr key={`${cotizacion.fecha}-${cotizacion.tipo}`}>
-                  <td className={tdClass}>{formatDate(cotizacion.fecha)}</td>
-                  <td className={tdClass}>{quoteTypeLabel(cotizacion.tipo)}</td>
-                  <td className={`${tdClass} ${numClass}`}>
-                    {formatRate(cotizacion.dolar)}
-                  </td>
-                  <td className={`${tdClass} ${numClass}`}>
-                    {formatArs(cotizacion.total_ars)}
-                  </td>
-                  <td className={`${tdClass} ${numClass}`}>
-                    {formatUsd(cotizacion.total_usd)}
-                  </td>
-                  <td className={tdClass}>{cotizacion.estado ?? "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </TableWrap>
-      )}
     </section>
   );
 }
