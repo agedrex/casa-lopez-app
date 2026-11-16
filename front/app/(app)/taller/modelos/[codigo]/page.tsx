@@ -12,12 +12,7 @@ import {
 } from "@/components/ui";
 import { apiGet } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
-import {
-  ESTADO_TONE,
-  estadoLabel,
-  modoDeHoja,
-  puedeSubirFoto,
-} from "@/lib/formularios";
+import { ESTADO_TONE, estadoLabel, modoDeHoja } from "@/lib/formularios";
 import { sizeLabel } from "@/lib/modelos";
 import { canFillFormularios, hasRole } from "@/lib/permissions";
 import { requireSession } from "@/lib/session";
@@ -150,19 +145,15 @@ export default async function HojaDelModeloPage({
           </Card>
         </section>
 
-        {hoja.modelo ? (
+        {/* Only the admin adds photos; the taller just sees the one the model already has. */}
+        {hoja.modelo && (esAdmin || datos?.tiene_foto) ? (
           <section aria-label="Foto">
             <Card>
               <FotoModelo
                 codigo={hoja.modelo}
                 nombre={hoja.articulo}
                 tieneFoto={datos?.tiene_foto ?? false}
-                puedeSubir={puedeSubirFoto(
-                  user.role,
-                  hoja.estado,
-                  hoja.creado_por,
-                  user.id,
-                )}
+                puedeSubir={esAdmin}
               />
             </Card>
           </section>

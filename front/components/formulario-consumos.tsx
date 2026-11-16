@@ -17,9 +17,22 @@ import {
   SecondaryButton,
 } from "./form";
 
+/** Big title of a section; the border color and the help line tell "Consumos" (m²) and "Herrajes" (units) apart. */
+function TituloSeccion({ seccion }: { seccion: (typeof SECCIONES)[number] }) {
+  return (
+    <div className={`mb-3 border-l-4 ${seccion.accent} pl-4`}>
+      <h3 className="text-2xl">
+        {seccion.title}{" "}
+        <span className="text-base text-muted">({seccion.unit})</span>
+      </h3>
+      <p className="mt-0.5 text-sm text-muted">{seccion.help}</p>
+    </div>
+  );
+}
+
 /**
  * The consumption sheet of a model: the CONSUMOS (m²) and HERRAJES (units) tables of the paper sheet. It calculates nothing.
- * - `editar` (taller, sheet ENVIADO): quantity and comment of every row, add / remove rows, "Guardar" and "Completar".
+ * - `editar` (taller, sheet ENVIADO): quantity and comment of every preloaded row; "Guardar" and "Enviar". Empty rows are ignored.
  * - `revisar` and `leer`: the filled rows as text. In `revisar` the admin buttons come from the page (Validar / Devolver).
  * The page passes `key={estado}` so a state change (completed, returned) starts from the fresh rows.
  */
@@ -48,10 +61,7 @@ function HojaDeSoloLectura({ lineas }: { lineas: FormularioLinea[] }) {
         );
         return (
           <section key={seccion.value} aria-label={seccion.title}>
-            <h3 className="mb-3 text-lg">
-              {seccion.title}{" "}
-              <span className="text-sm text-muted">({seccion.unit})</span>
-            </h3>
+            <TituloSeccion seccion={seccion} />
             {llenas.length === 0 ? (
               <p className="text-sm text-muted">Sin datos cargados.</p>
             ) : (
@@ -108,7 +118,7 @@ function HojaEditable({
 
   return (
     <form
-      className="space-y-5"
+      className="space-y-10"
       onSubmit={(event) => {
         event.preventDefault();
         const submitter = (event.nativeEvent as SubmitEvent).submitter;
@@ -122,34 +132,19 @@ function HojaEditable({
     >
       {SECCIONES.map((seccion) => (
         <fieldset key={seccion.value} className="min-w-0">
-          <legend className="mb-2 text-base">
-            {seccion.title}{" "}
-            <span className="text-sm text-muted">({seccion.unit})</span>
+          <legend className="w-full p-0">
+            <TituloSeccion seccion={seccion} />
           </legend>
           <ul className="space-y-1.5">
             {filas.map((fila, indice) =>
               fila.seccion !== seccion.value ? null : (
                 <li
-                  // biome-ignore lint/suspicious/noArrayIndexKey: the rows are only ever added at the end or removed, and their position is their identity here.
-                  key={indice}
-                  className="grid grid-cols-[minmax(0,1fr)_7.5rem] gap-2 rounded-card border border-line bg-surface p-2 sm:grid-cols-[minmax(0,1.2fr)_8rem_minmax(0,1.5fr)_auto] sm:items-center sm:gap-3 sm:px-3"
+                  key={`${fila.seccion}-${fila.nombre}`}
+                  className="grid grid-cols-[minmax(0,1fr)_7.5rem] gap-2 rounded-card border border-line bg-surface p-2 sm:grid-cols-[minmax(0,1.2fr)_8rem_minmax(0,1.5fr)] sm:items-center sm:gap-3 sm:px-3"
                 >
-                  {fila.agregada ? (
-                    <input
-                      aria-label={`Nombre de la fila ${indice + 1} de ${seccion.title.toLowerCase()}`}
-                      value={fila.nombre}
-                      maxLength={200}
-                      placeholder="Nombre"
-                      onChange={(e) =>
-                        cambiar(indice, { nombre: e.target.value })
-                      }
-                      className={`${inputClass} min-h-11 sm:min-h-9`}
-                    />
-                  ) : (
-                    <span className="self-center text-sm">{fila.nombre}</span>
-                  )}
+                  <span className="self-center text-sm">{fila.nombre}</span>
                   <input
-                    aria-label={`${fila.nombre || "Fila nueva"}: cantidad (${seccion.unit})`}
+                    aria-label={`${fila.nombre}: cantidad (${seccion.unit})`}
                     inputMode="decimal"
                     autoComplete="off"
                     placeholder="0,00"
@@ -160,7 +155,7 @@ function HojaEditable({
                     className={`${inputClass} min-h-11 text-right tabular-nums sm:min-h-9`}
                   />
                   <input
-                    aria-label={`${fila.nombre || "Fila nueva"}: comentarios o modificaciones`}
+                    aria-label={`${fila.nombre}: comentarios o modificaciones`}
                     placeholder="Comentarios / modificaciones"
                     maxLength={2000}
                     value={fila.comentario}
@@ -169,40 +164,10 @@ function HojaEditable({
                     }
                     className={`${inputClass} col-span-2 min-h-11 sm:col-span-1 sm:min-h-9`}
                   />
-                  <button
-                    type="button"
-                    aria-label={`Quitar la fila ${fila.nombre || "nueva"}`}
-                    onClick={() =>
-                      setFilas((actuales) =>
-                        actuales.filter((_, i) => i !== indice),
-                      )
-                    }
-                    className="col-span-2 min-h-11 rounded-card border border-line px-3 text-sm text-muted hover:border-bordeaux hover:text-bordeaux sm:col-span-1 sm:min-h-9 sm:py-1"
-                  >
-                    ×
-                  </button>
                 </li>
               ),
             )}
           </ul>
-          <button
-            type="button"
-            onClick={() =>
-              setFilas((actuales) => [
-                ...actuales,
-                {
-                  seccion: seccion.value,
-                  nombre: "",
-                  cantidad: "",
-                  comentario: "",
-                  agregada: true,
-                },
-              ])
-            }
-            className="mt-1 min-h-11 text-sm underline decoration-gold underline-offset-4 sm:min-h-9"
-          >
-            + Agregar fila de {seccion.title.toLowerCase()}
-          </button>
         </fieldset>
       ))}
       <FormFeedback state={state} />
@@ -211,14 +176,9 @@ function HojaEditable({
           {pending ? "Guardando…" : "Guardar"}
         </SecondaryButton>
         <PrimaryButton pending={pending} value="completar" name="accion">
-          Completar y enviar a revisión
+          {pending ? "Enviando…" : "Enviar"}
         </PrimaryButton>
       </div>
-      <p className="text-xs text-muted">
-        Al completar, la hoja pasa al administrador y ya no la podés editar,
-        salvo que te la devuelva con comentarios. Las filas vacías no hace falta
-        borrarlas.
-      </p>
     </form>
   );
 }

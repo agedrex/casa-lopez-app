@@ -37,8 +37,20 @@ export function isEstado(value: string): value is FormularioEstado {
 }
 
 export const SECCIONES = [
-  { value: "CONSUMO", title: "Consumos", unit: "m²" },
-  { value: "HERRAJE", title: "Herrajes", unit: "cantidad" },
+  {
+    value: "CONSUMO",
+    title: "Consumos",
+    unit: "m²",
+    help: "Cuero, forro y demás materiales: cuántos metros cuadrados lleva cada uno.",
+    accent: "border-gold",
+  },
+  {
+    value: "HERRAJE",
+    title: "Herrajes",
+    unit: "cantidad",
+    help: "Broches, cierres y demás herrajes: cuántas unidades lleva cada uno.",
+    accent: "border-ink",
+  },
 ] as const;
 
 /**
@@ -82,8 +94,6 @@ export type FilaHoja = {
   nombre: string;
   cantidad: string;
   comentario: string;
-  /** Added by the person (its name is editable); the preloaded rows keep the name of the paper sheet. */
-  agregada?: boolean;
 };
 
 export function filasDeHoja(lineas: FormularioLinea[]): FilaHoja[] {
