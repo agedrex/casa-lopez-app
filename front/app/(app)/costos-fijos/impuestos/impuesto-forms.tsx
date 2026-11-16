@@ -94,7 +94,6 @@ export function ImpuestosGrid({ impuestos }: { impuestos: Impuesto[] }) {
       startWithDraft={false}
       addLabel="Agregar impuesto"
       newRowLabel="Impuesto nuevo"
-      autoSave
       compact
       fitContent
       fitFrame

@@ -388,7 +388,6 @@ export function EditableGrid({
   warning,
   note,
   footer,
-  autoSave = false,
   compact = false,
   fitContent = false,
   fitFrame = false,
@@ -423,11 +422,6 @@ export function EditableGrid({
   warning?: (save: GridSave) => string | null;
   note?: ReactNode;
   footer?: ReactNode;
-  /**
-   * No save button: a changed row is saved when the cursor leaves the cell (and nothing is left
-   * to fix), and saved rows are ticked and deleted with one button. Needs `allowDelete`.
-   */
-  autoSave?: boolean;
   /** Sin resumen vacío ni instrucciones: solo la grilla y lo que haya pendiente. */
   compact?: boolean;
   /** La tabla ocupa solo lo que miden sus columnas, en vez de estirarse al ancho de la página. */
@@ -601,15 +595,6 @@ export function EditableGrid({
     [],
   );
 
-  const toggleDelete = useCallback((id: string) => {
-    setResult((previous) => (previous.status === "idle" ? previous : IDLE));
-    setDeleted((previous) =>
-      previous.includes(id)
-        ? previous.filter((item) => item !== id)
-        : [...previous, id],
-    );
-  }, []);
-
   const toggleSelect = useCallback((id: string) => {
     setResult((previous) => (previous.status === "idle" ? previous : IDLE));
     setSelected((previous) =>
@@ -629,15 +614,6 @@ export function EditableGrid({
       column: focusColumn,
     };
     setDrafts((previous) => [...previous, makeDraft()]);
-  }
-
-  function discard() {
-    setEdits({});
-    setDeleted([]);
-    setDrafts(allowNew && startWithDraft ? [makeDraft()] : []);
-    setAttempted(false);
-    setResult(IDLE);
-    setPasteInfo("");
   }
 
   function save() {
@@ -701,7 +677,7 @@ export function EditableGrid({
 
   // Auto-save: leaving a cell saves what changed, but only when nothing is left to fix.
   function onBlurSave() {
-    if (!autoSave || saving || !dirty || analysis.errorCount > 0) return;
+    if (saving || !dirty || analysis.errorCount > 0) return;
     save();
   }
 
@@ -880,7 +856,7 @@ export function EditableGrid({
         skipped > 0
           ? ` ${plural(skipped, "valor no se pudo pegar", "valores no se pudieron pegar")} (columna bloqueada, valor que no coincide o fuera de la grilla).`
           : ""
-      } Revise los cambios y guarde.`,
+      } Se guardan al salir de la celda.`,
     );
   }
 
@@ -895,12 +871,7 @@ export function EditableGrid({
       ? plural(deleted.length, "fila para borrar", "filas para borrar")
       : null,
   ].filter(Boolean);
-  const summary =
-    parts.length > 0
-      ? parts.join(" · ")
-      : compact
-        ? null
-        : "Sin cambios todavía.";
+  const summary = parts.length > 0 ? parts.join(" · ") : compact ? null : null;
   const warningText = dirty
     ? warning?.({
         changes: analysis.changes,
@@ -912,59 +883,38 @@ export function EditableGrid({
   return (
     <div className="space-y-4">
       <div
-        className={`flex flex-wrap items-center gap-3 rounded-card border border-line bg-surface px-4 py-3 ${compact && !summary && !saving && selectedRows.length === 0 ? "hidden" : ""}`}
+        className={`flex flex-wrap items-center gap-3 rounded-card border border-line bg-surface px-4 py-3 ${!summary && !saving && selectedRows.length === 0 ? "hidden" : ""}`}
       >
         {summary ? (
           <p aria-live="polite" className="text-sm font-bold">
             {summary}
           </p>
         ) : null}
-        {autoSave ? (
-          <div className="flex w-full flex-wrap items-center gap-3 sm:ml-auto sm:w-auto">
-            {saving ? (
-              <span className="text-sm text-muted">Guardando…</span>
-            ) : null}
-            {selectedRows.length > 0 ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setSelected([])}
-                  disabled={saving}
-                  className="min-h-12 flex-1 rounded-card border border-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm hover:bg-ink hover:text-white disabled:opacity-40 sm:min-h-0 sm:flex-none"
-                >
-                  Quitar selección
-                </button>
-                <button
-                  type="button"
-                  onClick={deleteSelected}
-                  disabled={saving}
-                  className="min-h-12 flex-1 rounded-card bg-bordeaux px-5 py-2.5 text-sm uppercase tracking-caps-sm text-white hover:opacity-90 disabled:opacity-40 sm:min-h-0 sm:flex-none"
-                >
-                  Borrar {plural(selectedRows.length, "fila", "filas")}
-                </button>
-              </>
-            ) : null}
-          </div>
-        ) : (
-          <div className="flex w-full flex-wrap gap-3 sm:ml-auto sm:w-auto">
-            <button
-              type="button"
-              onClick={discard}
-              disabled={!dirty || saving}
-              className="min-h-12 flex-1 rounded-card border border-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm hover:bg-ink hover:text-white disabled:opacity-40 sm:min-h-0 sm:flex-none"
-            >
-              Descartar
-            </button>
-            <button
-              type="button"
-              onClick={save}
-              disabled={!dirty || saving}
-              className="min-h-12 flex-1 rounded-card bg-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm text-white hover:bg-ink-soft disabled:opacity-40 sm:min-h-0 sm:flex-none"
-            >
-              {saving ? "Guardando…" : "Guardar cambios"}
-            </button>
-          </div>
-        )}
+        <div className="flex w-full flex-wrap items-center gap-3 sm:ml-auto sm:w-auto">
+          {saving ? (
+            <span className="text-sm text-muted">Guardando…</span>
+          ) : null}
+          {selectedRows.length > 0 ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setSelected([])}
+                disabled={saving}
+                className="min-h-12 flex-1 rounded-card border border-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm hover:bg-ink hover:text-white disabled:opacity-40 sm:min-h-0 sm:flex-none"
+              >
+                Quitar selección
+              </button>
+              <button
+                type="button"
+                onClick={deleteSelected}
+                disabled={saving}
+                className="min-h-12 flex-1 rounded-card bg-bordeaux px-5 py-2.5 text-sm uppercase tracking-caps-sm text-white hover:opacity-90 disabled:opacity-40 sm:min-h-0 sm:flex-none"
+              >
+                Borrar {plural(selectedRows.length, "fila", "filas")}
+              </button>
+            </>
+          ) : null}
+        </div>
       </div>
       {warningText ? <Notice title={warningText} /> : null}
       <FormFeedback state={result} />
@@ -1041,13 +991,9 @@ export function EditableGrid({
                   errors={analysis.errors[row.id] ?? NO_ERRORS}
                   showAllErrors={attempted}
                   onChange={handleChange}
-                  onToggleDelete={
-                    allowDelete && !autoSave ? toggleDelete : undefined
-                  }
+                  onToggleDelete={undefined}
                   deleting={deleted.includes(row.id)}
-                  onToggleSelect={
-                    allowDelete && autoSave ? toggleSelect : undefined
-                  }
+                  onToggleSelect={allowDelete ? toggleSelect : undefined}
                   selected={selected.includes(row.id)}
                   extraHeaders={extraHeaders}
                   extraHeadersBefore={extraHeadersBefore}
