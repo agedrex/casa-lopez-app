@@ -17,32 +17,26 @@ export function ProductoForm({
   modelos,
   cueros,
   colores,
-  today,
   modeloInicial,
 }: {
   modelos: ModeloOption[];
   cueros: CueroOption[];
   colores: string[];
-  today: string;
   modeloInicial?: string;
 }) {
   const { state, pending, onSubmit } = useActionForm(createProducto);
   // No form key: on success the action redirects to the new product's page.
+  // The sheet date is not a field: the action fills it in with today's date.
   return (
     <form onSubmit={onSubmit} className="space-y-5">
       <div className="grid gap-5 sm:grid-cols-2">
-        <Field
-          id="producto-modelo"
-          label="Modelo"
-          hint="Escriba el código o parte del nombre y elija de la lista."
-        >
+        <Field id="producto-modelo" label="Modelo">
           <input
             id="producto-modelo"
             name="modelo"
             defaultValue={modeloInicial}
             list="producto-modelos"
             autoComplete="off"
-            aria-describedby="producto-modelo-hint"
             className={inputClass}
           />
           <datalist id="producto-modelos">
@@ -53,16 +47,19 @@ export function ProductoForm({
             ))}
           </datalist>
         </Field>
-        <Field
-          id="producto-cuero"
-          label="Cuero"
-          hint="Solo aparecen los cueros que se pueden cotizar."
-        >
+        <Field id="producto-nombre" label="Nombre (opcional)">
+          <input
+            id="producto-nombre"
+            name="nombre_propio"
+            autoComplete="off"
+            className={inputClass}
+          />
+        </Field>
+        <Field id="producto-cuero" label="Cuero">
           <select
             id="producto-cuero"
             name="cuero"
             defaultValue=""
-            aria-describedby="producto-cuero-hint"
             className={inputClass}
           >
             <option value="">Elegir…</option>
@@ -82,7 +79,7 @@ export function ProductoForm({
           emptyLabel="Sin color"
           options={colores}
         />
-        <Field id="producto-quien" label="Quién lo confecciona">
+        <Field id="producto-quien" label="Confeccionamiento">
           <select
             id="producto-quien"
             name="quien_lo_confecciona"
@@ -95,37 +92,15 @@ export function ProductoForm({
             <option value="INTERNA">Interna</option>
           </select>
         </Field>
-        <Field id="producto-alta" label="Fecha de alta">
+        <Field id="producto-nota" label="Nota (opcional)">
           <input
-            id="producto-alta"
-            name="fecha_de_alta"
-            type="date"
-            defaultValue={today}
-            className={inputClass}
-          />
-        </Field>
-        <Field
-          id="producto-nombre"
-          label="Nombre propio (opcional)"
-          hint="Si lo deja vacío, el nombre se arma con el modelo, el cuero y el color."
-        >
-          <input
-            id="producto-nombre"
-            name="nombre_propio"
+            id="producto-nota"
+            name="nota"
             autoComplete="off"
-            aria-describedby="producto-nombre-hint"
             className={inputClass}
           />
         </Field>
       </div>
-      <Field id="producto-nota" label="Nota (opcional)">
-        <input
-          id="producto-nota"
-          name="nota"
-          autoComplete="off"
-          className={inputClass}
-        />
-      </Field>
       <div className="flex items-start gap-3">
         <input
           id="producto-kit"

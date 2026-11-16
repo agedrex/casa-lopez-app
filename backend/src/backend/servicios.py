@@ -117,6 +117,8 @@ class DatosProducto:
     modelo_nombre: str | None = None
     creado_en: datetime | None = None
     creado_por: str | None = None
+    # Leather as the list shows it: short name, else its code. `cuero` stays the code the recipe needs.
+    cuero_nombre: str | None = None
 
     @property
     def producto(self) -> ProductoReceta:
@@ -389,6 +391,7 @@ def cargar_productos(
             componentes=componentes.get(producto.id, []), tamano=modelo.tamano if modelo else None,
             modelo_nombre=modelo.nombre_del_modelo if modelo else None,
             creado_en=producto.created_at, creado_por=producto.creado_por,
+            cuero_nombre=cuero_corto or cuero_codigo,
         ))
     return resultado
 
@@ -578,6 +581,7 @@ def _filas_de_productos(session: Session, base: list[DatosProducto], con_precios
         venta = _precio_de_venta_de_grilla(precios.get(datos.id), costo["total_ars"] if costo else None, impuestos)
         filas.append({
             "codigo": datos.codigo, "nombre": datos.nombre, "categoria": datos.categoria,
+            "cuero": getattr(datos, "cuero_nombre", None), "color": getattr(datos, "color", None),
             "modelo": datos.modelo_codigo, "modelo_codigo": datos.modelo_codigo, "modelo_nombre": getattr(datos, "modelo_nombre", None),
             "estado_del_ciclo": datos.estado_del_ciclo, "es_kit": datos.es_kit,
             "costo_hoy_ars": costo["total_ars"] if costo else None,

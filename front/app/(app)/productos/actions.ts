@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { error, type FormState } from "@/lib/action-state";
 import { apiPost } from "@/lib/api";
 import { resolveCatalogChoice } from "@/lib/catalogo-actions";
+import { todayIso } from "@/lib/format";
 import type { Ficha } from "@/lib/types";
 import {
   denyUnlessWriter,
@@ -47,7 +48,8 @@ export async function createProducto(
     cuero: optional(formData, "cuero"),
     color: color.nombre,
     quien_lo_confecciona: quien,
-    fecha_de_alta: optional(formData, "fecha_de_alta"),
+    // Automatic: the sheet date is today in Buenos Aires, never typed.
+    fecha_de_alta: todayIso(),
     nombre_propio: optional(formData, "nombre_propio"),
     es_kit: esKit,
     nota: optional(formData, "nota"),

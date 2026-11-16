@@ -381,6 +381,12 @@ function ProductTable({
                   <p className="mt-1 text-xs text-muted">
                     {producto.categoria ?? "—"}
                   </p>
+                  <p className="mt-1 text-sm">
+                    <span className="text-xs text-muted">Cuero:</span>{" "}
+                    {producto.cuero ?? "—"}
+                    <span className="text-xs text-muted"> · Color:</span>{" "}
+                    {producto.color ?? "—"}
+                  </p>
                   <p className="mt-1 text-xs text-muted">
                     Creado: {creationDate(producto.creado_en)}
                     {producto.creado_por ? ` · ${producto.creado_por}` : ""}
@@ -403,6 +409,12 @@ function ProductTable({
                   </th>
                   <th scope="col" className={thClass}>
                     Categoría
+                  </th>
+                  <th scope="col" className={thClass}>
+                    Cuero
+                  </th>
+                  <th scope="col" className={thClass}>
+                    Color
                   </th>
                   <th scope="col" className={thClass}>
                     Creado
@@ -457,6 +469,16 @@ function ProductTable({
                         </div>
                       </td>
                       <td className={tdClass}>{producto.categoria ?? "—"}</td>
+                      <td className={tdClass}>
+                        <span className="block max-w-40">
+                          {producto.cuero ?? "—"}
+                        </span>
+                      </td>
+                      <td className={tdClass}>
+                        <span className="block max-w-40">
+                          {producto.color ?? "—"}
+                        </span>
+                      </td>
                       <td className={tdClass}>
                         {creationDate(producto.creado_en)}
                         <span className="block max-w-40 truncate text-xs text-muted">
