@@ -105,22 +105,17 @@ test("S2: a model without hours says the data is missing", () => {
 
 test("S3: hilo y cemento shows only the reference price in pesos", () => {
   const hilo = row(consumoRows(ficha, modelo), "Hilo y cemento");
-  assert.match(hilo.porUnidad, /^\$\s?3\.140,00$/);
+  assert.match(hilo.porUnidad, /^\$\s?1\.570,00$/);
   assert.ok(!/USD|dólar|Fijo/.test(`${hilo.porUnidad} ${hilo.material}`));
   assert.equal(hilo.material, "Hilo y cemento");
 });
 
-test("S3: without a quote of today there is no amount, and without the datum it says so", () => {
+test("S3: without a quote of today there is no amount, even if the model has no hilo datum", () => {
   const sinCosto = row(
     consumoRows({ ...ficha, costo_hoy: null }, modelo),
     "Hilo y cemento",
   );
   assert.equal(sinCosto.porUnidad, "—");
-  const sinDato = row(
-    consumoRows(ficha, { ...modelo, hilo_y_cemento: null }),
-    "Hilo y cemento",
-  );
-  assert.equal(sinDato.porUnidad, "Falta el dato");
 });
 
 test("the other rows keep their quantities", () => {

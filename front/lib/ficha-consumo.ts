@@ -66,8 +66,8 @@ export function consumoRows(
     value === null || value === undefined
       ? MISSING
       : `${formatQuantity(value)} ${unit}`;
-  // Only the reference price in pesos: the one the engine charges for hilo y cemento today.
-  const hiloArs = ficha.costo_hoy?.etapas?.HILO_CEMENTO;
+  // Hilo y cemento is fixed at 1 USD, so its price in pesos is the dollar of today (no arithmetic).
+  const hiloArs = ficha.costo_hoy?.dolar;
   return [
     {
       insumo: "Cuero",
@@ -96,7 +96,7 @@ export function consumoRows(
     },
     {
       insumo: "Hilo y cemento",
-      porUnidad: modelo.hilo_y_cemento === null ? MISSING : formatArs(hiloArs),
+      porUnidad: hiloArs ? formatArs(hiloArs) : "—",
       material: materialsOf("HILO_CEMENTO", ficha, modelo),
     },
     hoursRow(ficha),
