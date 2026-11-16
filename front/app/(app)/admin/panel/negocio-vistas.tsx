@@ -43,10 +43,6 @@ function MargenTransferencia({ pct }: { pct: string | null }) {
 }
 
 function Gastos({ resumen }: { resumen: ResumenGastos }) {
-  const pendientes = resumen.por_ambito.reduce(
-    (sum, ambito) => sum + ambito.pendientes,
-    0,
-  );
   return (
     <div className="space-y-5">
       <Card className="space-y-2">
@@ -64,15 +60,6 @@ function Gastos({ resumen }: { resumen: ResumenGastos }) {
           </Link>
         </p>
       </Card>
-
-      {pendientes > 0 ? (
-        <Notice title="Hay costos fijos sin monto">
-          {pendientes === 1
-            ? "Falta cargar el monto de 1 costo fijo."
-            : `Faltan cargar los montos de ${pendientes} costos fijos.`}{" "}
-          Los totales de abajo no lo cuentan hasta que lo completes.
-        </Notice>
-      ) : null}
 
       <div className="grid gap-5 lg:grid-cols-2">
         {resumen.por_ambito.map((ambito) => (
