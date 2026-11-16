@@ -111,9 +111,10 @@ const ROLE_ACCESS: Record<
   admin: { home: "/admin/panel", paths: null },
   // Gerente reads Productos (list, sheet and Modelos) and runs the scenario simulator. Nothing else:
   // no Panel, Lotes, Cueros, Proveedores nor Talleres (S8).
+  // `/api/modelos` is the model photo (an <img> source, read only, the backend answers 403 for anything else).
   gerente: {
     home: "/productos",
-    paths: ["/productos", "/escenarios"],
+    paths: ["/productos", "/escenarios", "/api/modelos"],
   },
   // Taller has ONE entry: the lots list (what to make and how many). From each product of a lot it
   // opens the product sheet (materials and recipe, no prices); Voz is a header button (not in the
@@ -121,7 +122,7 @@ const ROLE_ACCESS: Record<
   // (demo-staging-taller-grilla S2).
   taller: {
     home: "/fabricacion",
-    paths: ["/fabricacion", "/voz", "/productos"],
+    paths: ["/fabricacion", "/voz", "/productos", "/api/modelos"],
     denyExact: ["/productos"],
     denyPrefix: ["/productos/modelos"],
   },

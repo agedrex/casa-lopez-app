@@ -22,7 +22,7 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.orm import Session
 
-from backend import cueros, formulario, ocr_llm, proveedores, reventa, servicios, sheets_client, voz, voz_llm
+from backend import cueros, formulario, modelos_foto, ocr_llm, proveedores, reventa, servicios, sheets_client, voz, voz_llm
 from backend import materiales as grilla_materiales  # `materiales` is the name of the GET /materiales route below
 from backend.auth import (
     CORTE, CUALQUIER_ROL, FORMULARIO_LEER, FORMULARIO_TRABAJAR, PRODUCTOS, SOLO_ADMIN, Usuario, require_user,
@@ -630,6 +630,7 @@ class ModeloOut(Salida):
     horas_de_confeccion: Decimal | None
     origen_de_los_consumos: str | None
     validado: bool
+    tiene_foto: bool
 
 
 class InsumoModeloOut(Salida):
@@ -649,6 +650,14 @@ class ModeloDetalleOut(ModeloOut):
     fila_excel_viejo: int | None
     productos: int  # products made from this model
     insumos: list[InsumoModeloOut] = []
+
+
+class ModeloFotoOut(Salida):
+    codigo: str
+    modelo: str
+    tipo_mime: str
+    tamano_bytes: int
+    created_at: datetime
 
 
 class MaterialOut(Salida):
@@ -1445,6 +1454,25 @@ def modelos(
 @router.get("/modelos/{codigo}", dependencies=LECTURA_GENERAL, response_model=ModeloDetalleOut)
 def modelo(codigo: str, session: Sesion):
     return servicios.detalle_modelo(session, codigo)
+
+
+@router.get("/modelos/{codigo}/foto", dependencies=LECTURA_GENERAL, response_class=Response)
+def foto_de_modelo(codigo: str, session: Sesion):
+    """The current photo (the newest upload): its bytes with the detected type, `nosniff`, inline and a short private cache
+    (a new upload must show up soon). 404 when the model has none."""
+    contenido, mime = modelos_foto.get_photo(session, codigo)
+    cabeceras = {**proveedores.file_headers(mime, f"{codigo}.{mime.split('/')[1]}"), "Cache-Control": "private, max-age=60"}
+    return Response(content=contenido, media_type=mime, headers=cabeceras)
+
+
+@router.post("/modelos/{codigo}/foto", dependencies=[Depends(FORMULARIO_TRABAJAR)], response_model=ModeloFotoOut, status_code=201)
+def subir_foto_de_modelo(
+    codigo: str, session: Sesion, usuario: Annotated[Usuario, Depends(FORMULARIO_TRABAJAR)], archivo: Annotated[UploadFile, File()],
+):
+    """Admin and taller (the same pair that fills the consumption sheet). Adds a new photo: JPEG, PNG or WebP by its bytes,
+    5 MB at most; the previous ones are kept and the newest is the current one."""
+    contenido = archivo.file.read(modelos_foto.MAX_FOTO_BYTES + 1)
+    return modelos_foto.add_photo(session, codigo, contenido=contenido, subido_por=usuario.id)
 
 
 @router.get("/materiales", dependencies=LECTURA_GENERAL, response_model=list[MaterialOut])

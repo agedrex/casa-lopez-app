@@ -105,6 +105,9 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
     ("GET", "/db/estado"): ADMIN,
     ("GET", "/productos/{codigo}/precios-talleres"): ADMIN,
     ("GET", "/modelos"): TODOS, ("GET", "/modelos/{codigo}"): TODOS,
+    # The photo of a model: the three roles read it (the model page), admin and taller add one (the same pair that fills the
+    # consumption sheet); the gerente cannot write. test_modelo_foto.py covers the behaviour.
+    ("GET", "/modelos/{codigo}/foto"): TODOS, ("POST", "/modelos/{codigo}/foto"): CORTE,
     ("GET", "/precios"): CORTE, ("GET", "/precios/chequeo"): ADMIN,
     ("GET", "/categorias"): CORTE, ("GET", "/impuestos"): ADMIN, ("GET", "/dolar"): CORTE, ("GET", "/parametros"): ADMIN,
     ("GET", "/talleres"): ADMIN, ("GET", "/talleres/{codigo}"): ADMIN, ("GET", "/personas"): ADMIN,
@@ -309,7 +312,7 @@ RUTAS_DEL_GERENTE = frozenset({
     ("GET", "/productos"), ("GET", "/productos/conteo"), ("GET", "/productos/{codigo}"),
     ("GET", "/productos/{codigo}/rentabilidad"), ("GET", "/productos/{codigo}/precio-venta"),
     ("GET", "/productos/{codigo}/precio-sugerido"),
-    ("GET", "/modelos"), ("GET", "/modelos/{codigo}"),
+    ("GET", "/modelos"), ("GET", "/modelos/{codigo}"), ("GET", "/modelos/{codigo}/foto"),
     ("GET", "/materiales"), ("GET", "/catalogos"),
     ("GET", "/cvu/periodo"), ("POST", "/cvu/escenario"),
 })

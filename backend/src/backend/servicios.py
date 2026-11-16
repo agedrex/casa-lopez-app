@@ -24,7 +24,7 @@ from backend.costeo import (
 )
 from backend.models import (
     Categoria, Color, CompraReventa, Cotizacion, Etapa, GastoPeriodo, Impuesto, KitComponente, Material, Modelo,
-    ModeloInsumo, OrdenEstado, OrdenFabricacion, OrdenItem, Parametro, Persona, PrecioMaterial, PrecioVenta, Producto,
+    ModeloFoto, ModeloInsumo, OrdenEstado, OrdenFabricacion, OrdenItem, Parametro, Persona, PrecioMaterial, PrecioVenta, Producto,
     ProductoReventa, Proveedor, RecetaLinea, Taller, TipoCambio, Transferencia, Venta,
 )
 from backend.receta import (
@@ -629,6 +629,11 @@ def _modelo_a_dict(m: Modelo, categoria: str | None, forro_codigo: str | None) -
     }
 
 
+def _tiene_foto():
+    """`EXISTS` over `modelo_foto` for the model of the row (indexed by `modelo_id`): the list never loads the bytes."""
+    return select(ModeloFoto.id).where(ModeloFoto.modelo_id == Modelo.id).exists().label("tiene_foto")
+
+
 def listar_modelos(
     session: Session, limit: int = 500, offset: int = 0, q: str | None = None, categoria: str | None = None,
     validado: bool | None = None, tamano: str | None = None,
@@ -636,7 +641,7 @@ def listar_modelos(
     """Models in sheet order. Filters: every word of `q` in the code or name, exact category name, flag, size."""
     forro = aliased(Material)
     consulta = (
-        select(Modelo, Categoria.nombre, forro.codigo)
+        select(Modelo, Categoria.nombre, forro.codigo, _tiene_foto())
         .outerjoin(Categoria, Categoria.id == Modelo.categoria_id)
         .outerjoin(forro, forro.id == Modelo.forro_id)
         .order_by(Modelo.id).limit(limit).offset(offset)
@@ -650,7 +655,8 @@ def listar_modelos(
         consulta = consulta.where(Modelo.validado.is_(validado))
     if tamano:
         consulta = consulta.where(Modelo.tamano == tamano)
-    return [_modelo_a_dict(m, nombre_categoria, forro_codigo) for m, nombre_categoria, forro_codigo in session.execute(consulta).all()]
+    return [{**_modelo_a_dict(m, nombre_categoria, forro_codigo), "tiene_foto": tiene_foto}
+            for m, nombre_categoria, forro_codigo, tiene_foto in session.execute(consulta).all()]
 
 
 def listar_materiales(session: Session) -> list[dict]:
@@ -2479,16 +2485,16 @@ CAMPOS_DE_CONSUMO = (
 def detalle_modelo(session: Session, codigo: str) -> dict:
     forro = aliased(Material)
     fila = session.execute(
-        select(Modelo, Categoria.nombre, forro.codigo)
+        select(Modelo, Categoria.nombre, forro.codigo, _tiene_foto())
         .outerjoin(Categoria, Categoria.id == Modelo.categoria_id)
         .outerjoin(forro, forro.id == Modelo.forro_id)
         .where(Modelo.codigo == codigo)
     ).one_or_none()
     if fila is None:
         raise NoEncontrado(f"No existe el modelo {codigo}.")
-    m, categoria, forro_codigo = fila
+    m, categoria, forro_codigo, tiene_foto = fila
     return {
-        **_modelo_a_dict(m, categoria, forro_codigo), "nota": m.nota,
+        **_modelo_a_dict(m, categoria, forro_codigo), "tiene_foto": tiene_foto, "nota": m.nota,
         "modelo_excel_viejo": m.modelo_excel_viejo, "fila_excel_viejo": m.fila_excel_viejo,
         "productos": session.scalar(select(func.count(Producto.id)).where(Producto.modelo_id == m.id)) or 0,
         "insumos": _insumos_del_modelo(session, m.id),

@@ -81,7 +81,7 @@ class RecordedOperations:
 # Tables created by revisions after 0003, so 0003 neither creates nor drops them.
 ADDED_AFTER_DER_V3 = {"precio_venta", "proveedor", "documento_proveedor", "producto_reventa", "compra_reventa",
                       "formulario_consumo", "formulario_consumo_linea", "pedido_proveedor", "pedido_linea", "modelo_insumo",
-                      "proveedor_producto", "transferencia", "venta"}
+                      "proveedor_producto", "transferencia", "venta", "modelo_foto"}
 
 
 # 0011 links the existing precio_material to proveedor (created by 0007), so that FK comes after both tables exist.
@@ -104,7 +104,7 @@ def test_revision_chain_replaces_v1_with_v3_then_seeds(monkeypatch):
                      "0015_precio_venta_margen.py", "0016_formulario_consumo.py", "0017_formulario_modelo.py",
                      "0018_pedidos_proveedor.py", "0019_modelo_insumo.py", "0020_proveedor_producto.py",
                      "0021_margen_transferencia.py", "0022_ventas_transferencias.py",
-                     "0023_producto_creado_por.py"):
+                     "0023_producto_creado_por.py", "0024_modelo_foto.py"):
         _, revision = load_revision(monkeypatch, filename)
         chain[revision["revision"]] = revision["down_revision"]
     assert chain == {
@@ -126,6 +126,7 @@ def test_revision_chain_replaces_v1_with_v3_then_seeds(monkeypatch):
         "0021_margen_transferencia": "0020_proveedor_producto",
         "0022_ventas_transferencias": "0021_margen_transferencia",
         "0023_producto_creado_por": "0022_ventas_transferencias",
+        "0024_modelo_foto": "0023_producto_creado_por",
     }
 
 
@@ -163,6 +164,7 @@ def test_der_v3_revision_matches_orm_and_reverses_dependencies(monkeypatch):
     runpy.run_path(str(VERSIONS / "0021_margen_transferencia.py"))["upgrade"]()
     runpy.run_path(str(VERSIONS / "0022_ventas_transferencias.py"))["upgrade"]()
     runpy.run_path(str(VERSIONS / "0023_producto_creado_por.py"))["upgrade"]()
+    runpy.run_path(str(VERSIONS / "0024_modelo_foto.py"))["upgrade"]()
     assert set(operations.metadata.tables) == set(Base.metadata.tables)
     dialect = postgresql.dialect()
     for key, declared in operations.metadata.tables.items():
@@ -414,3 +416,20 @@ def test_precio_material_proveedor_revision_adds_a_nullable_link_keeps_the_text_
     assert operations.dropped_constraints == ["fk_precio_material_proveedor_id_proveedor"]
     assert operations.dropped_columns == [("costos", "precio_material", "proveedor_id")]
     assert "links" in revision["__doc__"]  # the downgrade warns that the links are lost
+
+
+def test_modelo_foto_revision_creates_the_photo_table_with_its_index_and_the_downgrade_drops_both(monkeypatch):
+    operations, base = load_revision(monkeypatch, "0003_der_v3.py")
+    base["upgrade"]()
+    revision = runpy.run_path(str(VERSIONS / "0024_modelo_foto.py"))
+    assert revision["revision"] == "0024_modelo_foto" and revision["down_revision"] == "0023_producto_creado_por"
+    revision["upgrade"]()
+    foto = operations.metadata.tables["costos.modelo_foto"]
+    assert set(foto.c.keys()) == {"id", "created_at", "codigo", "modelo_id", "contenido", "tipo_mime", "sha256", "tamano_bytes",
+                                  "subido_por"}
+    assert {fk.target_fullname for fk in foto.foreign_keys} == {"costos.modelo.id"}
+    assert [index.name for index in foto.indexes] == ["ix_modelo_foto_modelo_id"]
+    assert not foto.c.contenido.nullable  # a row is always a stored photo
+    revision["downgrade"]()
+    assert operations.dropped_indexes == ["ix_modelo_foto_modelo_id"] and operations.dropped == ["modelo_foto"]
+    assert "lost" in revision["__doc__"]  # the downgrade warns that the stored photos are lost

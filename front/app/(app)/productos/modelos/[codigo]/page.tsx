@@ -13,6 +13,7 @@ import { originLabel, sizeLabel } from "@/lib/modelos";
 import { requireRole } from "@/lib/session";
 import type { ModeloDetalle } from "@/lib/types";
 import { ConsumosTable, EditarConsumos, loadForros } from "../modelo-consumos";
+import { FotoModelo } from "./foto-modelo";
 import { ValidadoForm } from "./modelo-forms";
 
 export const metadata: Metadata = { title: "Modelo" };
@@ -78,12 +79,20 @@ export default async function ModeloPage({
     <>
       <BackLink />
       <PageHeader
-        eyebrow={`Modelo ${modelo.codigo}`}
+        eyebrow="Modelo"
         title={modelo.nombre_del_modelo}
         actions={
-          <Badge tone={modelo.validado ? "good" : "neutral"}>
-            {modelo.validado ? "Validado" : "Sin validar"}
-          </Badge>
+          <div className="flex flex-col items-start gap-2 sm:items-end">
+            <div className="sm:text-right">
+              <p className="text-xs uppercase tracking-caps-sm text-muted">
+                ID del modelo
+              </p>
+              <h2 className="text-2xl tabular-nums">{modelo.codigo}</h2>
+            </div>
+            <Badge tone={modelo.validado ? "good" : "neutral"}>
+              {modelo.validado ? "Validado" : "Sin validar"}
+            </Badge>
+          </div>
         }
       />
       <div className="space-y-10">
@@ -131,6 +140,17 @@ export default async function ModeloPage({
                 <Datum label="Nota" value={modelo.nota} />
               </div>
             </dl>
+          </Card>
+        </section>
+        <section>
+          <SectionTitle>Foto</SectionTitle>
+          <Card>
+            <FotoModelo
+              codigo={modelo.codigo}
+              nombre={modelo.nombre_del_modelo}
+              tieneFoto={modelo.tiene_foto}
+              puedeSubir
+            />
           </Card>
         </section>
         <section>

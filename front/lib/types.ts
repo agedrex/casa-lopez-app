@@ -175,6 +175,8 @@ export type ModeloLista = Modelo & {
   origen_de_los_consumos: string | null;
   validado: boolean;
   horas_de_confeccion: string | null;
+  /** True when a photo was uploaded; it is read at `/api/modelos/{codigo}/foto`. */
+  tiene_foto: boolean;
 };
 
 /** Answer of `POST /modelos/consumos/lote`. */

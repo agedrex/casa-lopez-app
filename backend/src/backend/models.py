@@ -59,6 +59,8 @@ WHERE_MADE = ("EXTERNA", "INTERNA")
 DOCUMENT_TYPES = ("FACTURA", "IMAGEN", "OTRO")
 # The file type is checked by its magic bytes (proveedores.detect_mime); these are the only ones stored.
 DOCUMENT_MIMES = ("image/jpeg", "image/png", "image/webp", "application/pdf")
+# Model photos (modelos_foto.py): same magic-byte check as the documents, but images only.
+FOTO_MIMES = ("image/jpeg", "image/png", "image/webp")
 OCR_STATES = ("PENDIENTE", "LISTO", "ERROR", "NO_CONFIGURADO")
 # Consumption form of a new article (see formulario.py): its states, in order, and the two tables of the sheet.
 FORM_STATES = ("BORRADOR", "ENVIADO", "COMPLETADO", "VALIDADO")
@@ -271,6 +273,27 @@ class ModeloInsumo(BusinessKey, Base):
     modelo_id: Mapped[int] = mapped_column(ForeignKey("costos.modelo.id"))
     material_id: Mapped[int] = mapped_column(ForeignKey("costos.material.id"), index=True)
     cantidad_por_unidad: Mapped[Decimal] = mapped_column(quantity())
+
+
+class ModeloFoto(BusinessKey, Base):
+    """A photo of a model, stored in the database. Only rows are added: a new upload is a new row and the newest one is the
+    model's current photo (the older ones stay as history). `codigo` is `MFO-NNNN`.
+
+    The type is decided by the magic bytes (modelos_foto.py), never by the declared mime or the extension.
+    """
+    __tablename__ = "modelo_foto"
+    __table_args__ = (
+        one_of("tipo_mime", FOTO_MIMES, "tipo_mime"),
+        CheckConstraint("tamano_bytes > 0", name="tamano_positivo"),
+    )
+    modelo_id: Mapped[int] = mapped_column(ForeignKey("costos.modelo.id"), index=True)
+    # Deferred: asking whether a model has a photo, or listing models, never loads the bytes.
+    contenido: Mapped[bytes] = mapped_column(LargeBinary, deferred=True)
+    tipo_mime: Mapped[str] = mapped_column(Text)
+    sha256: Mapped[str] = mapped_column(CHAR(64))
+    tamano_bytes: Mapped[int] = mapped_column(Integer)
+    # The auth user id as text (no FK: Better Auth lives in `public`).
+    subido_por: Mapped[str] = mapped_column(Text)
 
 
 class KitComponente(IdentityAndCreatedAt, Base):

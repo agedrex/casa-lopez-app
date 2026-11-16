@@ -102,6 +102,27 @@ test("taller has one entry (Lotes): it opens lots, Voz and the product sheet onl
   }
 });
 
+test("the model photo route (an <img> source) is open to the three roles and closed without a role", () => {
+  for (const role of ["admin", "gerente", "taller", "consulta", "corte"]) {
+    assert.equal(canAccessPath(role, "/api/modelos/MOD-0001/foto"), true, role);
+  }
+  assert.equal(canAccessPath(null, "/api/modelos/MOD-0001/foto"), false);
+  assert.equal(canAccessPath("otro", "/api/modelos/MOD-0001/foto"), false);
+});
+
+test("opening the photo route does not open any other /api path to gerente or taller", () => {
+  for (const role of ["gerente", "taller"]) {
+    for (const path of [
+      "/api",
+      "/api/otro",
+      "/api/modelo",
+      "/api/proveedores/PRV-1",
+    ]) {
+      assert.equal(canAccessPath(role, path), false, `${role} ${path}`);
+    }
+  }
+});
+
 test("taller lands on the lots list", () => {
   assert.equal(homePath("taller"), "/fabricacion");
   assert.equal(homePath("corte"), "/fabricacion");
