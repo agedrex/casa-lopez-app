@@ -25,7 +25,7 @@ export default async function NuevoModeloPage() {
       <PageHeader
         eyebrow="Productos"
         title="Nuevo modelo"
-        description="Escriba el nombre, la categoría y las notas del modelo: el taller recibe la hoja para cargar todos los consumos y usted la valida. Al validarla queda como la receta del modelo."
+        description="Escriba el nombre y la categoría, y suba la foto del modelo: el taller recibe la hoja para cargar todos los consumos y usted la valida. Al validarla queda como la receta del modelo."
       />
       {catalogos.ok ? (
         <Card>

@@ -9,6 +9,7 @@ import {
 import { SIZES } from "@/lib/modelos";
 import { useActionForm } from "@/lib/use-action-form";
 import { CatalogoSelect } from "../catalogo-select";
+import { FOTO_ACCEPT } from "./[codigo]/foto-limites";
 import { createModelo } from "./actions";
 
 /** The only "Nuevo modelo" form (also shown in /productos/nuevo): no consumptions, they are loaded from the model page. */
@@ -60,14 +61,28 @@ export function ModeloNuevoForm({ categorias }: { categorias: string[] }) {
         </Field>
       </div>
       <Field
+        id="modelo-foto"
+        label="Foto del modelo"
+        hint="Es la guía que se usa para armar el modelo. JPG, PNG o WebP, de hasta 5 MB. También se puede subir después, desde la ficha."
+      >
+        <input
+          id="modelo-foto"
+          name="foto"
+          type="file"
+          accept={FOTO_ACCEPT}
+          aria-describedby="modelo-foto-hint"
+          className={inputClass}
+        />
+      </Field>
+      <Field
         id="modelo-nota"
-        label="Notas del modelo (opcional)"
+        label="Notas (opcional)"
         hint="Medidas, materiales, detalles."
       >
         <textarea
           id="modelo-nota"
           name="nota"
-          rows={4}
+          rows={2}
           maxLength={2000}
           aria-describedby="modelo-nota-hint"
           className={inputClass}
