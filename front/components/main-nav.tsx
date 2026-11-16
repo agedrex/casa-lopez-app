@@ -5,14 +5,34 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { NAV_ITEMS, type NavGroup, type NavItem } from "@/lib/nav";
 import { ICONS, Icon } from "./nav-icons";
 
-export function isActive(pathname: string, href: string) {
-  const prefix = (item: NavItem) => item.activePrefix ?? item.href;
-  const activeHref = NAV_ITEMS.flatMap((group) => group.items)
-    .filter(
-      (item) =>
-        pathname === prefix(item) || pathname.startsWith(`${prefix(item)}/`),
-    )
-    .sort((a, b) => prefix(b).length - prefix(a).length)[0]?.href;
+/** Every path prefix that keeps an item highlighted: its own (activePrefix or href) plus the extra ones. */
+function prefixes(item: NavItem): string[] {
+  return [item.activePrefix ?? item.href, ...(item.alsoActiveOn ?? [])].map(
+    (prefix) => prefix.split("?")[0],
+  );
+}
+
+const underPrefix = (pathname: string, prefix: string) =>
+  pathname === prefix || pathname.startsWith(`${prefix}/`);
+
+/** `items` are the entries the user can see; without them, the full admin menu. */
+export function isActive(
+  pathname: string,
+  href: string,
+  items: NavItem[] = NAV_ITEMS.flatMap((group) => group.items),
+) {
+  const activeHref = items
+    .map((item) => ({
+      href: item.href,
+      length: Math.max(
+        -1,
+        ...prefixes(item)
+          .filter((prefix) => underPrefix(pathname, prefix))
+          .map((prefix) => prefix.length),
+      ),
+    }))
+    .filter((item) => item.length >= 0)
+    .sort((a, b) => b.length - a.length)[0]?.href;
   return href === activeHref;
 }
 
@@ -25,11 +45,20 @@ function activeSidebarHref(
   let best: { href: string; score: number } | null = null;
   for (const item of groups.flatMap((group) => group.items)) {
     const [path, query = ""] = (item.activePrefix ?? item.href).split("?");
-    if (pathname !== path && !pathname.startsWith(`${path}/`)) continue;
     const wanted = [...new URLSearchParams(query)];
-    if (wanted.some(([key, value]) => search.get(key) !== value)) continue;
-    const score = path.length * 10 + wanted.length;
-    if (!best || score > best.score) best = { href: item.href, score };
+    const candidates = [
+      ...(underPrefix(pathname, path) &&
+      !wanted.some(([key, value]) => search.get(key) !== value)
+        ? [{ path, wanted: wanted.length }]
+        : []),
+      ...(item.alsoActiveOn ?? [])
+        .filter((extra) => underPrefix(pathname, extra))
+        .map((extra) => ({ path: extra, wanted: 0 })),
+    ];
+    for (const candidate of candidates) {
+      const score = candidate.path.length * 10 + candidate.wanted;
+      if (!best || score > best.score) best = { href: item.href, score };
+    }
   }
   return best?.href;
 }

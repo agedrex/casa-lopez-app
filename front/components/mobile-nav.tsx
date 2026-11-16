@@ -37,11 +37,11 @@ export function MobileNav({
   const rightTabs = canCreate
     ? visibleTabs.slice(Math.ceil(visibleTabs.length / 2))
     : [];
+  const visibleItems = groups.flatMap((group) => group.items);
+  const active = (href: string) => isActive(pathname, href, visibleItems);
   const moreActive =
-    !visibleTabs.some((item) => isActive(pathname, item.href)) &&
-    groups.some((group) =>
-      group.items.some((item) => isActive(pathname, item.href)),
-    );
+    !visibleTabs.some((item) => active(item.href)) &&
+    visibleItems.some((item) => active(item.href));
 
   // Close the sheet whenever the route changes.
   // biome-ignore lint/correctness/useExhaustiveDependencies: pathname is the trigger
@@ -63,13 +63,13 @@ export function MobileNav({
   }, [open, createOpen]);
 
   const renderTab = (item: NavItem) => {
-    const active = isActive(pathname, item.href);
+    const current = active(item.href);
     return (
       <Link
         key={item.href}
         href={item.href}
-        aria-current={active ? "page" : undefined}
-        className={tabClass(active)}
+        aria-current={current ? "page" : undefined}
+        className={tabClass(current)}
       >
         <Icon path={ICONS[item.icon ?? item.href] ?? ICONS.more} />
         <span>{item.shortLabel ?? item.label}</span>
@@ -102,14 +102,14 @@ export function MobileNav({
                 </h2>
                 <ul>
                   {group.items.map((item) => {
-                    const active = isActive(pathname, item.href);
+                    const current = active(item.href);
                     return (
                       <li key={item.href}>
                         <Link
                           href={item.href}
-                          aria-current={active ? "page" : undefined}
+                          aria-current={current ? "page" : undefined}
                           className={`flex min-h-12 items-center rounded-card px-4 text-base ${
-                            active ? "bg-ink text-white" : "text-ink-soft"
+                            current ? "bg-ink text-white" : "text-ink-soft"
                           }`}
                         >
                           {item.label}

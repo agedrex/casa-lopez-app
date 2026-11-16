@@ -9,6 +9,8 @@ export type NavItem = {
   icon?: string;
   /** Path prefix that keeps this item highlighted when it differs from the href (Negocio y Administración lands on /admin/panel). */
   activePrefix?: string;
+  /** Other path prefixes that keep this item highlighted (Lotes y modelos also lives under /taller/modelos). */
+  alsoActiveOn?: string[];
   adminOnly?: boolean;
 };
 
@@ -46,6 +48,12 @@ export const NAV_ITEMS: NavGroup[] = [
       { href: "/productos/modelos", label: "Modelos", adminOnly: true },
       { href: "/reventa", label: "Mercadería", adminOnly: true },
       { href: "/unidades", label: "Unidades producidas", adminOnly: true },
+      {
+        href: "/costos-fijos/impuestos",
+        label: "Impuestos",
+        icon: "/admin/impuestos",
+        adminOnly: true,
+      },
     ],
   },
   {
@@ -72,8 +80,8 @@ export const NAV_ITEMS: NavGroup[] = [
 const MOBILE_TAB_HREFS: Record<Role, readonly string[]> = {
   admin: ["/admin/panel", "/productos", "/materiales", "/fabricacion"],
   gerente: ["/productos", "/escenarios"],
-  // Lotes and my models; Voz stays one tap away in the "+" button's quick actions.
-  taller: ["/fabricacion", "/taller/modelos"],
+  // One entry, Lotes y modelos; Voz stays one tap away in the "+" button's quick actions.
+  taller: ["/fabricacion"],
 };
 
 // Menus of the restricted roles. They match the paths of ROLE_ACCESS in permissions.ts.
@@ -92,19 +100,16 @@ const GERENTE_NAV: NavGroup[] = [
 ];
 
 // Voz is not listed: on desktop it is the microphone button of the header, on mobile the "+" quick action.
-// Lotes (the product sheet is opened from a lot) and the models the admin sent to the taller.
+// A single entry, no groups: the lots (the product sheet is opened from a lot) and the models the admin sent to the taller.
 const TALLER_NAV: NavGroup[] = [
   {
-    title: "Producción",
-    items: [{ href: "/fabricacion", label: "Lotes" }],
-  },
-  {
-    title: "Modelos",
+    title: "",
     items: [
       {
-        href: "/taller/modelos",
-        label: "Mis modelos",
-        icon: "/productos/modelos",
+        href: "/fabricacion",
+        label: "Lotes y modelos",
+        icon: "/fabricacion",
+        alsoActiveOn: ["/taller/modelos"],
       },
     ],
   },
@@ -162,6 +167,12 @@ const DESKTOP_NAV: NavGroup[] = [
       { href: "/unidades", label: "Unidades producidas" },
       { href: "/materiales", label: "Materiales y precios" },
       { href: "/reventa", label: "Mercadería", adminOnly: true },
+      {
+        href: "/costos-fijos/impuestos",
+        label: "Impuestos",
+        icon: "/admin/impuestos",
+        adminOnly: true,
+      },
     ],
   },
   {

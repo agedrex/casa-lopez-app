@@ -20,6 +20,8 @@ test("gerente opens nothing under /admin, not even the Panel (S8)", () => {
     "/admin/panel",
     "/admin/usuarios",
     "/admin/impuestos",
+    "/admin/negocio",
+    "/admin/sync",
     "/admin/panel/otro",
   ]) {
     assert.equal(canAccessPath("gerente", path), false, path);
@@ -198,7 +200,7 @@ test("only admin and taller may fill sheets", () => {
   assert.equal(canFillFormularios(null), false);
 });
 
-test("the admin menu has no Hojas de consumos entry and the taller menu lists Lotes and Mis modelos", () => {
+test("the admin menu has no Hojas de consumos entry and the taller menu is the single Lotes y modelos entry", () => {
   const hrefs = (groups: { items: { href: string }[] }[]) =>
     groups.flatMap((group) => group.items.map((item) => item.href));
   assert.ok(!hrefs(desktopNavForRole(["admin"])).includes("/taller/modelos"));
@@ -209,7 +211,7 @@ test("the admin menu has no Hojas de consumos entry and the taller menu lists Lo
     desktopNavForRole(["taller"]),
     navForRole(["taller"]),
   ]) {
-    assert.deepEqual(hrefs(groups), ["/fabricacion", "/taller/modelos"]);
+    assert.deepEqual(hrefs(groups), ["/fabricacion"]);
   }
   for (const groups of [
     desktopNavForRole(["gerente"]),
@@ -219,23 +221,53 @@ test("the admin menu has no Hojas de consumos entry and the taller menu lists Lo
   }
 });
 
-test("the taller menu lists Lotes and the model screens, and each entry is a path it can open", () => {
-  const hrefs = (groups: { items: { href: string }[] }[]) =>
-    groups.flatMap((group) => group.items.map((item) => item.href));
+test("the taller menu is one ungrouped entry, Lotes y modelos, active on both /fabricacion and /taller/modelos", () => {
   for (const groups of [
     desktopNavForRole(["taller"]),
     navForRole(["taller"]),
   ]) {
-    assert.deepEqual(hrefs(groups), ["/fabricacion", "/taller/modelos"]);
-    for (const href of hrefs(groups)) {
-      assert.equal(canAccessPath("taller", href), true, href);
+    assert.equal(groups.length, 1);
+    assert.equal(groups[0].title, "");
+    assert.equal(groups[0].items.length, 1);
+    const [item] = groups[0].items;
+    assert.equal(item.href, "/fabricacion");
+    assert.equal(item.label, "Lotes y modelos");
+    assert.deepEqual(item.alsoActiveOn, ["/taller/modelos"]);
+    for (const path of [item.href, ...(item.alsoActiveOn ?? [])]) {
+      assert.equal(canAccessPath("taller", path), true, path);
     }
   }
   const tabs = mobileTabs(navForRole(["taller"]), ["taller"]);
   assert.deepEqual(
     tabs.map((tab) => tab.href),
-    ["/fabricacion", "/taller/modelos"],
+    ["/fabricacion"],
   );
+});
+
+test("Impuestos is an admin entry of Costos variables, not of the admin tabs", () => {
+  const costosVariables = desktopNavForRole(["admin"]).find(
+    (group) => group.title === "Costos variables",
+  );
+  assert.ok(costosVariables, "the Costos variables group is missing");
+  const impuestos = costosVariables.items.find(
+    (item) => item.label === "Impuestos",
+  );
+  assert.equal(impuestos?.href, "/costos-fijos/impuestos");
+  assert.equal(canAccessPath("admin", "/costos-fijos/impuestos"), true);
+  for (const role of ["gerente", "taller", null]) {
+    assert.equal(
+      canAccessPath(role, "/costos-fijos/impuestos"),
+      false,
+      `${role}`,
+    );
+    assert.equal(
+      desktopNavForRole(role ? [role as "gerente" | "taller"] : []).some(
+        (group) => group.items.some((item) => item.label === "Impuestos"),
+      ),
+      false,
+      `${role}`,
+    );
+  }
 });
 
 test("taller is a taller-only user; admin is not", () => {
