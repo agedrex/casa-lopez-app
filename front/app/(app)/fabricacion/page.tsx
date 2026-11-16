@@ -28,8 +28,8 @@ export default async function FabricacionPage({
   searchParams: Search;
 }) {
   const { user } = await requireSession();
-  // The taller has one screen with its lots and its models, in the same grids.
-  if (isTallerOnly(user.role)) return <LotesYModelos userId={user.id} />;
+  // The taller has one screen with two tabs, Lotes (this route) and Modelos, in the same grids.
+  if (isTallerOnly(user.role)) return <LotesYModelos vista="lotes" />;
   const params = await searchParams;
   // Unknown values are dropped here: the API answers 422 to a state or place it does not know.
   const estado = LOT_STATES.includes(first(params.estado))
