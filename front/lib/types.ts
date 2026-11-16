@@ -42,6 +42,8 @@ export type ProductoResumen = {
 export type LineaReceta = {
   etapa: string;
   material: string;
+  /** Name of the material: what the screens show (the code stays for the engine). */
+  material_nombre?: string | null;
   color: string | null;
   consumo: string;
 };
@@ -90,12 +92,16 @@ export type Ficha = {
   nombre: string;
   categoria: string | null;
   modelo: string | null;
+  modelo_nombre?: string | null;
   cuero: string | null;
+  cuero_nombre?: string | null;
   color: string | null;
   quien_lo_confecciona: string | null;
   estado_del_ciclo: string;
   es_kit: boolean;
   nota: string | null;
+  /** Hours the model takes to make: informative, outside the cost. */
+  horas_de_confeccion?: string | null;
   fecha_de_alta: string | null;
   fecha_de_recotizacion: string | null;
   fecha_de_cierre: string | null;

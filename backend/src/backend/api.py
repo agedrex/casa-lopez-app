@@ -189,6 +189,10 @@ class ProductoIn(Entrada):
     nota: str | None = None
 
 
+class ProductoColorIn(Entrada):
+    color: str | None = None  # empty or null clears the color
+
+
 class ExtraIn(Entrada):
     material: str
     color: str | None = None
@@ -551,6 +555,7 @@ class ProductoResumen(Salida):
 class LineaRecetaOut(Salida):
     etapa: str
     material: str
+    material_nombre: str | None = None  # what the screens show: the material's name, never its code
     color: str | None
     consumo: Decimal
 
@@ -599,12 +604,15 @@ class FichaOut(Salida):
     nombre: str
     categoria: str | None
     modelo: str | None
+    modelo_nombre: str | None = None
     cuero: str | None
+    cuero_nombre: str | None = None
     color: str | None
     quien_lo_confecciona: str | None
     estado_del_ciclo: str
     es_kit: bool
     nota: str | None
+    horas_de_confeccion: Decimal | None = None  # informative, outside the cost
     fecha_de_alta: date | None
     fecha_de_recotizacion: date | None
     fecha_de_cierre: date | None
@@ -1729,6 +1737,11 @@ def calidad(session: Sesion):
 @router.post("/productos", dependencies=ESCRITURA, response_model=FichaOut, status_code=201)
 def crear_producto(cuerpo: ProductoIn, session: Sesion, usuario: Escritor):
     return servicios.crear_producto(session, **cuerpo.model_dump(), quien=usuario.id)
+
+
+@router.put("/productos/{codigo}/color", dependencies=ESCRITURA, response_model=FichaOut)
+def cambiar_color_de_producto(codigo: str, cuerpo: ProductoColorIn, session: Sesion):
+    return servicios.cambiar_color_de_producto(session, codigo, cuerpo.color)
 
 
 @router.post("/productos/{codigo}/precio-venta", dependencies=ESCRITURA, response_model=PrecioVentaOut, status_code=201)
