@@ -31,6 +31,9 @@ export type ProductoResumen = {
   /** Total of that quote, as the API calculated it (in pesos and in dollars). */
   costo_cotizado_ars?: string | null;
   costo_cotizado_usd?: string | null;
+  /** When the product was created (ISO datetime) and by whom (display name, or the raw user id when the name cannot be read). `null` for products created before the column existed. */
+  creado_en?: string | null;
+  creado_por?: string | null;
 };
 
 export type LineaReceta = {

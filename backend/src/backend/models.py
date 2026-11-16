@@ -238,6 +238,9 @@ class Producto(BusinessKey, Base):
     nombre_propio: Mapped[str | None] = mapped_column(Text)
     es_kit: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     nota: Mapped[str | None] = mapped_column(Text)
+    # The auth user id as text, like cotizacion.creado_por (no FK: Better Auth lives in `public`). NULL for the products
+    # that already existed (importer, seed, demo): no backfill, the list shows "—".
+    creado_por: Mapped[str | None] = mapped_column(Text)
 
 
 class RecetaLinea(BusinessKey, Base):

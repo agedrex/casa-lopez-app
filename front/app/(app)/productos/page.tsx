@@ -32,6 +32,21 @@ export const metadata: Metadata = { title: "Productos" };
 
 const PAGE_SIZE = 50;
 
+// The server stores an instant (UTC): the day is the one of the shop, not the one of the server or the browser.
+const creationDay = new Intl.DateTimeFormat("es-AR", {
+  timeZone: "America/Argentina/Buenos_Aires",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+});
+
+/** `2026-11-16T14:30:00+00:00` -> `16/11/2026`; `—` when the product has no creation date. */
+function creationDate(value: string | null | undefined): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "—" : creationDay.format(date);
+}
+
 type Search = Promise<{
   pagina?: string | string[];
   q?: string | string[];
@@ -366,6 +381,10 @@ function ProductTable({
                   <p className="mt-1 text-xs text-muted">
                     {producto.categoria ?? "—"}
                   </p>
+                  <p className="mt-1 text-xs text-muted">
+                    Creado: {creationDate(producto.creado_en)}
+                    {producto.creado_por ? ` · ${producto.creado_por}` : ""}
+                  </p>
                 </SheetLink>
               </CardItem>
             ))}
@@ -384,6 +403,9 @@ function ProductTable({
                   </th>
                   <th scope="col" className={thClass}>
                     Categoría
+                  </th>
+                  <th scope="col" className={thClass}>
+                    Creado
                   </th>
                 </tr>
               </thead>
@@ -435,6 +457,12 @@ function ProductTable({
                         </div>
                       </td>
                       <td className={tdClass}>{producto.categoria ?? "—"}</td>
+                      <td className={tdClass}>
+                        {creationDate(producto.creado_en)}
+                        <span className="block max-w-40 truncate text-xs text-muted">
+                          {producto.creado_por ?? "—"}
+                        </span>
+                      </td>
                     </tr>
                   );
                 })}

@@ -10,10 +10,10 @@ import re
 import unicodedata
 from collections import Counter
 from dataclasses import asdict, dataclass, field, replace
-from datetime import date
+from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 
-from sqlalchemy import Integer, and_, cast, exists, func, or_, select, update
+from sqlalchemy import Integer, and_, bindparam, cast, exists, func, or_, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, aliased
 
@@ -115,6 +115,8 @@ class DatosProducto:
     componentes: list[tuple[str, Decimal]] = field(default_factory=list)
     tamano: str | None = None
     modelo_nombre: str | None = None
+    creado_en: datetime | None = None
+    creado_por: str | None = None
 
     @property
     def producto(self) -> ProductoReceta:
@@ -386,6 +388,7 @@ def cargar_productos(
             modelo=receta_modelo, extras=extras.get(producto.id, []), lotes=lotes.get(producto.id, []),
             componentes=componentes.get(producto.id, []), tamano=modelo.tamano if modelo else None,
             modelo_nombre=modelo.nombre_del_modelo if modelo else None,
+            creado_en=producto.created_at, creado_por=producto.creado_por,
         ))
     return resultado
 
@@ -539,15 +542,37 @@ def _costo_cotizado(cotizacion: Cotizacion | None) -> dict:
             "costo_cotizado_ars": cotizacion.total_ars, "costo_cotizado_usd": cotizacion.total_usd}
 
 
+def _nombres_de_usuarios(session: Session, ids: set[str]) -> dict[str, str]:
+    """Display name (name, else email) of Better Auth users, in ONE query on `public."user"`, for the ids of the page.
+
+    Better Auth owns that table (another schema, no FK), so it may be missing or unreadable (tests, a fresh database): the
+    read runs in a savepoint and any failure gives an empty map, so the list never fails because of it.
+    """
+    if not ids:
+        return {}
+    consulta = text('select id, name, email from public."user" where id = any(:ids)').bindparams(bindparam("ids"))
+    try:
+        with session.begin_nested():
+            filas = session.execute(consulta, {"ids": sorted(ids)}).all()
+        return {str(i): (nombre or "").strip() or (correo or "").strip() or str(i) for i, nombre, correo in filas}
+    except Exception:
+        logger.warning("No se pudo leer los nombres de usuario; la lista muestra el id.", exc_info=True)
+        return {}
+
+
 def _filas_de_productos(session: Session, base: list[DatosProducto], con_precios: bool) -> list[dict]:
     catalogo = expandir_kits(session, base)
     ctx = cargar_contexto(session)
     cotizadas = _cotizacion_mas_nueva_por_producto(session, {datos.id for datos in base})
     precios = _ultimos_precios_de_venta_completos(session, {datos.id for datos in base}) if con_precios else {}
     impuestos = _impuestos_activos(session) if precios else []
+    # Creator of each product: the auth user id is resolved to a name for the whole page at once; an unknown id stays as is.
+    ids_de_usuarios = {c for c in (getattr(d, "creado_por", None) for d in base) if c}
+    nombres = _nombres_de_usuarios(session, ids_de_usuarios)
     filas = []
     for datos in base:
         resultado, avisos = _costo_hoy_seguro(datos, ctx, catalogo)
+        creador = getattr(datos, "creado_por", None)
         costo = _desglose_a_dict(resultado)
         motivos = motivos_de_revision(datos.nota)
         venta = _precio_de_venta_de_grilla(precios.get(datos.id), costo["total_ars"] if costo else None, impuestos)
@@ -559,6 +584,7 @@ def _filas_de_productos(session: Session, base: list[DatosProducto], con_precios
             "costo_hoy_usd": costo["total_usd"] if costo else None,
             **_costo_cotizado(cotizadas.get(datos.id)),
             "avisos": avisos, "revisar": bool(motivos), "motivos_revisar": motivos, **venta,
+            "creado_en": getattr(datos, "creado_en", None), "creado_por": nombres.get(creador, creador),
         })
     return filas
 
@@ -822,8 +848,9 @@ def _material_de_receta(session: Session, codigo: str, etapa: str | None = None)
 def crear_producto(
     session: Session, *, modelo: str | None, cuero: str | None, color: str | None,
     quien_lo_confecciona: str | None, fecha_de_alta: date | None, nombre_propio: str | None,
-    es_kit: bool, nota: str | None = None,
+    es_kit: bool, nota: str | None = None, quien: str | None = None,
 ) -> dict:
+    """`quien` is the auth user id of whoever creates it (stored as `creado_por`); scripts leave it None."""
     if modelo is None and not es_kit:
         raise DatosInvalidos("Falta el modelo (solo un kit puede ir sin modelo).")
     modelo_fila = _por_codigo(session, Modelo, modelo, "el modelo")
@@ -832,7 +859,7 @@ def crear_producto(
     fila = Producto(
         codigo=codigo, modelo_id=modelo_fila.id if modelo_fila else None, cuero_id=cuero_fila.id if cuero_fila else None,
         color_id=_color_id(session, color), quien_lo_confecciona=quien_lo_confecciona,
-        fecha_de_alta=fecha_de_alta, nombre_propio=nombre_propio, es_kit=es_kit, nota=nota,
+        fecha_de_alta=fecha_de_alta, nombre_propio=nombre_propio, es_kit=es_kit, nota=nota, creado_por=quien,
     )
     _insertar(session, fila, "No se pudo asignar el código del producto; intentá de nuevo.")
     session.commit()

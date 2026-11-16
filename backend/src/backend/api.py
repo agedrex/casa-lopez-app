@@ -539,6 +539,10 @@ class ProductoResumen(Salida):
     precio_venta_ars: Decimal | None = None
     margen_pct: Decimal | None = None
     precio_final_ars: Decimal | None = None
+    # When the product was created and by whom (display name; the raw user id if the name cannot be read). None for the
+    # products created before this field existed.
+    creado_en: datetime | None = None
+    creado_por: str | None = None
 
 
 class LineaRecetaOut(Salida):
@@ -1635,8 +1639,8 @@ def calidad(session: Sesion):
 # --- Write ----------------------------------------------------------------------------------------------------
 
 @router.post("/productos", dependencies=ESCRITURA, response_model=FichaOut, status_code=201)
-def crear_producto(cuerpo: ProductoIn, session: Sesion):
-    return servicios.crear_producto(session, **cuerpo.model_dump())
+def crear_producto(cuerpo: ProductoIn, session: Sesion, usuario: Escritor):
+    return servicios.crear_producto(session, **cuerpo.model_dump(), quien=usuario.id)
 
 
 @router.post("/productos/{codigo}/precio-venta", dependencies=ESCRITURA, response_model=PrecioVentaOut, status_code=201)
