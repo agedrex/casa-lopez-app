@@ -18,7 +18,7 @@ Objective: close the open items of the production audit that code can close. Del
 - T2 (S4): CI with Postgres. Route: delegated with T1 (same worktree, `.github/workflows/ci.yml`). Commit: pending
 - T3 (S3, S5): security headers and product filters. Route: delegated (parallel unit, worktree `productos-filtros`). Commit: pending
 - T4 (S6, S7): docs and cleanup. Route: inline (worktree `docs-limpieza`). Commit: pending
-- T5 (S8): dollar cron. Route: inline after T1-T4. Commit: pending
+- T5 (S8): dollar cron. Route: inline. Done: services `dolar-cron` (staging) and `dolar-cron-production`, `0 12 * * 1-5` UTC; first production run still to be observed. Commit: pending
 
 ## Estado verificado (2026-11-15)
 
