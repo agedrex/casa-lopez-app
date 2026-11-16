@@ -13,81 +13,30 @@ import { decimalInputText } from "@/lib/format";
 import {
   CONSUMPTION_FIELDS,
   hasMissingConsumptions,
-  ORIGINS,
   sizeLabel,
 } from "@/lib/modelos";
 import type { ModeloLista } from "@/lib/types";
 import { guardarConsumosLote } from "./actions";
 
-export type ForroOption = { codigo: string; label: string };
-
-const HEADERS: Record<string, string> = {
-  cuero_m2_por_unidad: "Cuero m²",
-  forro_m2_por_unidad: "Forro m²",
-  flex_m2_por_unidad: "Flex m²",
-  goma_eva_m2_por_unidad: "Goma EVA m²",
-  herrajes_usd_por_unidad: "Herrajes USD",
-  hilo_y_cemento: "Hilo y cemento",
-  confeccion_estimada_ars: "Confección ARS",
-  horas_de_confeccion: "Horas",
-};
-
 /**
- * The models sheet: one row per model, the consumptions editable in the cell. Empty = missing
- * data, 0 = "no lleva". Rows with missing data are highlighted. Nothing is computed here.
+ * The models sheet, kept simple: model, validation and hours. The other consumptions are edited
+ * in each model's page. Rows with missing consumptions are highlighted. Nothing is computed here.
  */
-export function ModelosGrid({
-  modelos,
-  forros,
-}: {
-  modelos: ModeloLista[];
-  forros: ForroOption[];
-}) {
-  const columns = useMemo<GridColumn[]>(() => {
-    const decimal = (name: string): GridColumn => ({
-      key: name,
-      header: HEADERS[name] ?? name,
-      kind: "decimal",
-      required: CONSUMPTION_FIELDS.find((field) => field.name === name)
-        ?.required,
-      width: "min-w-28",
-    });
-    const forro: GridColumn = {
-      key: "forro",
-      header: "Forro",
-      kind: "select",
-      emptyLabel: "Sin forro",
-      options: forros.map((item) => ({
-        value: item.codigo,
-        label: item.label,
-      })),
-      width: "min-w-48",
-    };
-    const origen: GridColumn = {
-      key: "origen_de_los_consumos",
-      header: "Origen",
-      kind: "select",
-      emptyLabel: "Elegir…",
-      required: true,
-      options: ORIGINS.map((item) => ({
-        value: item.value,
-        label: item.label,
-      })),
-      width: "min-w-36",
-    };
-    return [
-      decimal("cuero_m2_por_unidad"),
-      forro,
-      decimal("forro_m2_por_unidad"),
-      decimal("flex_m2_por_unidad"),
-      decimal("goma_eva_m2_por_unidad"),
-      decimal("herrajes_usd_por_unidad"),
-      decimal("hilo_y_cemento"),
-      decimal("confeccion_estimada_ars"),
-      decimal("horas_de_confeccion"),
-      origen,
-    ];
-  }, [forros]);
+export function ModelosGrid({ modelos }: { modelos: ModeloLista[] }) {
+  const columns = useMemo<GridColumn[]>(
+    () => [
+      {
+        key: "horas_de_confeccion",
+        header: "Horas",
+        kind: "decimal",
+        required: CONSUMPTION_FIELDS.find(
+          (field) => field.name === "horas_de_confeccion",
+        )?.required,
+        width: "min-w-28",
+      },
+    ],
+    [],
+  );
 
   const byCode = useMemo(
     () => new Map(modelos.map((modelo) => [modelo.codigo, modelo])),
@@ -99,12 +48,8 @@ export function ModelosGrid({
       modelos.map((modelo) => {
         const missing = hasMissingConsumptions(modelo);
         const cells: Record<string, string> = {
-          forro: modelo.forro ?? "",
-          origen_de_los_consumos: modelo.origen_de_los_consumos ?? "",
+          horas_de_confeccion: decimalInputText(modelo.horas_de_confeccion),
         };
-        for (const field of CONSUMPTION_FIELDS) {
-          cells[field.name] = decimalInputText(modelo[field.name]);
-        }
         return {
           id: modelo.codigo,
           name: modelo.nombre_del_modelo,
@@ -142,11 +87,23 @@ export function ModelosGrid({
 
   function onSave(save: GridSave) {
     return guardarConsumosLote(
-      save.changes.map((change) => ({
-        codigo: change.id,
-        nombre: byCode.get(change.id)?.nombre_del_modelo ?? change.id,
-        cells: change.cells,
-      })),
+      save.changes.map((change) => {
+        const modelo = byCode.get(change.id);
+        // The API takes every field of every row: the hidden ones go as they are today.
+        const cells: Record<string, string> = {};
+        if (modelo) {
+          cells.forro = modelo.forro ?? "";
+          cells.origen_de_los_consumos = modelo.origen_de_los_consumos ?? "";
+          for (const field of CONSUMPTION_FIELDS) {
+            cells[field.name] = decimalInputText(modelo[field.name]);
+          }
+        }
+        return {
+          codigo: change.id,
+          nombre: modelo?.nombre_del_modelo ?? change.id,
+          cells: { ...cells, ...change.cells },
+        };
+      }),
     );
   }
 

@@ -5,7 +5,7 @@ import { ErrorNotice, Notice, PageHeader } from "@/components/ui";
 import { apiGet } from "@/lib/api";
 import { hasMissingConsumptions, SIZES } from "@/lib/modelos";
 import { requireRole } from "@/lib/session";
-import type { Catalogos, Material, ModeloLista } from "@/lib/types";
+import type { Catalogos, ModeloLista } from "@/lib/types";
 import { ProductosNav } from "../productos-nav";
 import { ModelosGrid } from "./modelos-grid";
 
@@ -51,10 +51,9 @@ export default async function ModelosPage({
   if (validado) filter.set("validado", validado);
   if (tamano) filter.set("tamano", tamano);
 
-  const [found, catalogos, materiales] = await Promise.all([
+  const [found, catalogos] = await Promise.all([
     apiGet<ModeloLista[]>(`/modelos?${filter}`),
     apiGet<Catalogos>("/catalogos"),
-    apiGet<Material[]>("/materiales"),
   ]);
   // "Incompletos" is decided here: the API has no such filter, and a NULL consumption is
   // exactly what the grid highlights.
@@ -69,11 +68,6 @@ export default async function ModelosPage({
           : found.data,
       }
     : found;
-  const forros = materiales.ok
-    ? materiales.data
-        .filter((m) => m.etapa === "FORRO" && m.cotizable)
-        .map((m) => ({ codigo: m.codigo, label: `${m.codigo} · ${m.nombre}` }))
-    : [];
   const filtered = Boolean(q || categoria || validado || tamano || incompletos);
 
   return (
@@ -121,7 +115,7 @@ export default async function ModelosPage({
                 ? ` · ${incompleteCount} con consumos incompletos`
                 : ""}
             </p>
-            <ModelosGrid modelos={modelos.data} forros={forros} />
+            <ModelosGrid modelos={modelos.data} />
           </>
         )
       ) : (
