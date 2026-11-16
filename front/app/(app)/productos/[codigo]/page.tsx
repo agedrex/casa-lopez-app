@@ -14,11 +14,13 @@ import {
   thClass,
 } from "@/components/ui";
 import { apiGet } from "@/lib/api";
+import { fichaSubtitle } from "@/lib/ficha-consumo";
 import { formatQuantity, lifecycleLabel } from "@/lib/format";
-import { isTallerOnly } from "@/lib/permissions";
+import { canWrite, isTallerOnly } from "@/lib/permissions";
 import { collapseSpaces } from "@/lib/productos";
 import { requireSession } from "@/lib/session";
-import type { Ficha } from "@/lib/types";
+import type { Catalogos, Ficha } from "@/lib/types";
+import { ColorForm } from "./color-form";
 import { ConsumoBlock } from "./consumo-block";
 
 export const metadata: Metadata = { title: "Ficha de producto" };
@@ -60,6 +62,10 @@ export default async function FichaPage({
   }
 
   const ficha = result.data;
+  // Only the admin writes: the color form (and the list of colors it needs) is not even requested for the rest.
+  const colores = canWrite(user.role)
+    ? await apiGet<Catalogos>("/catalogos")
+    : null;
   return (
     <>
       <BackLink taller={isTallerOnly(user.role)} />
@@ -74,11 +80,19 @@ export default async function FichaPage({
           </div>
         }
       />
-      <p className="-mt-4 mb-8 text-sm text-muted">
-        {[ficha.modelo, ficha.cuero, ficha.color].filter(Boolean).join(" · ")}
-      </p>
+      <p className="-mt-4 mb-8 text-sm text-muted">{fichaSubtitle(ficha)}</p>
 
       <div className="space-y-10">
+        {colores?.ok ? (
+          <section id="color" className="space-y-4">
+            <SectionTitle>Color</SectionTitle>
+            <ColorForm
+              codigo={ficha.codigo}
+              color={ficha.color}
+              colores={colores.data.colores}
+            />
+          </section>
+        ) : null}
         <ConsumoBlock ficha={ficha} />
         {ficha.componentes.length > 0 ? <Components ficha={ficha} /> : null}
       </div>

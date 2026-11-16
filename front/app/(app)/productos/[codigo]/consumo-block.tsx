@@ -10,90 +10,8 @@ import {
   thClass,
 } from "@/components/ui";
 import { apiGet } from "@/lib/api";
-import {
-  formatArs,
-  formatQuantity,
-  formatRate,
-  formatUsd,
-  stageLabel,
-} from "@/lib/format";
-import type { Ficha, LineaReceta, ModeloDetalle } from "@/lib/types";
-
-/** Hilo y cemento is fixed at 1 USD per unit; shown in pesos with the reference dollar. */
-const HILO_Y_CEMENTO_USD = "1";
-
-type Row = { insumo: string; porUnidad: string; material: string };
-
-function materialsOf(
-  stage: string,
-  ficha: Ficha,
-  modelo: ModeloDetalle | null,
-): string {
-  const fromRecipe = ficha.receta
-    .filter((line: LineaReceta) => line.etapa === stage)
-    .map((line) => line.material);
-  const fromInsumos = (modelo?.insumos ?? [])
-    .filter((insumo) => insumo.etapa === stage)
-    .map((insumo) => `${insumo.nombre} (${insumo.material})`);
-  const all = [...fromRecipe, ...fromInsumos];
-  if (stage === "CUERO" && ficha.cuero) all.unshift(ficha.cuero);
-  return all.length > 0 ? Array.from(new Set(all)).join(", ") : "—";
-}
-
-function rowsOf(ficha: Ficha, modelo: ModeloDetalle | null): Row[] {
-  // Without access to the model (taller role) only the recipe lines are known.
-  if (modelo === null) {
-    return ficha.receta.map((line) => ({
-      insumo: stageLabel(line.etapa),
-      porUnidad: formatQuantity(line.consumo),
-      material: line.material,
-    }));
-  }
-  const qty = (value: string | null | undefined, unit: string) =>
-    value === null || value === undefined
-      ? "Falta el dato"
-      : `${formatQuantity(value)} ${unit}`;
-  const dolar = ficha.costo_hoy?.dolar ?? null;
-  const hiloArs =
-    dolar === null
-      ? null
-      : formatArs((Number(HILO_Y_CEMENTO_USD) * Number(dolar)).toFixed(2));
-  return [
-    {
-      insumo: "Cuero",
-      porUnidad: qty(modelo.cuero_m2_por_unidad, "m²"),
-      material: materialsOf("CUERO", ficha, modelo),
-    },
-    {
-      insumo: "Forro",
-      porUnidad: qty(modelo.forro_m2_por_unidad, "m²"),
-      material: materialsOf("FORRO", ficha, modelo),
-    },
-    {
-      insumo: "Flex",
-      porUnidad: qty(modelo.flex_m2_por_unidad, "m²"),
-      material: materialsOf("FLEX", ficha, modelo),
-    },
-    {
-      insumo: "Goma EVA",
-      porUnidad: qty(modelo.goma_eva_m2_por_unidad, "m²"),
-      material: materialsOf("GOMA_EVA", ficha, modelo),
-    },
-    {
-      insumo: "Herrajes",
-      porUnidad: qty(modelo.herrajes_usd_por_unidad, "USD"),
-      material: materialsOf("HERRAJES", ficha, modelo),
-    },
-    {
-      insumo: "Hilo y cemento",
-      porUnidad: `${formatUsd(HILO_Y_CEMENTO_USD)}${hiloArs ? ` · ${hiloArs}` : ""}`,
-      material:
-        dolar === null
-          ? "Fijo en 1 USD"
-          : `Fijo en 1 USD, dólar de referencia ${formatRate(dolar)}`,
-    },
-  ];
-}
+import { consumoRows } from "@/lib/ficha-consumo";
+import type { Ficha, ModeloDetalle } from "@/lib/types";
 
 /**
  * "Consumo": what the product uses per unit, with no money from the quote. Read-only: the model
@@ -130,7 +48,7 @@ export async function ConsumoBlock({ ficha }: { ficha: Ficha }) {
                 </tr>
               </thead>
               <tbody>
-                {rowsOf(ficha, modelo).map((row) => (
+                {consumoRows(ficha, modelo).map((row) => (
                   <tr key={row.insumo}>
                     <td className={tdClass}>{row.insumo}</td>
                     <td className={`${tdClass} ${numClass}`}>

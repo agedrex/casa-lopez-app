@@ -18,6 +18,7 @@ export function CatalogoSelect({
   emptyLabel,
   required = false,
   hint,
+  defaultValue = "",
 }: {
   id: string;
   name: string;
@@ -31,8 +32,10 @@ export function CatalogoSelect({
   emptyLabel: string;
   required?: boolean;
   hint?: string;
+  /** Option selected when the form opens (e.g. the color the product already has). */
+  defaultValue?: string;
 }) {
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState(defaultValue);
   const creating = value === NUEVO_CATALOGO;
   const newId = `${id}-nuevo`;
   return (
