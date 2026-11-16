@@ -302,17 +302,7 @@ def test_parameter_edge_values_and_unknown_codes(api):
         assert api.post("/parametros/ARREGLOS_PCT", json={"valor": borde, "fuente_estado": "Pendiente"}).status_code == 200
     ok = api.post("/parametros/ARREGLOS_PCT", json={"valor": "0.05", "fuente_estado": "Pendiente", "nota": "esperando a Robert"})
     assert ok.json()["fuente_estado"] == "Pendiente: esperando a Robert"
-    assert servicios.estado_de_parametro(ok.json()["fuente_estado"])[0] == "media"  # the quality report still sees it open
-    grupo = {g["clave"]: g for g in api.get("/calidad").json()["grupos"]}["parametros"]
-    assert any(h["entidad"] == "ARREGLOS_PCT" for h in grupo["hallazgos"])
-
-
-def test_a_confirmed_parameter_leaves_the_quality_report(api):
-    como("admin")
-    antes = {g["clave"]: g for g in api.get("/calidad").json()["grupos"]}["parametros"]["total"]
-    api.post("/parametros/TOLERANCIA_DESVIO_PCT", json={"valor": "0.05", "fuente_estado": "Confirmado"})
-    despues = {g["clave"]: g for g in api.get("/calidad").json()["grupos"]}["parametros"]
-    assert despues["total"] == antes - 1 and all(h["entidad"] != "TOLERANCIA_DESVIO_PCT" for h in despues["hallazgos"])
+    assert "parametros" not in {g["clave"] for g in api.get("/calidad").json()["grupos"]}  # parameters raise no alerts
 
 
 def test_a_parameter_change_is_logged_with_who_and_values_but_nothing_else(api, caplog):
@@ -537,10 +527,9 @@ def test_editing_consumptions_is_logged_with_the_previous_values(api, caplog):
 
 # Quality report links
 
-def test_quality_findings_of_models_and_parameters_point_to_their_admin_screens(api):
+def test_quality_findings_of_models_point_to_their_admin_screens(api):
     como("admin")
     grupos = {g["clave"]: g for g in api.get("/calidad").json()["grupos"]}
-    assert grupos["modelos_sin_validar"]["hallazgos"] and grupos["parametros"]["hallazgos"]
+    assert grupos["modelos_sin_validar"]["hallazgos"] and "parametros" not in grupos
     assert {h["ruta"] for h in grupos["modelos_sin_validar"]["hallazgos"]} == {"/productos/modelos"}
     assert {h["ruta"] for h in grupos["modelos"]["hallazgos"]} <= {"/productos/modelos"}
-    assert {h["ruta"] for h in grupos["parametros"]["hallazgos"]} == {""}  # no screen edits parameters

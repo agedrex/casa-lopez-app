@@ -2842,15 +2842,6 @@ def _hallazgos_de_gastos(session: Session) -> list[dict]:
     return hallazgos
 
 
-def _hallazgos_de_parametros(session: Session) -> list[dict]:
-    hallazgos = []
-    for p in session.scalars(select(Parametro).order_by(Parametro.id)):
-        estado = estado_de_parametro(p.fuente_estado)
-        if estado:
-            hallazgos.append(_hallazgo(estado[0], p.codigo, f"{p.constante}: {estado[1]}", ""))  # no screen edits parameters: no link
-    return hallazgos
-
-
 def calidad_de_datos(session: Session, hoy: date | None = None) -> dict:
     """Findings grouped by topic, each with a severity, the entity code, a Spanish message and where to fix it."""
     hoy = hoy or date.today()
@@ -2866,7 +2857,6 @@ def calidad_de_datos(session: Session, hoy: date | None = None) -> dict:
         ("lotes", "Lotes con problemas", _hallazgos_de_lotes(session)),
         ("talleres", "Talleres de ejemplo en uso", _hallazgos_de_talleres_de_ejemplo(session)),
         ("gastos_fijos", "Gastos fijos pendientes o ficticios", _hallazgos_de_gastos(session)),
-        ("parametros", "Parámetros sin confirmar", _hallazgos_de_parametros(session)),
     ]
     todos = [h for _, _, hallazgos in grupos for h in hallazgos]
     resumen = {severidad: sum(1 for h in todos if h["severidad"] == severidad) for severidad in SEVERIDADES}
