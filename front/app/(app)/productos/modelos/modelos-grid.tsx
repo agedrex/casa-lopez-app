@@ -6,18 +6,18 @@ import {
   EditableGrid,
   type GridColumn,
   type GridRow,
-  type GridSave,
 } from "@/components/editable-grid";
-import { Badge, Notice } from "@/components/ui";
+import { Badge } from "@/components/ui";
+import { error, type FormState } from "@/lib/action-state";
 import { decimalInputText } from "@/lib/format";
 import { ESTADO_TONE, estadoLabel, isEstado } from "@/lib/formularios";
 import {
   CONSUMPTION_FIELDS,
   hasMissingConsumptions,
+  originLabel,
   sizeLabel,
 } from "@/lib/modelos";
 import type { ModeloLista } from "@/lib/types";
-import { guardarConsumosLote } from "./actions";
 
 /** Read-only measure: right-aligned, "—" when the model has no value (NULL = missing data). */
 function Measure({ value }: { value: string | null }) {
@@ -49,47 +49,29 @@ function HojaEstado({ modelo }: { modelo: ModeloLista }) {
   );
 }
 
-const MEASURES = [
-  { header: "Cuero m²", name: "cuero_m2_por_unidad" },
-  { header: "Forro m²", name: "forro_m2_por_unidad" },
-  { header: "Flex m²", name: "flex_m2_por_unidad" },
-  { header: "Goma EVA m²", name: "goma_eva_m2_por_unidad" },
-  { header: "Herrajes USD", name: "herrajes_usd_por_unidad" },
-] as const;
+// The same fields, in the same order and with the same units, as the consumption form of a model
+// (`ConsumptionFields`). Hours are left out on purpose: they live in the page of each model.
+const MEASURES = CONSUMPTION_FIELDS.filter(
+  (field) => field.name !== "horas_de_confeccion",
+);
+
+// A grid with no editable column: the consumptions are edited in the page of each model.
+const NO_COLUMNS: GridColumn[] = [];
+
+async function readOnly(): Promise<FormState> {
+  return error("Los consumos se editan desde la página de cada modelo.");
+}
 
 /**
- * The models sheet: one thing per column (name and code, category, size, the key consumptions,
- * hours, sheet state, validation). Only hours are edited here; the rest is edited in each model's page.
- * Rows with missing consumptions are highlighted. Nothing is computed here.
+ * The models sheet: one thing per column, in the order of the consumption form (name, category, size,
+ * the consumptions with their units, lining material, origin) and the state of the sheet at the end.
+ * Read only: rows with missing consumptions are highlighted. Nothing is computed here.
  */
 export function ModelosGrid({ modelos }: { modelos: ModeloLista[] }) {
-  const columns = useMemo<GridColumn[]>(
-    () => [
-      {
-        key: "horas_de_confeccion",
-        header: "Horas",
-        kind: "decimal",
-        required: CONSUMPTION_FIELDS.find(
-          (field) => field.name === "horas_de_confeccion",
-        )?.required,
-        width: "min-w-24",
-      },
-    ],
-    [],
-  );
-
-  const byCode = useMemo(
-    () => new Map(modelos.map((modelo) => [modelo.codigo, modelo])),
-    [modelos],
-  );
-
   const rows = useMemo<GridRow[]>(
     () =>
       modelos.map((modelo) => {
         const missing = hasMissingConsumptions(modelo);
-        const cells: Record<string, string> = {
-          horas_de_confeccion: decimalInputText(modelo.horas_de_confeccion),
-        };
         return {
           id: modelo.codigo,
           name: modelo.nombre_del_modelo,
@@ -107,20 +89,17 @@ export function ModelosGrid({ modelos }: { modelos: ModeloLista[] }) {
               </span>
             </div>
           ),
-          cells,
+          cells: {},
           extrasBefore: [
-            <HojaEstado key="hoja" modelo={modelo} />,
             modelo.categoria ?? <span className="text-muted">—</span>,
             sizeLabel(modelo.tamano),
-            ...MEASURES.map((measure) => (
-              <Measure key={measure.name} value={modelo[measure.name]} />
+            ...MEASURES.map((field) => (
+              <Measure key={field.name} value={modelo[field.name]} />
             )),
-          ],
-          extras: [
+            modelo.forro ?? <span className="text-muted">Sin forro</span>,
+            originLabel(modelo.origen_de_los_consumos),
             <div key="estado" className="flex flex-wrap gap-1.5">
-              <Badge tone={modelo.validado ? "good" : "neutral"}>
-                {modelo.validado ? "Validado" : "Sin validar"}
-              </Badge>
+              <HojaEstado modelo={modelo} />
               {missing ? (
                 <Badge tone="warn" title="Algún consumo está vacío.">
                   Faltan datos
@@ -133,56 +112,24 @@ export function ModelosGrid({ modelos }: { modelos: ModeloLista[] }) {
     [modelos],
   );
 
-  function onSave(save: GridSave) {
-    return guardarConsumosLote(
-      save.changes.map((change) => {
-        const modelo = byCode.get(change.id);
-        // The API takes every field of every row: the hidden ones go as they are today.
-        const cells: Record<string, string> = {};
-        if (modelo) {
-          cells.forro = modelo.forro ?? "";
-          cells.origen_de_los_consumos = modelo.origen_de_los_consumos ?? "";
-          for (const field of CONSUMPTION_FIELDS) {
-            cells[field.name] = decimalInputText(modelo[field.name]);
-          }
-        }
-        return {
-          codigo: change.id,
-          nombre: modelo?.nombre_del_modelo ?? change.id,
-          cells: { ...cells, ...change.cells },
-        };
-      }),
-    );
-  }
-
-  function warning(save: GridSave): string | null {
-    const validated = save.changes.filter(
-      (change) => byCode.get(change.id)?.validado,
-    ).length;
-    if (validated === 0) return null;
-    return validated === 1
-      ? "1 de los modelos modificados está validado y va a quedar sin validar."
-      : `${validated} de los modelos modificados están validados y van a quedar sin validar.`;
-  }
-
   return (
     <EditableGrid
       label="Consumos por modelo"
       rowHeader="Modelo"
-      columns={columns}
+      columns={NO_COLUMNS}
       extraHeadersBefore={[
-        "Estado",
         "Categoría",
         "Tamaño",
-        ...MEASURES.map((measure) => measure.header),
+        ...MEASURES.map((field) => `${field.label} ${field.unit}`),
+        "Forro (material)",
+        "Origen de los consumos",
+        "Estado",
       ]}
-      extraHeaders={["Validación"]}
       rows={rows}
       noun={{ one: "modelo", many: "modelos" }}
-      warning={warning}
-      autoSave
+      compact
       fitContent
-      onSave={onSave}
+      onSave={readOnly}
     />
   );
 }
