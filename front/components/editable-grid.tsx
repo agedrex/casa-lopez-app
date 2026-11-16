@@ -368,6 +368,7 @@ export function EditableGrid({
   footer,
   autoSave = false,
   compact = false,
+  fitContent = false,
   onSave,
 }: {
   /** Accessible name of the table. */
@@ -406,6 +407,8 @@ export function EditableGrid({
   autoSave?: boolean;
   /** Sin resumen vacío ni instrucciones: solo la grilla y lo que haya pendiente. */
   compact?: boolean;
+  /** La tabla ocupa solo lo que miden sus columnas, en vez de estirarse al ancho de la página. */
+  fitContent?: boolean;
   onSave: (save: GridSave) => Promise<FormState>;
 }) {
   const defaults = newRowDefaults ?? NO_DEFAULTS;
@@ -947,7 +950,7 @@ export function EditableGrid({
         <table
           ref={tableRef}
           aria-label={label}
-          className="w-full min-w-max border-collapse text-left text-sm"
+          className={`${fitContent ? "w-auto" : "w-full"} min-w-max border-collapse text-left text-sm`}
         >
           <thead>
             <tr>

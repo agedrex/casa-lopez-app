@@ -127,6 +127,7 @@ export function ModelosGrid({ modelos }: { modelos: ModeloLista[] }) {
       noun={{ one: "modelo", many: "modelos" }}
       warning={warning}
       autoSave
+      fitContent
       onSave={onSave}
     />
   );
