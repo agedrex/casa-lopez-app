@@ -9,8 +9,8 @@ Dos ramas: feat/producto-consumos (T1) y feat/lotes-costo-real-ejemplo (T2, maqu
 - S5 Unidades producidas/Lotes: al hacerse un lote, ahí debe estar el costo real a partir de lo que se genera (consumo). Crear un ejemplo para ver cómo lo verá el usuario final.
 
 ## Tasks
-- [ ] T1 (S1-S4) ficha de producto — feat/producto-consumos
-- [ ] T2 (S5) maqueta de lote con costo real — feat/lotes-costo-real-ejemplo
+- [x] T1 (S1-S4) ficha de producto — feat/producto-consumos
+- [x] T2 (S5) maqueta de lote con costo real — feat/lotes-costo-real-ejemplo
 
 ## Log
 L1: pedido original del usuario (ver conversación 2026-11-16), resumido en S1-S5 con sus frases textuales.
