@@ -305,7 +305,12 @@ def test_pg_orders_are_append_only_there_is_no_way_to_edit_or_delete_one(api):
             assert api.request(method, path, json=order()).status_code in (404, 405), (method, path)
     assert api.post(paths[1], json=order()).status_code in (404, 405)
     routes = {(m, r.path) for r in api_module.router.routes for m in r.methods if "pedidos" in r.path}
-    assert routes == {("GET", "/proveedores/{codigo}/pedidos"), ("POST", "/proveedores/{codigo}/pedidos")}
+    # Only reads and the single create route: there is still no way to edit or delete an order.
+    assert routes == {
+        ("GET", "/proveedores/{codigo}/pedidos"),
+        ("POST", "/proveedores/{codigo}/pedidos"),
+        ("GET", "/materiales/{codigo}/pedidos"),
+    }
     assert len(api.get(f"/proveedores/{code}/pedidos").json()) == 1
 
 
@@ -352,11 +357,11 @@ def test_pg_a_material_shows_what_arrived_in_each_order_with_its_price_and_the_t
     history = api.get(f"/materiales/{TELA}/pedidos")
     assert history.status_code == 200, history.text
     body = history.json()
-    assert body["recibido"] == "200.000000" and body["unidad_de_consumo"] == "m2"
+    assert D(body["recibido"]) == D("200") and body["unidad_de_consumo"] == "m2"
     assert [p["pedido"] for p in body["pedidos"]] == ["PED-0002", "PED-0001"]  # newest first
     assert [p["precio_unitario"] for p in body["pedidos"]] == ["300.0000", "240.0000"]
-    assert body["pedidos"][0]["cantidad_recibida"] == "100.000000"
-    assert api.get("/materiales/recibido").json()[TELA] == "200.000000"
+    assert D(body["pedidos"][0]["cantidad_recibida"]) == D("100")
+    assert D(api.get("/materiales/recibido").json()[TELA]) == D("200")
     assert api.get("/materiales/MAT-NOPE/pedidos").status_code == 404
 
 
