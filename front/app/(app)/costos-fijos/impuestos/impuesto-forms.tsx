@@ -36,6 +36,17 @@ const COLUMNS: GridColumn[] = [
         ? "Entre 0 y 100, con hasta un decimal. Ejemplo: 21 o 3,5."
         : null,
   },
+  {
+    key: "estado",
+    header: "Estado",
+    kind: "select",
+    required: true,
+    width: "min-w-36",
+    options: [
+      { value: "activo", label: "Activo" },
+      { value: "inactivo", label: "Inactivo" },
+    ],
+  },
 ];
 
 const NOUN = { one: "impuesto", many: "impuestos" };
@@ -51,6 +62,7 @@ export function ImpuestosGrid({ impuestos }: { impuestos: Impuesto[] }) {
         cells: {
           nombre: impuesto.nombre,
           porcentaje: fractionToPercentInput(impuesto.alicuota),
+          estado: impuesto.activo ? "activo" : "inactivo",
         },
       })),
     [impuestos],
@@ -61,6 +73,10 @@ export function ImpuestosGrid({ impuestos }: { impuestos: Impuesto[] }) {
       save.changes.map((change) => ({
         codigo: change.id,
         porcentaje: change.cells.porcentaje ?? "",
+        cambiaPorcentaje: change.changed.includes("porcentaje"),
+        activo: change.changed.includes("estado")
+          ? change.cells.estado === "activo"
+          : undefined,
       })),
       save.added,
     );
@@ -74,12 +90,14 @@ export function ImpuestosGrid({ impuestos }: { impuestos: Impuesto[] }) {
       rows={rows}
       noun={NOUN}
       allowNew
+      newRowDefaults={{ estado: "activo" }}
       startWithDraft={false}
       addLabel="Agregar impuesto"
       newRowLabel="Impuesto nuevo"
       autoSave
       compact
       fitContent
+      fitFrame
       onSave={onSave}
     />
   );

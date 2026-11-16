@@ -140,7 +140,7 @@ function Filters({
             htmlFor="filtro-donde"
             className="mb-1.5 block text-xs uppercase tracking-caps-sm text-muted"
           >
-            Dónde
+            Fabricación
           </label>
           <select
             id="filtro-donde"
