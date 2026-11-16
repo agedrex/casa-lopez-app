@@ -15,7 +15,7 @@ EXPECTED_TABLES = {
     "pieza_cuero", "movimiento_cuero", "conteo_inventario", "kit_componente", "cotizacion", "precio_venta",
     "proveedor", "documento_proveedor", "producto_reventa", "compra_reventa",
     "formulario_consumo", "formulario_consumo_linea", "pedido_proveedor", "pedido_linea",
-    "modelo_insumo", "modelo_foto",
+    "modelo_insumo", "modelo_foto", "proveedor_material",
     "proveedor_producto", "transferencia", "venta",
 }
 # Tables whose sheet has a "Código" column: the business key, unique and immutable.
@@ -37,7 +37,7 @@ def check_text(name):
 
 def test_der_v3_plus_proveedores_has_the_30_tables_in_schema_costos():
     assert {t.name for t in Base.metadata.tables.values()} == EXPECTED_TABLES
-    assert len(EXPECTED_TABLES) == 39
+    assert len(EXPECTED_TABLES) == 40
     assert Base.metadata.schema == "costos"
     assert all(t.schema == "costos" for t in Base.metadata.tables.values())
 

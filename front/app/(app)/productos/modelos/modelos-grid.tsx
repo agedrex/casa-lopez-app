@@ -14,7 +14,6 @@ import { ESTADO_TONE, estadoLabel, isEstado } from "@/lib/formularios";
 import {
   CONSUMPTION_FIELDS,
   hasMissingConsumptions,
-  originLabel,
   sizeLabel,
 } from "@/lib/modelos";
 import type { ModeloLista } from "@/lib/types";
@@ -63,8 +62,8 @@ async function readOnly(): Promise<FormState> {
 }
 
 /**
- * The models sheet: one thing per column, in the order of the consumption form (name, category, size,
- * the consumptions with their units, lining material, origin) and the state of the sheet at the end.
+ * The models sheet: one thing per column, in the order of the consumption form (name, the state of the sheet, category,
+ * size, the consumptions with their units, lining material).
  * Read only: rows with missing consumptions are highlighted. Nothing is computed here.
  */
 export function ModelosGrid({ modelos }: { modelos: ModeloLista[] }) {
@@ -91,21 +90,13 @@ export function ModelosGrid({ modelos }: { modelos: ModeloLista[] }) {
           ),
           cells: {},
           extrasBefore: [
+            <HojaEstado key="estado" modelo={modelo} />,
             modelo.categoria ?? <span className="text-muted">—</span>,
             sizeLabel(modelo.tamano),
             ...MEASURES.map((field) => (
               <Measure key={field.name} value={modelo[field.name]} />
             )),
             modelo.forro ?? <span className="text-muted">Sin forro</span>,
-            originLabel(modelo.origen_de_los_consumos),
-            <div key="estado" className="flex flex-wrap gap-1.5">
-              <HojaEstado modelo={modelo} />
-              {missing ? (
-                <Badge tone="warn" title="Algún consumo está vacío.">
-                  Faltan datos
-                </Badge>
-              ) : null}
-            </div>,
           ],
         };
       }),
@@ -118,12 +109,11 @@ export function ModelosGrid({ modelos }: { modelos: ModeloLista[] }) {
       rowHeader="Modelo"
       columns={NO_COLUMNS}
       extraHeadersBefore={[
+        "Estado",
         "Categoría",
         "Tamaño",
         ...MEASURES.map((field) => `${field.label} ${field.unit}`),
         "Forro (material)",
-        "Origen de los consumos",
-        "Estado",
       ]}
       rows={rows}
       noun={{ one: "modelo", many: "modelos" }}

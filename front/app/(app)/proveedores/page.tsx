@@ -15,8 +15,9 @@ import {
   thClass,
 } from "@/components/ui";
 import { apiGet } from "@/lib/api";
+import { materialOptions } from "@/lib/proveedores";
 import { requireRole } from "@/lib/session";
-import type { Proveedor, ProveedorProducto } from "@/lib/types";
+import type { Material, Proveedor } from "@/lib/types";
 import { createProveedor } from "./actions";
 import { ProveedorForm } from "./proveedor-form";
 
@@ -52,20 +53,7 @@ export default async function ProveedoresPage({
     `/proveedores${query.size > 0 ? `?${query}` : ""}`,
   );
   const filtered = Boolean(q || activo);
-  // What each supplier sells: one read per supplier, in parallel (no list endpoint for all of them).
-  const productos = new Map<string, ProveedorProducto[]>(
-    result.ok
-      ? await Promise.all(
-          result.data.map(async (proveedor) => {
-            const lista = await apiGet<ProveedorProducto[]>(
-              `/proveedores/${encodeURIComponent(proveedor.codigo)}/productos`,
-            );
-            return [proveedor.codigo, lista.ok ? lista.data : []] as const;
-          }),
-        )
-      : [],
-  );
-
+  const materiales = await apiGet<Material[]>("/materiales");
   return (
     <>
       <PageHeader
@@ -130,11 +118,11 @@ export default async function ProveedoresPage({
                 <table className={tableClass}>
                   <thead>
                     <tr>
+                      <th className={thClass}>ID</th>
                       <th className={thClass}>Proveedor</th>
-                      <th className={thClass}>Productos que vende</th>
+                      <th className={thClass}>Descripción</th>
                       <th className={thClass}>CUIT</th>
                       <th className={thClass}>Contacto</th>
-                      <th className={thClass}>Teléfono</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -143,28 +131,23 @@ export default async function ProveedoresPage({
                         key={proveedor.codigo}
                         className="hover:bg-paper-mid/50"
                       >
+                        <td className={`${tdClass} font-mono text-sm`}>
+                          {proveedor.codigo}
+                        </td>
                         <td className={tdClass}>
                           <Link
                             href={`/proveedores/${encodeURIComponent(proveedor.codigo)}`}
                             className="underline decoration-gold underline-offset-4"
                           >
                             {proveedor.nombre}
-                          </Link>
-                          <span className="block text-xs text-muted">
-                            {proveedor.codigo}
-                          </span>{" "}
+                          </Link>{" "}
                           {proveedor.activo ? null : (
                             <Badge tone="neutral">Inactivo</Badge>
                           )}
                         </td>
-                        <td className={tdClass}>
-                          <ProductosResumen
-                            productos={productos.get(proveedor.codigo) ?? []}
-                          />
-                        </td>
+                        <td className={tdClass}>{proveedor.nota ?? "—"}</td>
                         <td className={tdClass}>{proveedor.cuit ?? "—"}</td>
                         <td className={tdClass}>{proveedor.contacto ?? "—"}</td>
-                        <td className={tdClass}>{proveedor.telefono ?? "—"}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -181,6 +164,7 @@ export default async function ProveedoresPage({
           <Card>
             <ProveedorForm
               action={createProveedor}
+              materials={materiales.ok ? materialOptions(materiales.data) : []}
               submitLabel="Crear proveedor"
               pendingLabel="Creando…"
             />
@@ -188,27 +172,5 @@ export default async function ProveedoresPage({
         </section>
       </div>
     </>
-  );
-}
-
-const NOMBRES_VISIBLES = 3;
-
-/** Count plus the first names of what a supplier sells; the whole list is on its page. */
-function ProductosResumen({ productos }: { productos: ProveedorProducto[] }) {
-  if (productos.length === 0) {
-    return <span className="text-muted">Sin productos cargados</span>;
-  }
-  const nombres = productos.slice(0, NOMBRES_VISIBLES).map((p) => p.nombre);
-  const resto = productos.length - nombres.length;
-  return (
-    <div className="max-w-xs">
-      <p className="font-bold">
-        {productos.length} {productos.length === 1 ? "producto" : "productos"}
-      </p>
-      <p className="text-xs text-muted">
-        {nombres.join(" · ")}
-        {resto > 0 ? ` · y ${resto} más` : ""}
-      </p>
-    </div>
   );
 }

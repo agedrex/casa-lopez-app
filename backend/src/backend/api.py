@@ -2458,6 +2458,22 @@ def cargar_productos_de_proveedor(codigo: str, cuerpo: ProveedorProductosIn, ses
     return proveedores.add_products(session, codigo, productos=productos, creado_por=usuario.id)
 
 
+class MaterialesQueProveeIn(Entrada):
+    materiales: Annotated[list[str], Field(max_length=500)]
+
+
+@router.get("/proveedores/{codigo}/provee", dependencies=LECTURA_ADMIN, response_model=list[str])
+def listar_materiales_que_provee(codigo: str, session: Sesion):
+    """Codes of the materials of the grid that this supplier really provides."""
+    return proveedores.list_provided_materials(session, codigo)
+
+
+@router.post("/proveedores/{codigo}/provee", dependencies=ESCRITURA, response_model=list[str])
+def fijar_materiales_que_provee(codigo: str, cuerpo: MaterialesQueProveeIn, session: Sesion, usuario: Escritor):
+    """Sets the whole list at once (all or nothing); the materials left out are marked inactive, never deleted."""
+    return proveedores.set_provided_materials(session, codigo, materiales=cuerpo.materiales, creado_por=usuario.id)
+
+
 @router.get("/proveedores/{codigo}/documentos", dependencies=LECTURA_ADMIN, response_model=list[DocumentoProveedorOut])
 def listar_documentos_de_proveedor(codigo: str, session: Sesion, q: Annotated[str | None, Query(max_length=100)] = None):
     """Newest first; `q` searches the file name, the number and the OCR text. Never includes the files."""

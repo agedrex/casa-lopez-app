@@ -769,6 +769,20 @@ class ProveedorProducto(BusinessKey, Base):
     creado_por: Mapped[str] = mapped_column(Text)
 
 
+class ProveedorMaterial(IdentityAndCreatedAt, Base):
+    """A material (from the materials grid) that a supplier really provides: the closed list the order form offers.
+
+    One row per supplier + material. Nothing is deleted: taking a material off the list sets `activo = false`, and adding
+    it back sets it to true again. The cost engine never reads it. `creado_por` is the auth user id as text (no FK).
+    """
+    __tablename__ = "proveedor_material"
+    __table_args__ = (UniqueConstraint("proveedor_id", "material_id", name="uq_proveedor_material_proveedor_id_material_id"),)
+    proveedor_id: Mapped[int] = mapped_column(ForeignKey("costos.proveedor.id"), index=True)
+    material_id: Mapped[int] = mapped_column(ForeignKey("costos.material.id"), index=True)
+    activo: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    creado_por: Mapped[str] = mapped_column(Text)
+
+
 # --- Transfers to the store and real sales (append-only: nothing is edited or deleted) ---------------------------
 
 class Transferencia(BusinessKey, Base):
