@@ -124,7 +124,8 @@ def test_the_summary_model_exposes_the_new_fields(monkeypatch):
     monkeypatch.setattr(servicios, "listar_productos", lambda *a, **k: [fila])
     cuerpo = _cliente().get("/productos").json()
     nuevos = {"modelo_codigo": None, "modelo_nombre": None, "cotizacion_fecha": None, "cotizacion_dolar": None,
-              "costo_cotizado_ars": None, "costo_cotizado_usd": None, "creado_en": None, "creado_por": None}
+              "costo_cotizado_ars": None, "costo_cotizado_usd": None, "creado_en": None, "creado_por": None,
+              "cuero": None, "color": None}
     assert cuerpo == [{**fila, **nuevos}]
 
 

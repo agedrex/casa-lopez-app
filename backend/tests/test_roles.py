@@ -446,7 +446,7 @@ CAMPOS_VIEJOS_DE_LA_LISTA = {
 }
 CAMPOS_NUEVOS_DE_LA_LISTA = {
     "modelo_codigo", "modelo_nombre", "cotizacion_fecha", "cotizacion_dolar", "costo_cotizado_ars", "costo_cotizado_usd",
-    "creado_en", "creado_por",
+    "creado_en", "creado_por", "cuero", "color",
 }
 
 

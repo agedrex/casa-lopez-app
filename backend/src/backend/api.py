@@ -526,6 +526,9 @@ class ProductoResumen(Salida):
     avisos: list[str]
     revisar: bool
     motivos_revisar: list[str]
+    # Leather (short name, else code) and color of the product, for the grid; None when it has none.
+    cuero: str | None = None
+    color: str | None = None
     # Model of the product (`modelo` stays as it was: the same code as `modelo_codigo`).
     modelo_codigo: str | None = None
     modelo_nombre: str | None = None

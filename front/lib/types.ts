@@ -5,6 +5,9 @@ export type ProductoResumen = {
   codigo: string;
   nombre: string;
   categoria: string | null;
+  /** Leather (short name, else code) and color of the product; `null` when it has none. Optional: an older API does not send them. */
+  cuero?: string | null;
+  color?: string | null;
   /** Model code (not unique: some codes repeat in the imported products). */
   modelo: string | null;
   estado_del_ciclo: string;
