@@ -1,5 +1,6 @@
 "use client";
 
+import { fractionToPercentInput } from "@/app/(app)/admin/impuestos/percent";
 import {
   Field,
   FormFeedback,
@@ -13,7 +14,6 @@ import {
   setImpuestoActivo,
   setImpuestoAlicuota,
 } from "./actions";
-import { fractionToPercentInput } from "./percent";
 
 export function ImpuestoForm() {
   const { state, pending, formKey, onSubmit } = useActionForm(createImpuesto);

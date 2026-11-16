@@ -1,11 +1,11 @@
 "use server";
 
 import { refresh } from "next/cache";
+import { percentToFraction } from "@/app/(app)/admin/impuestos/percent";
 import { error, type FormState, ok } from "@/lib/action-state";
 import { apiPost } from "@/lib/api";
 import type { Impuesto } from "@/lib/types";
 import { denyUnlessAdmin, fromFailure, text } from "@/lib/write-guard";
-import { percentToFraction } from "./percent";
 
 const PERCENT_HELP =
   "Escriba el porcentaje entre 0 y 100, con hasta un decimal: por ejemplo 21 o 3,5.";
