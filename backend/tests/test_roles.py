@@ -124,7 +124,7 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
     ("GET", "/formularios"): CORTE, ("GET", "/formularios/{codigo}"): CORTE,
     ("PUT", "/formularios/{codigo}"): CORTE, ("POST", "/formularios/{codigo}/completar"): CORTE,
     # A new model: admin only (the taller receives the sent sheet and fills it, the admin validates). Categories stay admin only.
-    ("POST", "/productos/nuevo"): ADMIN,
+    ("POST", "/productos/nuevo"): ADMIN, ("PUT", "/productos/{codigo}/color"): ADMIN,
     **{("POST", ruta): ADMIN for ruta in (
         "/formularios", "/formularios/{codigo}/enviar", "/formularios/{codigo}/devolver", "/formularios/{codigo}/validar",
         "/formularios/{codigo}/duplicar")},

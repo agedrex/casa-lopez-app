@@ -119,6 +119,8 @@ class DatosProducto:
     creado_por: str | None = None
     # Leather as the list shows it: short name, else its code. `cuero` stays the code the recipe needs.
     cuero_nombre: str | None = None
+    # Hours the model takes to make, informative: not an input of the cost (the engine never reads it).
+    horas_de_confeccion: Decimal | None = None
 
     @property
     def producto(self) -> ProductoReceta:
@@ -392,6 +394,7 @@ def cargar_productos(
             modelo_nombre=modelo.nombre_del_modelo if modelo else None,
             creado_en=producto.created_at, creado_por=producto.creado_por,
             cuero_nombre=cuero_corto or cuero_codigo,
+            horas_de_confeccion=modelo.horas_de_confeccion if modelo else None,
         ))
     return resultado
 
@@ -593,6 +596,14 @@ def _filas_de_productos(session: Session, base: list[DatosProducto], con_precios
     return filas
 
 
+def _nombres_de_materiales(session: Session, codigos: set[str]) -> dict[str, str]:
+    """Display name of each material (short name, else the full one); a code with no name is left out."""
+    if not codigos:
+        return {}
+    filas = session.execute(select(Material.codigo, Material.nombre_corto, Material.nombre).where(Material.codigo.in_(codigos))).all()
+    return {codigo: (corto or nombre or "").strip() for codigo, corto, nombre in filas if (corto or nombre or "").strip()}
+
+
 def ficha_producto(session: Session, codigo: str) -> dict:
     datos, catalogo = _cargar_uno(session, codigo)
     ctx = cargar_contexto(session)
@@ -607,14 +618,17 @@ def ficha_producto(session: Session, codigo: str) -> dict:
         resultado.cotizado.desglose if costo and resultado else None,
         ultima.total_ars if ultima else None, ultima.dolar if ultima else None, ctx.parametros,
     )
+    nombres = _nombres_de_materiales(session, {l.material for l in receta.lineas})
     return {
         "codigo": datos.codigo, "nombre": datos.nombre, "categoria": datos.categoria, "modelo": datos.modelo_codigo,
-        "cuero": datos.cuero, "color": datos.color, "quien_lo_confecciona": datos.quien,
+        "modelo_nombre": datos.modelo_nombre, "cuero": datos.cuero, "cuero_nombre": datos.cuero_nombre,
+        "color": datos.color, "quien_lo_confecciona": datos.quien,
         "estado_del_ciclo": datos.estado_del_ciclo, "es_kit": datos.es_kit, "nota": datos.nota,
+        "horas_de_confeccion": datos.horas_de_confeccion,
         "fecha_de_alta": datos.fecha_de_alta, "fecha_de_recotizacion": datos.fecha_de_recotizacion,
         "fecha_de_cierre": datos.fecha_de_cierre,
-        "receta": [{"etapa": l.etapa, "material": l.material, "color": l.color, "consumo": l.consumo}
-                   for l in receta.lineas],
+        "receta": [{"etapa": l.etapa, "material": l.material, "material_nombre": nombres.get(l.material) or l.material,
+                    "color": l.color, "consumo": l.consumo} for l in receta.lineas],
         "componentes": [{"producto": c, "cantidad": q} for c, q in datos.componentes],
         "confeccion_estimada_ars": receta.confeccion_estimada,
         "costo_hoy": costo, "avisos": avisos, "recotizar": recotizar,
@@ -881,6 +895,19 @@ def crear_producto(
         fecha_de_alta=fecha_de_alta, nombre_propio=nombre_propio, es_kit=es_kit, nota=nota, creado_por=quien,
     )
     _insertar(session, fila, "No se pudo asignar el código del producto; intentá de nuevo.")
+    session.commit()
+    return ficha_producto(session, codigo)
+
+
+def cambiar_color_de_producto(session: Session, codigo: str, color: str | None) -> dict:
+    """Sets (or clears, with an empty name) the color of a product. The color must already exist in the catalog.
+
+    Saved quotes are untouched (they are snapshots); the product's cost today follows the color's prices from now on.
+    """
+    producto = session.scalar(select(Producto).where(Producto.codigo == codigo))
+    if producto is None:
+        raise NoEncontrado(f"No existe el producto {codigo}.")
+    producto.color_id = _color_id(session, _texto_o_nada(color))
     session.commit()
     return ficha_producto(session, codigo)
 
