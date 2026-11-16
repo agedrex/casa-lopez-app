@@ -3,7 +3,6 @@ import Link from "next/link";
 import { ReadOnlyNote } from "@/components/form";
 import { Card, ErrorNotice, PageHeader } from "@/components/ui";
 import { apiGet } from "@/lib/api";
-import { todayIso } from "@/lib/format";
 import { canWrite } from "@/lib/permissions";
 import { requireSession } from "@/lib/session";
 import type { Catalogos, Material, Modelo } from "@/lib/types";
@@ -28,11 +27,7 @@ export default async function NuevoProductoPage({
           ← Productos
         </Link>
       </p>
-      <PageHeader
-        eyebrow="Productos"
-        title="Nuevo producto"
-        description="Elija un modelo y defina lo propio del producto (cuero, color y demás). Las medidas y consumos los dicta el modelo."
-      />
+      <PageHeader eyebrow="Productos" title="Nuevo producto" />
     </>
   );
   if (!canWrite(user.role)) {
@@ -80,7 +75,6 @@ export default async function NuevoProductoPage({
               label: `${m.nombre} (${m.codigo})`,
             }))}
           colores={catalogos.data.colores}
-          today={todayIso()}
         />
       </Card>
       <p className="mt-6 text-sm text-muted">
