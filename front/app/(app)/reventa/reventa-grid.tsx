@@ -129,7 +129,6 @@ export function ReventaGrid({
       noun={NOUN}
       allowNew
       startWithDraft={false}
-      autoSave
       compact
       fitContent
       fitFrame

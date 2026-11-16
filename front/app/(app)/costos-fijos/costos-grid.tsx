@@ -220,7 +220,6 @@ export function CostosGrid({
       newRowDefaults={defaults}
       newRowLabel={NUEVO[bloque]}
       allowDelete
-      autoSave
       compact={bloque !== "otros"}
       onSave={onSave}
     />
