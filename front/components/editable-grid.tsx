@@ -391,6 +391,7 @@ export function EditableGrid({
   autoSave = false,
   compact = false,
   fitContent = false,
+  fitFrame = false,
   onSave,
 }: {
   /** Accessible name of the table. */
@@ -431,6 +432,8 @@ export function EditableGrid({
   compact?: boolean;
   /** La tabla ocupa solo lo que miden sus columnas, en vez de estirarse al ancho de la página. */
   fitContent?: boolean;
+  /** El marco de la tabla mide lo que miden sus columnas (sin fondo blanco de sobra); con más ancho que la página, scrollea. */
+  fitFrame?: boolean;
   onSave: (save: GridSave) => Promise<FormState>;
 }) {
   const defaults = newRowDefaults ?? NO_DEFAULTS;
@@ -968,7 +971,9 @@ export function EditableGrid({
       <p aria-live="polite" className="text-sm text-muted empty:hidden">
         {pasteInfo}
       </p>
-      <div className="max-h-[75vh] overflow-auto overscroll-x-contain rounded-card border border-line bg-surface">
+      <div
+        className={`max-h-[75vh] overflow-auto overscroll-x-contain rounded-card border border-line bg-surface ${fitFrame ? "w-fit max-w-full" : ""}`}
+      >
         <table
           ref={tableRef}
           aria-label={label}

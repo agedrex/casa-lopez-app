@@ -39,8 +39,8 @@ export default async function ModelosDelTallerPage({
   const { user } = await requireSession();
   if (!canFillFormularios(user.role)) redirect("/");
   const esAdmin = hasRole(user.role, "admin");
-  // The taller has one screen with its lots and its models (the same one the Lotes menu opens).
-  if (!esAdmin) return <LotesYModelos userId={user.id} />;
+  // The taller has one screen with two tabs, Lotes and Modelos (this route is the Modelos tab).
+  if (!esAdmin) return <LotesYModelos vista="modelos" />;
 
   // The admin reviews: it opens on what is waiting for it (COMPLETADO); `?estado=todas` shows every state.
   const { estado: pedido } = await searchParams;

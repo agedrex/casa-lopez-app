@@ -21,16 +21,10 @@ async function readOnly(): Promise<FormState> {
 }
 
 /**
- * The models of the taller (their consumption sheets), in the same grid as the models of the admin: one per row,
- * a click on the row opens the sheet. Read only.
+ * The models of the taller (their consumption sheets), in the same grid as the models of the admin: one per row
+ * (ID, Modelo, Estado, Creada), a click on the row opens the sheet. Read only.
  */
-export function HojasGrid({
-  hojas,
-  userId,
-}: {
-  hojas: FormularioResumen[];
-  userId: string;
-}) {
+export function HojasGrid({ hojas }: { hojas: FormularioResumen[] }) {
   const rows = useMemo<GridRow[]>(
     () =>
       hojas.map((hoja) => {
@@ -39,26 +33,19 @@ export function HojasGrid({
           id: hoja.codigo,
           name: hoja.articulo,
           href,
+          // The model's ID; a sheet whose model is not created yet falls back to the sheet's own code.
           label: (
-            <div className="min-w-56 max-w-80">
-              <Link
-                href={href}
-                className="block font-medium underline decoration-gold underline-offset-4"
-              >
-                {hoja.articulo}
-              </Link>
-              {hoja.creado_por === userId ? (
-                <span className="mt-1 block">
-                  <Badge>Creado por vos</Badge>
-                </span>
-              ) : null}
-            </div>
+            <Link
+              href={href}
+              className="block font-medium tabular-nums underline decoration-gold underline-offset-4"
+            >
+              {hoja.modelo ?? hoja.codigo}
+            </Link>
           ),
           cells: {},
           extrasBefore: [
-            hoja.modelo ?? <span className="text-muted">—</span>,
-            <span key="hoja" className="tabular-nums">
-              {hoja.codigo}
+            <span key="modelo" className="block min-w-56 max-w-80">
+              {hoja.articulo}
             </span>,
             <Badge key="estado" tone={ESTADO_TONE[hoja.estado]}>
               {estadoLabel(hoja.estado)}
@@ -67,19 +54,20 @@ export function HojasGrid({
           ],
         };
       }),
-    [hojas, userId],
+    [hojas],
   );
 
   return (
     <EditableGrid
       label="Modelos del taller"
-      rowHeader="Modelo"
+      rowHeader="ID"
       columns={NO_COLUMNS}
-      extraHeadersBefore={["ID del modelo", "Hoja", "Estado", "Creada"]}
+      extraHeadersBefore={["Modelo", "Estado", "Creada"]}
       rows={rows}
       noun={{ one: "modelo", many: "modelos" }}
       compact
       fitContent
+      fitFrame
       onSave={readOnly}
     />
   );
