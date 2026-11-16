@@ -15,6 +15,7 @@ import {
 } from "@/lib/lote-buscador";
 import { useActionForm } from "@/lib/use-action-form";
 import { cargarUltimoLote, createOrden } from "../actions";
+import { CueroPanel } from "./cuero-panel";
 import { BuscadorDeProductos } from "./lote-buscador";
 import {
   type Fila,
@@ -28,10 +29,13 @@ export type Option = { codigo: string; label: string };
 export function LoteForm({
   talleres,
   personas,
+  nombresCuero,
   today,
 }: {
   talleres: Option[];
   personas: Option[];
+  /** Material code -> name, to label the alternative leathers of the availability panel. */
+  nombresCuero: Record<string, string>;
   today: string;
 }) {
   const { state, pending, onSubmit } = useActionForm(createOrden);
@@ -145,6 +149,7 @@ export function LoteForm({
           }
         />
       </fieldset>
+      <CueroPanel filas={filas} nombres={nombresCuero} />
       {/* Closed fields still travel with the form: without opening it the lot goes as chosen above, with no person. */}
       <details className="rounded-card border border-line px-4">
         <summary className="min-h-11 cursor-pointer py-3 text-base text-muted">

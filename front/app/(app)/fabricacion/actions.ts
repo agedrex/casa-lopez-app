@@ -14,6 +14,7 @@ import {
 import { readItems } from "@/lib/lote-items";
 import { type UltimoLote, ultimoLote } from "@/lib/lotes";
 import type {
+  AlcanzaCuero,
   HistorialDeTaller,
   OrdenDetalle,
   ProductoResumen,
@@ -98,6 +99,37 @@ export async function buscarProductos(
   const result = await apiGet<ProductoResumen[]>(rutaDeBusqueda(consulta));
   if (!result.ok) return { status: "error", message: result.message };
   return { status: "ok", ...resultadosDeBusqueda(result.data) };
+}
+
+export type AlcanzaCueroResult =
+  | { status: "ok"; resultado: AlcanzaCuero }
+  | { status: "error"; message: string };
+
+/**
+ * "¿Alcanza el cuero?" for one row of the new-lot form (`GET /cueros/alcanza`). It is informative: the
+ * API calculates everything, nothing is saved and the lot can be created whatever the answer is. Only
+ * the admin builds lots, so anyone else is refused.
+ */
+export async function consultarAlcanzaCuero(
+  producto: string,
+  cantidad: string,
+): Promise<AlcanzaCueroResult> {
+  const denied = await denyUnlessWriter();
+  if (denied)
+    return { status: "error", message: "No tiene permiso para esta acción." };
+  const codigo = producto.trim();
+  const unidades = parseDecimalInput(cantidad);
+  if (!codigo || unidades === null || !/[1-9]/.test(unidades)) {
+    return {
+      status: "error",
+      message: "Indicá el producto y una cantidad mayor que cero.",
+    };
+  }
+  const result = await apiGet<AlcanzaCuero>(
+    `/cueros/alcanza?${new URLSearchParams({ producto: codigo, cantidad: unidades })}`,
+  );
+  if (!result.ok) return { status: "error", message: result.message };
+  return { status: "ok", resultado: result.data };
 }
 
 export async function changeEstado(

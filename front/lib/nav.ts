@@ -40,7 +40,6 @@ export const NAV_ITEMS: NavGroup[] = [
         label: "Materiales y precios",
         shortLabel: "Precios",
       },
-      { href: "/cueros", label: "Cueros" },
       { href: "/proveedores", label: "Proveedores", adminOnly: true },
     ],
   },
@@ -122,7 +121,6 @@ const DESKTOP_NAV: NavGroup[] = [
       { href: "/productos", label: "Productos" },
       { href: "/productos/modelos", label: "Modelos", adminOnly: true },
       { href: "/fabricacion", label: "Lotes" },
-      { href: "/cueros", label: "Inventario de cuero" },
     ],
   },
   {
