@@ -24,7 +24,7 @@ COMPLETADO form; `formulario_consumo.taller_id` is informative only.
 HTTP (routes in api.py; errors are `{"detail": <Spanish message>}`: 403 not allowed, 404 missing or not visible,
 409 invalid transition or immutable form, 422 invalid data):
     POST /formularios                       admin   {articulo, taller?, producto?, nota?} -> BORRADOR with the preloaded rows
-    POST /productos/nuevo                   admin, taller   {nombre, categoria, tamano?, nota?} -> new model + its sheet already ENVIADO
+    POST /productos/nuevo                   admin only      {nombre, categoria, tamano?, nota?} -> new model + its sheet already ENVIADO
     GET  /formularios?q=&estado=&producto=&modelo=  admin, taller (taller: ENVIADO / COMPLETADO and its own); producto = PRD-NNNN, modelo = MOD-NNNN
     GET  /formularios/{codigo}              same visibility; 404 otherwise
     PUT  /formularios/{codigo}              admin or taller; {articulo, nota?, lineas: [{seccion, nombre, cantidad?, comentario?}]}

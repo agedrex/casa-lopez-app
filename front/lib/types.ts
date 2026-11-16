@@ -177,6 +177,9 @@ export type ModeloLista = Modelo & {
   horas_de_confeccion: string | null;
   /** True when a photo was uploaded; it is read at `/api/modelos/{codigo}/foto`. */
   tiene_foto: boolean;
+  /** Newest consumption sheet of the model; only the list fills them (the detail leaves them empty). */
+  hoja_codigo?: string | null;
+  hoja_estado?: string | null;
 };
 
 /** Answer of `POST /modelos/consumos/lote`. */
@@ -1222,4 +1225,3 @@ export type FormularioDetalle = FormularioResumen & {
 };
 
 /** What `POST /productos/nuevo` answers: the codes of the new model and of its sheet. */
-export type AltaModelo = { modelo: string; formulario: string; nombre: string };

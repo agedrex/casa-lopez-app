@@ -37,16 +37,14 @@ function decodeCode(raw: string): string | null {
 
 export default async function HojaDelModeloPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ codigo: string }>;
-  searchParams: Promise<{ foto?: string | string[] }>;
 }) {
   const { user } = await requireSession();
   if (!canFillFormularios(user.role)) redirect("/");
   const esAdmin = hasRole(user.role, "admin");
   const volver = (
-    <p className="mb-6 text-sm">
+    <p className="mb-3 text-sm">
       <Link
         href="/taller/modelos"
         className="text-muted underline decoration-gold underline-offset-4"
@@ -83,7 +81,6 @@ export default async function HojaDelModeloPage({
     : null;
   const datos = modelo?.ok ? modelo.data : null;
   const modo = modoDeHoja(user.role, hoja.estado);
-  const fotoFallo = (await searchParams).foto === "error";
 
   return (
     <>
@@ -98,7 +95,7 @@ export default async function HojaDelModeloPage({
               <p className="text-xs uppercase tracking-caps-sm text-muted">
                 ID del modelo
               </p>
-              <h2 className="text-2xl tabular-nums">{hoja.modelo ?? "—"}</h2>
+              <h2 className="text-lg tabular-nums">{hoja.modelo ?? "—"}</h2>
             </div>
             <Badge tone={ESTADO_TONE[hoja.estado]}>
               {estadoLabel(hoja.estado)}
@@ -106,13 +103,7 @@ export default async function HojaDelModeloPage({
           </div>
         }
       />
-      <div className="space-y-10">
-        {fotoFallo ? (
-          <Notice title="El modelo se creó, pero la foto no se pudo subir.">
-            Probá de nuevo con la sección Foto de más abajo (JPG, PNG o WebP,
-            hasta 5 MB). No hace falta crear el modelo otra vez.
-          </Notice>
-        ) : null}
+      <div className="space-y-5">
         {hoja.comentario_revision && hoja.estado === "ENVIADO" ? (
           <Notice title="El administrador devolvió esta hoja con un comentario">
             {hoja.comentario_revision}
@@ -142,7 +133,7 @@ export default async function HojaDelModeloPage({
 
         <section aria-label="Datos del modelo">
           <Card>
-            <dl className="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-3">
+            <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-3">
               <Datum label="Categoría" value={datos?.categoria ?? null} />
               <Datum
                 label="Tamaño"
@@ -160,8 +151,7 @@ export default async function HojaDelModeloPage({
         </section>
 
         {hoja.modelo ? (
-          <section>
-            <SectionTitle>Foto</SectionTitle>
+          <section aria-label="Foto">
             <Card>
               <FotoModelo
                 codigo={hoja.modelo}
@@ -179,7 +169,6 @@ export default async function HojaDelModeloPage({
         ) : null}
 
         <section>
-          <SectionTitle>Consumos y herrajes</SectionTitle>
           <Card>
             <HojaConsumos
               key={`${hoja.estado}-${hoja.completado_en ?? ""}`}

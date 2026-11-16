@@ -82,14 +82,13 @@ test("taller and users without a role are refused the scenario simulator; admin 
   assert.equal(canAccessPath("admin", "/escenarios"), true);
 });
 
-test("taller opens lots, Voz, the product sheet and the three new model screens only", () => {
+test("taller opens lots, Voz, the product sheet and the two model sheet screens only", () => {
   for (const path of [
     "/fabricacion",
     "/fabricacion/LOT-1",
     "/voz",
     "/productos/PRD-1",
     "/taller/modelos",
-    "/taller/modelos/nuevo",
     "/taller/modelos/FCO-0001",
   ]) {
     assert.equal(canAccessPath("taller", path), true, path);
@@ -180,11 +179,7 @@ test("the gerente menu lists only Productos, Modelos and Escenarios, and each en
 });
 
 test("the gerente and users without a role are refused the new model screens; admin opens them", () => {
-  for (const path of [
-    "/taller/modelos",
-    "/taller/modelos/nuevo",
-    "/taller/modelos/FCO-0001",
-  ]) {
+  for (const path of ["/taller/modelos", "/taller/modelos/FCO-0001"]) {
     assert.equal(canAccessPath("gerente", path), false, path);
     assert.equal(canAccessPath("consulta", path), false, path);
     assert.equal(canAccessPath(null, path), false, path);
@@ -203,20 +198,18 @@ test("only admin and taller may fill sheets", () => {
   assert.equal(canFillFormularios(null), false);
 });
 
-test("the admin menu lists Hojas de consumos and the taller menu Nuevo modelo and Mis modelos", () => {
+test("the admin menu has no Hojas de consumos entry and the taller menu lists Lotes and Mis modelos", () => {
   const hrefs = (groups: { items: { href: string }[] }[]) =>
     groups.flatMap((group) => group.items.map((item) => item.href));
-  assert.ok(hrefs(desktopNavForRole(["admin"])).includes("/taller/modelos"));
-  assert.ok(hrefs(navForRole(["admin"])).includes("/taller/modelos"));
+  assert.ok(!hrefs(desktopNavForRole(["admin"])).includes("/taller/modelos"));
+  assert.ok(!hrefs(navForRole(["admin"])).includes("/taller/modelos"));
+  assert.equal(canAccessPath("admin", "/taller/modelos"), true);
+  assert.equal(canAccessPath("admin", "/taller/modelos/FCO-0001"), true);
   for (const groups of [
     desktopNavForRole(["taller"]),
     navForRole(["taller"]),
   ]) {
-    assert.deepEqual(hrefs(groups), [
-      "/fabricacion",
-      "/taller/modelos/nuevo",
-      "/taller/modelos",
-    ]);
+    assert.deepEqual(hrefs(groups), ["/fabricacion", "/taller/modelos"]);
   }
   for (const groups of [
     desktopNavForRole(["gerente"]),
@@ -233,11 +226,7 @@ test("the taller menu lists Lotes and the model screens, and each entry is a pat
     desktopNavForRole(["taller"]),
     navForRole(["taller"]),
   ]) {
-    assert.deepEqual(hrefs(groups), [
-      "/fabricacion",
-      "/taller/modelos/nuevo",
-      "/taller/modelos",
-    ]);
+    assert.deepEqual(hrefs(groups), ["/fabricacion", "/taller/modelos"]);
     for (const href of hrefs(groups)) {
       assert.equal(canAccessPath("taller", href), true, href);
     }
@@ -245,7 +234,7 @@ test("the taller menu lists Lotes and the model screens, and each entry is a pat
   const tabs = mobileTabs(navForRole(["taller"]), ["taller"]);
   assert.deepEqual(
     tabs.map((tab) => tab.href),
-    ["/fabricacion", "/taller/modelos/nuevo", "/taller/modelos"],
+    ["/fabricacion", "/taller/modelos"],
   );
 });
 

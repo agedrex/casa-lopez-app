@@ -108,7 +108,7 @@ function HojaEditable({
 
   return (
     <form
-      className="space-y-8"
+      className="space-y-5"
       onSubmit={(event) => {
         event.preventDefault();
         const submitter = (event.nativeEvent as SubmitEvent).submitter;
@@ -122,17 +122,17 @@ function HojaEditable({
     >
       {SECCIONES.map((seccion) => (
         <fieldset key={seccion.value} className="min-w-0">
-          <legend className="mb-3 text-lg">
+          <legend className="mb-2 text-base">
             {seccion.title}{" "}
             <span className="text-sm text-muted">({seccion.unit})</span>
           </legend>
-          <ul className="space-y-3">
+          <ul className="space-y-1.5">
             {filas.map((fila, indice) =>
               fila.seccion !== seccion.value ? null : (
                 <li
                   // biome-ignore lint/suspicious/noArrayIndexKey: the rows are only ever added at the end or removed, and their position is their identity here.
                   key={indice}
-                  className="grid grid-cols-[minmax(0,1fr)_7.5rem] gap-2 rounded-card border border-line bg-surface p-3 sm:grid-cols-[minmax(0,1.2fr)_8rem_minmax(0,1.5fr)_auto] sm:items-center sm:gap-3"
+                  className="grid grid-cols-[minmax(0,1fr)_7.5rem] gap-2 rounded-card border border-line bg-surface p-2 sm:grid-cols-[minmax(0,1.2fr)_8rem_minmax(0,1.5fr)_auto] sm:items-center sm:gap-3 sm:px-3"
                 >
                   {fila.agregada ? (
                     <input
@@ -143,7 +143,7 @@ function HojaEditable({
                       onChange={(e) =>
                         cambiar(indice, { nombre: e.target.value })
                       }
-                      className={`${inputClass} min-h-11`}
+                      className={`${inputClass} min-h-11 sm:min-h-9`}
                     />
                   ) : (
                     <span className="self-center text-sm">{fila.nombre}</span>
@@ -157,7 +157,7 @@ function HojaEditable({
                     onChange={(e) =>
                       cambiar(indice, { cantidad: e.target.value })
                     }
-                    className={`${inputClass} min-h-11 text-right tabular-nums`}
+                    className={`${inputClass} min-h-11 text-right tabular-nums sm:min-h-9`}
                   />
                   <input
                     aria-label={`${fila.nombre || "Fila nueva"}: comentarios o modificaciones`}
@@ -167,7 +167,7 @@ function HojaEditable({
                     onChange={(e) =>
                       cambiar(indice, { comentario: e.target.value })
                     }
-                    className={`${inputClass} col-span-2 min-h-11 sm:col-span-1`}
+                    className={`${inputClass} col-span-2 min-h-11 sm:col-span-1 sm:min-h-9`}
                   />
                   <button
                     type="button"
@@ -177,7 +177,7 @@ function HojaEditable({
                         actuales.filter((_, i) => i !== indice),
                       )
                     }
-                    className="col-span-2 min-h-11 rounded-card border border-line px-3 text-sm text-muted hover:border-bordeaux hover:text-bordeaux sm:col-span-1 sm:min-h-0 sm:py-2"
+                    className="col-span-2 min-h-11 rounded-card border border-line px-3 text-sm text-muted hover:border-bordeaux hover:text-bordeaux sm:col-span-1 sm:min-h-9 sm:py-1"
                   >
                     ×
                   </button>
@@ -199,14 +199,14 @@ function HojaEditable({
                 },
               ])
             }
-            className="mt-3 min-h-11 text-sm underline decoration-gold underline-offset-4"
+            className="mt-1 min-h-11 text-sm underline decoration-gold underline-offset-4 sm:min-h-9"
           >
             + Agregar fila de {seccion.title.toLowerCase()}
           </button>
         </fieldset>
       ))}
       <FormFeedback state={state} />
-      <div className="flex flex-col gap-3 sm:flex-row">
+      <div className="flex flex-col gap-2 sm:flex-row">
         <SecondaryButton pending={pending} value="guardar" name="accion">
           {pending ? "Guardando…" : "Guardar"}
         </SecondaryButton>
@@ -214,7 +214,7 @@ function HojaEditable({
           Completar y enviar a revisión
         </PrimaryButton>
       </div>
-      <p className="text-sm text-muted">
+      <p className="text-xs text-muted">
         Al completar, la hoja pasa al administrador y ya no la podés editar,
         salvo que te la devuelva con comentarios. Las filas vacías no hace falta
         borrarlas.

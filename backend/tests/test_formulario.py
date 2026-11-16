@@ -708,33 +708,35 @@ def test_pg_the_quick_create_refuses_a_repeated_name_and_leaves_nothing_behind(a
     assert len(api.get("/formularios").json()) == antes
 
 
-def test_pg_only_admin_and_taller_can_use_the_quick_create(api):
+def test_pg_only_admin_can_use_the_quick_create_and_the_taller_gets_the_sent_sheet(api):
     como("gerente")
     assert api.post("/productos/nuevo", json={"nombre": "X", "categoria": "Billeteras"}).status_code == 403
     como("taller", "taller-9")
+    antes = len(api.get("/formularios").json())
+    assert api.post("/productos/nuevo", json={"nombre": "zz modelo del taller", "categoria": "Billeteras"}).status_code == 403
+    como("admin", "admin-1")
     respuesta = api.post("/productos/nuevo", json={"nombre": "zz modelo del taller", "categoria": "Billeteras"})
     assert respuesta.status_code == 201, respuesta.text
     datos = respuesta.json()
     assert api.get(f"/modelos/{datos['modelo']}").json()["validado"] is False
     hoja = api.get(f"/formularios/{datos['formulario']}").json()
-    assert (hoja["estado"], hoja["creado_por"], hoja["articulo"]) == ("ENVIADO", "taller-9", "ZZ MODELO DEL TALLER")
+    assert (hoja["estado"], hoja["creado_por"], hoja["articulo"]) == ("ENVIADO", "admin-1", "ZZ MODELO DEL TALLER")
     assert api.post("/productos/nuevo", json={"nombre": "ZZ Modelo del Taller", "categoria": "Billeteras"}).status_code == 409
     assert api.post("/productos/nuevo", json={"nombre": "Y", "categoria": "Categoría que no existe"}).status_code == 422
-
-
-def test_pg_the_taller_keeps_seeing_its_own_sheet_after_it_is_validated_and_the_others_do_not(api):
     como("taller", "taller-9")
-    datos = api.post("/productos/nuevo", json={"nombre": "zz hoja propia", "categoria": "Billeteras"}).json()
+    assert api.get(f"/formularios/{datos['formulario']}").status_code == 200  # the taller receives it
+    assert len(api.get("/formularios").json()) == antes + 1
+
+
+def test_pg_the_taller_sees_a_sent_sheet_until_it_is_validated_and_then_no_more(api):
+    datos = alta(api, "zz hoja propia").json()
     codigo = datos["formulario"]
+    como("taller", "taller-9")
     assert api.post(f"/formularios/{codigo}/completar").status_code == 200
     como("admin", "admin-1")
     assert api.post(f"/formularios/{codigo}/validar").status_code == 200
     como("taller", "taller-9")
-    assert api.get(f"/formularios/{codigo}").status_code == 200
-    assert codigo in [f["codigo"] for f in api.get("/formularios").json()]
-    assert api.put(f"/formularios/{codigo}", json={"articulo": "ZZ HOJA PROPIA", "lineas": []}).status_code == 409  # still immutable
-    como("taller", "taller-otro")
-    assert api.get(f"/formularios/{codigo}").status_code == 404
+    assert api.get(f"/formularios/{codigo}").status_code == 404  # validated sheets are the admin's
     assert codigo not in [f["codigo"] for f in api.get("/formularios").json()]
 
 

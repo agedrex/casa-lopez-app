@@ -1,11 +1,11 @@
-"""The taller creates a model and fills its sheet (S3 and S4 of odd/tasks/modelo-taller-foto.md, task T4).
+"""Only the admin creates a model; the taller receives the sent sheet and fills it (S3 and S4 of odd/tasks/modelo-taller-foto.md, task T4).
 
 No database: the session is a mock, so what is checked is what the service adds to it and the statement it asks for. The
 same flow against PostgreSQL was not run here (the matching `test_pg_*` live in test_formulario.py and are skipped without
 TEST_DATABASE_URL).
 
 Rules covered:
-  R1  admin AND taller may create a model (`POST /productos/nuevo`); the gerente and unknown roles may not.
+  R1  only the admin may create a model (`POST /productos/nuevo`); the taller, the gerente and unknown roles get a 403.
   R2  the model starts `validado = False`, its name is normalized, a repeated name is a 409, the category must exist, and the
       sheet records who created it and starts ENVIADO.
   R3  a taller sees the sheets it created in ANY state (to follow them to VALIDADO); what it sees of the others and what it may
@@ -54,31 +54,30 @@ def sql(consulta) -> str:
 
 # --- R1: who may create a model (HTTP gate) ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("role", ["admin", "taller"])
-def test_r1_admin_and_taller_create_a_model_and_the_service_gets_the_creator(monkeypatch, role):
+def test_r1_admin_creates_a_model_and_the_service_gets_the_creator(monkeypatch):
     visto = {}
     monkeypatch.setattr(formulario, "alta_rapida", lambda session, **k: visto.update(k) or RESPUESTA_ALTA)
-    respuesta = cliente(role, usuario="u-9").post(
+    respuesta = cliente("admin", usuario="u-9").post(
         "/productos/nuevo", json={"nombre": "cartera lucía", "categoria": "Carteras", "tamano": "CHICO", "nota": "con fuelle"})
     assert respuesta.status_code == 201 and respuesta.json() == RESPUESTA_ALTA
     assert visto == {"nombre": "cartera lucía", "categoria": "Carteras", "tamano": "CHICO", "nota": "con fuelle", "quien": "u-9"}
 
 
-@pytest.mark.parametrize("role", ["gerente", "consulta", "otro", None])
-def test_r1_gerente_and_unknown_roles_cannot_create_a_model_and_the_service_is_not_called(monkeypatch, role):
+@pytest.mark.parametrize("role", ["taller", "corte", "gerente", "consulta", "otro", None])
+def test_r1_taller_gerente_and_unknown_roles_cannot_create_a_model_and_the_service_is_not_called(monkeypatch, role):
     monkeypatch.setattr(formulario, "alta_rapida", lambda *a, **k: pytest.fail("the service must not be called"))
     respuesta = cliente(role).post("/productos/nuevo", json={"nombre": "X", "categoria": "Carteras"})
     assert respuesta.status_code == 403 and respuesta.json() == {"detail": "No tenés permiso para esta acción."}
 
 
 @pytest.mark.parametrize("metodo, ruta, cuerpo", [
-    ("POST", "/formularios", {"articulo": "A"}), ("POST", "/formularios/FCO-0001/validar", None),
+    ("POST", "/formularios", {"articulo": "A"}), ("POST", "/productos/nuevo", {"nombre": "X", "categoria": "Carteras"}), ("POST", "/formularios/FCO-0001/validar", None),
     ("POST", "/formularios/FCO-0001/devolver", {"comentario": "x"}), ("POST", "/formularios/FCO-0001/enviar", None),
     ("POST", "/formularios/FCO-0001/duplicar", {"articulo": "A"}), ("POST", "/modelos", {"nombre_del_modelo": "X"}),
     ("POST", "/modelos/MOD-0001/validado", {"validado": True}), ("POST", "/categorias", {"nombre": "Nueva", "nota": None}),
 ])
-def test_r1_opening_the_creation_does_not_open_the_admin_routes_next_to_it(monkeypatch, metodo, ruta, cuerpo):
-    for nombre in ("crear_formulario", "cambiar_estado", "duplicar_formulario"):
+def test_r1_the_taller_cannot_reach_the_admin_routes_next_to_the_creation(monkeypatch, metodo, ruta, cuerpo):
+    for nombre in ("crear_formulario", "cambiar_estado", "duplicar_formulario", "alta_rapida"):
         monkeypatch.setattr(formulario, nombre, lambda *a, **k: pytest.fail("the service must not be called"))
     respuesta = cliente("taller").request(metodo, ruta, json=cuerpo)
     assert respuesta.status_code == 403 and respuesta.json() == {"detail": "No tenés permiso para esta acción."}
@@ -134,11 +133,11 @@ def test_r2_an_unknown_category_or_size_is_a_422_and_nothing_is_written(alta):
     assert filas == [] and not session.commit.called
 
 
-def test_r2_the_api_maps_the_duplicate_to_409_for_the_taller_too(monkeypatch):
+def test_r2_the_api_maps_the_duplicate_to_409_for_the_admin(monkeypatch):
     def repetido(session, **k):
         raise Conflicto("Ya hay un modelo llamado CARTERA LUCÍA: agregá algo que lo distinga.")
     monkeypatch.setattr(formulario, "alta_rapida", repetido)
-    respuesta = cliente("taller").post("/productos/nuevo", json={"nombre": "cartera lucía", "categoria": "Carteras"})
+    respuesta = cliente("admin").post("/productos/nuevo", json={"nombre": "cartera lucía", "categoria": "Carteras"})
     assert respuesta.status_code == 409 and "Ya hay un modelo llamado" in respuesta.json()["detail"]
 
 

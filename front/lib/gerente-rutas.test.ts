@@ -54,15 +54,14 @@ test("the gerente opens none of the admin only pages under /productos", () => {
   }
 });
 
-// What the taller opens: the lots (list and detail), Voz, the product sheet and the three screens of the new model flow
-// (modelo-taller-foto T4: my models, new model and the sheet of a model). Nothing else.
+// What the taller opens: the lots (list and detail), Voz, the product sheet and the two model screens
+// (my models and the sheet of a model; the taller does not create models). Nothing else.
 const RUTAS_DEL_TALLER = [
   "/fabricacion",
   "/fabricacion/X-1",
   "/productos/X-1",
   "/taller/modelos",
   "/taller/modelos/X-1",
-  "/taller/modelos/nuevo",
   "/voz",
 ];
 

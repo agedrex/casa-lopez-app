@@ -126,9 +126,9 @@ const ROLE_ACCESS: Record<
     paths: ["/productos", "/escenarios", "/api/modelos"],
   },
   // Taller opens the lots list (what to make and how many) and, from each product of a lot, the
-  // product sheet (materials and recipe, no prices); Voz is a header button (not in the menu). Since
-  // modelo-taller-foto T4 it also creates a model and fills its consumption sheet: /taller/modelos
-  // (my models), /taller/modelos/nuevo and /taller/modelos/<FCO-nnnn>. The product LIST, Modelos
+  // product sheet (materials and recipe, no prices); Voz is a header button (not in the menu). It also
+  // fills the consumption sheet of the models the admin sends it (it does not create models): /taller/modelos
+  // (my models) and /taller/modelos/<FCO-nnnn>. The product LIST, Modelos
   // (the admin ones under /productos), Materiales, Corte and Cueros stay closed to it
   // (demo-staging-taller-grilla S2).
   taller: {

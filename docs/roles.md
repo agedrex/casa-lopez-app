@@ -13,7 +13,7 @@ Los nombres viejos se leen mapeados: `cotizador` → `admin`, `corte` → `talle
 | Escenarios (simulador) | sí | sí (solo lectura) | no |
 | Panel (`/admin/panel`) y alertas | sí | **no** | no |
 | Lotes (`/fabricacion`) y Talleres | sí | **no** | no |
-| Formularios de consumos (`/taller/modelos`) | todo (revisa, valida, devuelve) | **no** | crea modelos nuevos con foto y completa su hoja y las que le envían; ve las suyas hasta que se validan |
+| Formularios de consumos (`/taller/modelos`) | todo (revisa, valida, devuelve) | **no** | completa las hojas de los modelos que el admin le envía (y sube la foto); no crea modelos |
 | Inventario de cuero (`/cueros`) y Corte | sí | **no** | sí |
 | Proveedores | sí | **no** | no |
 | Materiales y precios, Costos fijos, Catálogos, Administración | sí | no | Materiales: solo lectura |
@@ -25,11 +25,11 @@ El `gerente` nunca escribe. SUPUESTO: validar con Robert y Alejandro qué person
 
 | Gate | Roles | Lo usan |
 |---|---|---|
-| `SOLO_ADMIN` | admin | escrituras, costos fijos, impuestos, alertas (`/calidad`), **`/panel/costos`, `/grilla`**, talleres, proveedores, reventa |
+| `SOLO_ADMIN` | admin | escrituras (incluida **`POST /productos/nuevo`**, crear un modelo), costos fijos, impuestos, alertas (`/calidad`), **`/panel/costos`, `/grilla`**, talleres, proveedores, reventa |
 | `PRODUCTOS` | admin, gerente | rentabilidad, precio de venta y precio sugerido de un producto, **`GET /cvu/periodo`** y **`POST /cvu/escenario`** |
 | `CORTE` | admin, taller | voz, cortes, lotes (`GET /ordenes`), cueros (`GET /cueros*`) y, de lectura, **`/precios`, `/dolar`, `/colores` y `/categorias`** (el gerente no los lee) |
-| `FORMULARIO_LEER` | admin, taller | `GET /formularios*` (el taller ve `ENVIADO`, `COMPLETADO` y las hojas que creó él) |
-| `FORMULARIO_TRABAJAR` | admin, taller | guardar filas, completar, **`POST /productos/nuevo`** (crear un modelo) y subir la foto (`POST /modelos/{codigo}/foto`: un taller solo en un modelo con hoja `ENVIADO` o creada por él) |
+| `FORMULARIO_LEER` | admin, taller | `GET /formularios*` (el taller ve `ENVIADO` y `COMPLETADO`, y las que creó él si las hubiera) |
+| `FORMULARIO_TRABAJAR` | admin, taller | guardar filas, completar y subir la foto (`POST /modelos/{codigo}/foto`: un taller solo en un modelo con hoja `ENVIADO` o creada por él) |
 | `CUALQUIER_ROL` | admin, gerente, taller | lecturas compartidas que usan las páginas del gerente: productos (lista, conteo, ficha), modelos, `/materiales` y `/catalogos` |
 
 ## Decisiones (S8, 2026-11-13)
@@ -42,10 +42,10 @@ El `gerente` nunca escribe. SUPUESTO: validar con Robert y Alejandro qué person
 - La ficha del producto ya no muestra el formulario de consumos validado al gerente (`seesValidatedFormulario`).
 - En la pantalla de Escenarios, los links de los avisos (cargar costos fijos o impuestos) se muestran solo a quien puede abrirlos (admin).
 
-## Taller crea modelos (modelo-taller-foto T4, 2026-11-16)
+## El taller recibe modelos, no los crea (2026-11-16)
 
-- Pedido del usuario: "que el taller cree el modelo y luego la administración lo valide", con foto. `POST /productos/nuevo` pasó de `SOLO_ADMIN` a `FORMULARIO_TRABAJAR`; la hoja guarda `creado_por` (el id del usuario).
-- Lo que el taller sigue sin poder: crear categorías (`POST /categorias`), `POST /formularios`, validar, devolver, enviar, duplicar, `POST /modelos`, ver modelos y productos fuera de lo de siempre. `test_roles.py` y `test_taller_modelos.py` lo fijan.
-- Visibilidad: el taller ve las hojas `ENVIADO` y `COMPLETADO` (como antes) y además las que creó, en cualquier estado. Editar no cambia: solo las filas y solo en `ENVIADO`.
+- Pedido del usuario: "El taller solo debería recibir los modelos que se quieren crear, más no poder crearlos". `POST /productos/nuevo` volvió a `SOLO_ADMIN` (el taller recibe 403): el admin crea el modelo y su hoja nace `ENVIADO`, y el taller la ve y la completa. Antes (modelo-taller-foto T4) estaba en `FORMULARIO_TRABAJAR`.
+- Lo que el taller puede: leer y completar las hojas `ENVIADO` (solo las filas) y subir la foto a un modelo con una hoja `ENVIADO`. Lo que no puede: crear modelos, crear categorías (`POST /categorias`), `POST /formularios`, validar, devolver, enviar, duplicar, `POST /modelos`. `test_roles.py` y `test_taller_modelos.py` lo fijan.
+- Visibilidad: el taller ve las hojas `ENVIADO` y `COMPLETADO`; si una hoja la creó él (caso histórico), la sigue viendo en cualquier estado. Editar: solo las filas y solo en `ENVIADO`.
 - Foto: un taller solo sube foto a un modelo con una hoja `ENVIADO` o que creó él; el admin no tiene límite. SUPUESTO: validar.
-- Páginas del taller (`front/lib/permissions.ts`): `/taller/modelos`, `/taller/modelos/nuevo` y `/taller/modelos/<FCO-nnnn>`, y nada más de `/taller`. El gerente no abre ninguna. `/formularios` sigue sin existir como página.
+- Páginas del taller (`front/lib/permissions.ts`): `/taller/modelos` y `/taller/modelos/<FCO-nnnn>`, y nada más de `/taller`. El gerente no abre ninguna. `/formularios` sigue sin existir como página.

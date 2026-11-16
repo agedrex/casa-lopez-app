@@ -213,7 +213,7 @@ def _modelo(codigo="MOD-0001"):
 def test_the_list_carries_tiene_foto_per_model_with_an_exists_and_never_loads_the_bytes():
     session = MagicMock()
     session.execute.return_value.all.return_value = [
-        (_modelo("MOD-0001"), None, None, True), (_modelo("MOD-0002"), None, None, False)]
+        (_modelo("MOD-0001"), None, None, True, None, None), (_modelo("MOD-0002"), None, None, False, None, None)]
     filas = servicios.listar_modelos(session)
     assert [(f["codigo"], f["tiene_foto"]) for f in filas] == [("MOD-0001", True), ("MOD-0002", False)]
     sql = str(session.execute.call_args.args[0].compile(dialect=postgresql.dialect()))

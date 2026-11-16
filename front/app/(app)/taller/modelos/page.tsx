@@ -28,9 +28,6 @@ import type { FormularioResumen } from "@/lib/types";
 
 export const metadata: Metadata = { title: "Modelos del taller" };
 
-const buttonClass =
-  "inline-flex min-h-11 items-center justify-center rounded-card bg-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm text-white hover:bg-ink-soft sm:min-h-0";
-
 type Search = Promise<{ estado?: string | string[] }>;
 
 export default async function ModelosDelTallerPage({
@@ -67,11 +64,6 @@ export default async function ModelosDelTallerPage({
             ? "Las hojas que carga el taller con las medidas reales. Abrí una completada para validarla (las medidas pasan al modelo) o devolverla con un comentario."
             : "Los modelos nuevos y su hoja de consumos y herrajes. Tocá uno para completarla."
         }
-        actions={
-          <Link href="/taller/modelos/nuevo" className={buttonClass}>
-            Nuevo modelo
-          </Link>
-        }
       />
       {esAdmin ? <Filtros actual={filtro} /> : null}
       {result.ok ? (
@@ -86,7 +78,7 @@ export default async function ModelosDelTallerPage({
           >
             {esAdmin
               ? "Cuando el taller complete una hoja aparece acá."
-              : "Creá un modelo nuevo para empezar."}
+              : "Cuando te envíen un modelo aparece acá."}
           </Notice>
         ) : (
           <Lista hojas={result.data} userId={user.id} />

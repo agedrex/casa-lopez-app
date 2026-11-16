@@ -23,7 +23,7 @@ from backend.costeo import (
     equilibrio_con_mezcla, importe_sobre_precio, margen_de_contribucion, margen_por_hora, necesita_recotizar, precio_a_la_fecha, precio_con_margen, punto_de_equilibrio, resultado_cvu,
 )
 from backend.models import (
-    Categoria, Color, CompraReventa, Cotizacion, Etapa, GastoPeriodo, Impuesto, KitComponente, Material, Modelo,
+    Categoria, Color, CompraReventa, Cotizacion, Etapa, FormularioConsumo, GastoPeriodo, Impuesto, KitComponente, Material, Modelo,
     ModeloFoto, ModeloInsumo, OrdenEstado, OrdenFabricacion, OrdenItem, Parametro, Persona, PrecioMaterial, PrecioVenta, Producto,
     ProductoReventa, Proveedor, RecetaLinea, Taller, TipoCambio, Transferencia, Venta,
 )
@@ -634,6 +634,12 @@ def _tiene_foto():
     return select(ModeloFoto.id).where(ModeloFoto.modelo_id == Modelo.id).exists().label("tiene_foto")
 
 
+def _hoja_mas_nueva(columna):
+    """Correlated scalar subquery: `columna` of the newest consumption sheet (highest id) of the model of the row."""
+    return (select(columna).where(FormularioConsumo.modelo_id == Modelo.id)
+            .order_by(FormularioConsumo.id.desc()).limit(1).scalar_subquery())
+
+
 def listar_modelos(
     session: Session, limit: int = 500, offset: int = 0, q: str | None = None, categoria: str | None = None,
     validado: bool | None = None, tamano: str | None = None,
@@ -641,7 +647,9 @@ def listar_modelos(
     """Models in sheet order. Filters: every word of `q` in the code or name, exact category name, flag, size."""
     forro = aliased(Material)
     consulta = (
-        select(Modelo, Categoria.nombre, forro.codigo, _tiene_foto())
+        select(Modelo, Categoria.nombre, forro.codigo, _tiene_foto(),
+               _hoja_mas_nueva(FormularioConsumo.codigo).label("hoja_codigo"),
+               _hoja_mas_nueva(FormularioConsumo.estado).label("hoja_estado"))
         .outerjoin(Categoria, Categoria.id == Modelo.categoria_id)
         .outerjoin(forro, forro.id == Modelo.forro_id)
         .order_by(Modelo.id).limit(limit).offset(offset)
@@ -655,8 +663,9 @@ def listar_modelos(
         consulta = consulta.where(Modelo.validado.is_(validado))
     if tamano:
         consulta = consulta.where(Modelo.tamano == tamano)
-    return [{**_modelo_a_dict(m, nombre_categoria, forro_codigo), "tiene_foto": tiene_foto}
-            for m, nombre_categoria, forro_codigo, tiene_foto in session.execute(consulta).all()]
+    return [{**_modelo_a_dict(m, nombre_categoria, forro_codigo), "tiene_foto": tiene_foto,
+             "hoja_codigo": hoja_codigo, "hoja_estado": hoja_estado}
+            for m, nombre_categoria, forro_codigo, tiene_foto, hoja_codigo, hoja_estado in session.execute(consulta).all()]
 
 
 def listar_materiales(session: Session) -> list[dict]:

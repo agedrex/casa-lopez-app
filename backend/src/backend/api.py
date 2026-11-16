@@ -631,6 +631,9 @@ class ModeloOut(Salida):
     origen_de_los_consumos: str | None
     validado: bool
     tiene_foto: bool
+    # Newest consumption sheet of the model (highest id); only the list fills them, the detail leaves them None.
+    hoja_codigo: str | None = None
+    hoja_estado: str | None = None
 
 
 class InsumoModeloOut(Salida):
@@ -2591,10 +2594,10 @@ class ProductoNuevoOut(BaseModel):
 
 
 @router.post("/productos/nuevo", response_model=ProductoNuevoOut, status_code=201)
-def crear_producto_solo_con_nombre(cuerpo: ProductoNuevoIn, session: Sesion, usuario: FormularioTrabajador):
+def crear_producto_solo_con_nombre(cuerpo: ProductoNuevoIn, session: Sesion, usuario: SoloAdmin):
     """New model (name, category, size and notes; no consumption): the app makes the model code and its consumption form,
-    already sent to the workshop, which reads the notes there. Admin and taller may create it (the taller then fills the
-    sheet with real data; the form remembers who created it). The product comes after the admin validates the form.
+    already sent to the workshop, which reads the notes there. Admin only: the taller receives the sent sheet and fills
+    it, but cannot create models (403). The product comes after the admin validates the form.
     The category must already exist: only the admin creates categories (`POST /categorias`)."""
     return formulario.alta_rapida(session, quien=usuario.id, **cuerpo.model_dump())
 

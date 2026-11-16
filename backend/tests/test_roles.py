@@ -123,8 +123,8 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
     # rows and complete, the rest is admin only. The gerente has no access to the module.
     ("GET", "/formularios"): CORTE, ("GET", "/formularios/{codigo}"): CORTE,
     ("PUT", "/formularios/{codigo}"): CORTE, ("POST", "/formularios/{codigo}/completar"): CORTE,
-    # A new model: admin and taller (the taller creates it and fills its sheet, the admin validates). Categories stay admin only.
-    ("POST", "/productos/nuevo"): CORTE,
+    # A new model: admin only (the taller receives the sent sheet and fills it, the admin validates). Categories stay admin only.
+    ("POST", "/productos/nuevo"): ADMIN,
     **{("POST", ruta): ADMIN for ruta in (
         "/formularios", "/formularios/{codigo}/enviar", "/formularios/{codigo}/devolver", "/formularios/{codigo}/validar",
         "/formularios/{codigo}/duplicar")},
@@ -248,7 +248,7 @@ def test_admin_only_routes_refuse_everyone_else_without_calling_the_service(monk
                 ("GET", "/modelos"), ("GET", "/modelos/MOD-1"), ("GET", "/precios"), ("GET", "/categorias"), ("GET", "/catalogos"), ("GET", "/dolar"),
                 ("POST", "/cueros/PZC-1/cortes"), ("POST", "/cueros/PZC-1/sobrante"), ("POST", "/voz/interpretar"),
                 ("GET", "/formularios"), ("GET", "/formularios/FCO-0001"), ("PUT", "/formularios/FCO-0001"),
-                ("POST", "/formularios/FCO-0001/completar"), ("POST", "/productos/nuevo"), ("POST", "/modelos/MOD-0001/foto")]),
+                ("POST", "/formularios/FCO-0001/completar"), ("POST", "/modelos/MOD-0001/foto")]),
     ("admin", [("GET", "/panel/costos"), ("GET", "/grilla"), ("GET", "/precios"), ("GET", "/dolar"), ("GET", "/colores"),
                ("GET", "/categorias"), ("GET", "/cvu/periodo"), ("GET", "/costos-fijos"), ("GET", "/ordenes"), ("GET", "/productos"),
                ("GET", "/cueros"), ("GET", "/voz/estado"), ("POST", "/cvu/escenario"), ("POST", "/ordenes"),

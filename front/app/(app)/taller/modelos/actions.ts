@@ -3,23 +3,15 @@
 import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { error, type FormState, ok } from "@/lib/action-state";
-import { apiGet, apiPost, apiPostForm, apiPut } from "@/lib/api";
+import { apiGet, apiPost, apiPut } from "@/lib/api";
 import { armarLineas, type FilaHoja } from "@/lib/formularios";
-import { SIZES } from "@/lib/modelos";
 import { canFillFormularios } from "@/lib/permissions";
-import { collapseSpaces } from "@/lib/productos";
 import { getSession } from "@/lib/session";
-import type { AltaModelo, FormularioDetalle } from "@/lib/types";
-import {
-  denyUnlessAdmin,
-  fromFailure,
-  optional,
-  text,
-} from "@/lib/write-guard";
-import { fotoHint } from "../../productos/modelos/[codigo]/foto-limites";
+import type { FormularioDetalle } from "@/lib/types";
+import { denyUnlessAdmin, fromFailure } from "@/lib/write-guard";
 
 /**
- * Admin and taller work on the sheet of a model. The page already hides the screens from the other roles, but anyone can
+ * Admin and taller work on the sheet of a model (only the admin creates models). The page already hides the screens from the other roles, but anyone can
  * post to a server action, so the role is checked again here; the backend checks it a third time (403).
  */
 async function denyUnlessFiller(): Promise<FormState | null> {
@@ -29,63 +21,6 @@ async function denyUnlessFiller(): Promise<FormState | null> {
     return error("No tenés permiso para esta acción.");
   }
   return null;
-}
-
-const sheetHref = (codigo: string, query = "") =>
-  `/taller/modelos/${encodeURIComponent(codigo)}${query}`;
-
-/**
- * Creates the model (name, category, size, notes) and then uploads its photo. The model is created FIRST and the photo goes
- * in a second request: when the photo fails the model already exists, so we land on its sheet with a notice instead of
- * losing what the person typed. The category must already exist (only the admin creates categories).
- */
-export async function crearModelo(
-  _previous: FormState,
-  formData: FormData,
-): Promise<FormState> {
-  const denied = await denyUnlessFiller();
-  if (denied) return denied;
-
-  const nombre = collapseSpaces(text(formData, "nombre"));
-  const categoria = text(formData, "categoria");
-  const tamano = text(formData, "tamano");
-  if (!nombre) return error("Escribí el nombre del modelo.");
-  if (!categoria) return error("Elegí la categoría.");
-  if (tamano && !SIZES.some((item) => item.value === tamano)) {
-    return error("El tamaño no es válido.");
-  }
-
-  // The photo is checked before anything is created: a refused file must not leave a half-made model.
-  const archivo = formData.get("foto");
-  const foto = archivo instanceof File && archivo.size > 0 ? archivo : null;
-  if (foto) {
-    const hint = fotoHint(foto);
-    if (hint) return error(`No se puede subir esta foto: ${hint}.`);
-  }
-
-  const creado = await apiPost<AltaModelo>("/productos/nuevo", {
-    nombre,
-    categoria,
-    tamano: tamano || null,
-    nota: optional(formData, "nota"),
-  });
-  if (!creado.ok) {
-    return fromFailure(creado, {
-      409: "Ya hay un modelo con ese nombre: agregá algo que lo distinga.",
-    });
-  }
-
-  let fotoFallo = false;
-  if (foto) {
-    const body = new FormData();
-    body.append("archivo", foto, foto.name);
-    const subida = await apiPostForm(
-      `/modelos/${encodeURIComponent(creado.data.modelo)}/foto`,
-      body,
-    );
-    fotoFallo = !subida.ok;
-  }
-  redirect(sheetHref(creado.data.formulario, fotoFallo ? "?foto=error" : ""));
 }
 
 type Guardado =

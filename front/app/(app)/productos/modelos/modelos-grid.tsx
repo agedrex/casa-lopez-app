@@ -10,6 +10,7 @@ import {
 } from "@/components/editable-grid";
 import { Badge, Notice } from "@/components/ui";
 import { decimalInputText } from "@/lib/format";
+import { ESTADO_TONE, estadoLabel, isEstado } from "@/lib/formularios";
 import {
   CONSUMPTION_FIELDS,
   hasMissingConsumptions,
@@ -29,6 +30,25 @@ function Measure({ value }: { value: string | null }) {
   );
 }
 
+/** State of the newest consumption sheet of the model, linked to that sheet; "Sin hoja" when it has none. */
+function HojaEstado({ modelo }: { modelo: ModeloLista }) {
+  const { hoja_codigo: codigo, hoja_estado: estado } = modelo;
+  if (!codigo || !estado) {
+    return <span className="text-muted">Sin hoja</span>;
+  }
+  return (
+    <Link
+      href={`/taller/modelos/${encodeURIComponent(codigo)}`}
+      title={`Hoja ${codigo}`}
+      className="inline-block"
+    >
+      <Badge tone={isEstado(estado) ? ESTADO_TONE[estado] : "neutral"}>
+        {estadoLabel(estado)}
+      </Badge>
+    </Link>
+  );
+}
+
 const MEASURES = [
   { header: "Cuero m²", name: "cuero_m2_por_unidad" },
   { header: "Forro m²", name: "forro_m2_por_unidad" },
@@ -39,7 +59,7 @@ const MEASURES = [
 
 /**
  * The models sheet: one thing per column (name and code, category, size, the key consumptions,
- * hours, status). Only hours are edited here; the rest is edited in each model's page.
+ * hours, sheet state, validation). Only hours are edited here; the rest is edited in each model's page.
  * Rows with missing consumptions are highlighted. Nothing is computed here.
  */
 export function ModelosGrid({ modelos }: { modelos: ModeloLista[] }) {
@@ -89,6 +109,7 @@ export function ModelosGrid({ modelos }: { modelos: ModeloLista[] }) {
           ),
           cells,
           extrasBefore: [
+            <HojaEstado key="hoja" modelo={modelo} />,
             modelo.categoria ?? <span className="text-muted">—</span>,
             sizeLabel(modelo.tamano),
             ...MEASURES.map((measure) => (
@@ -150,11 +171,12 @@ export function ModelosGrid({ modelos }: { modelos: ModeloLista[] }) {
       rowHeader="Modelo"
       columns={columns}
       extraHeadersBefore={[
+        "Estado",
         "Categoría",
         "Tamaño",
         ...MEASURES.map((measure) => measure.header),
       ]}
-      extraHeaders={["Estado"]}
+      extraHeaders={["Validación"]}
       rows={rows}
       noun={{ one: "modelo", many: "modelos" }}
       warning={warning}
