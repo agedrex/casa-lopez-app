@@ -2399,6 +2399,7 @@ class ProveedorProductoIn(Entrada):
     moneda: Literal[*ARS_USD]
     iva_incluido: bool = False
     material: str | None = None
+    etapa: str | None = None  # without `material`: the kind (cuero, flex...) the product's material is created under
     vigente_desde: date | None = None
     nota: Annotated[str, Field(max_length=proveedores.MAX_PRODUCT_NOTE)] | None = None
 

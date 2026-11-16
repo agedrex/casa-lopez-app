@@ -8,7 +8,12 @@ import {
   type GridSave,
 } from "@/components/editable-grid";
 import { Badge } from "@/components/ui";
-import { decimalInputText, formatDate, formatMoney } from "@/lib/format";
+import {
+  decimalInputText,
+  formatDate,
+  formatMoney,
+  stageLabel,
+} from "@/lib/format";
 import { filasParaGuardar, MONEDAS, UNIDADES } from "@/lib/proveedores";
 import type { ProveedorProducto } from "@/lib/types";
 import { guardarProductosDeProveedor } from "./productos-actions";
@@ -16,7 +21,7 @@ import { guardarProductosDeProveedor } from "./productos-actions";
 const NOUN = { one: "producto", many: "productos" };
 const NEW_ROW_DEFAULTS = { moneda: "ARS" };
 
-export type MaterialOpcion = { codigo: string; label: string };
+export type MaterialOpcion = { codigo: string; label: string; etapa: string };
 
 /**
  * What else the supplier offers, as a sheet: product, material (optional), unit and price per unit.
@@ -27,10 +32,12 @@ export function ProductosQueVende({
   codigo,
   productos,
   materiales,
+  etapas,
 }: {
   codigo: string;
   productos: ProveedorProducto[];
   materiales: MaterialOpcion[];
+  etapas: string[];
 }) {
   const columns = useMemo<GridColumn[]>(
     () => [
@@ -44,14 +51,15 @@ export function ProductosQueVende({
         placeholder: "Nombre del producto",
       },
       {
-        key: "material",
-        header: "Material",
+        key: "tipo",
+        header: "Tipo",
         kind: "select",
-        emptyLabel: "Otro producto (sin material)",
-        width: "min-w-48",
-        options: materiales.map((material) => ({
-          value: material.codigo,
-          label: material.label,
+        newOnly: true,
+        width: "min-w-40",
+        emptyLabel: "Elegir…",
+        options: etapas.map((etapa) => ({
+          value: etapa,
+          label: stageLabel(etapa),
         })),
       },
       {
@@ -80,7 +88,7 @@ export function ProductosQueVende({
         options: MONEDAS.map((moneda) => ({ value: moneda, label: moneda })),
       },
     ],
-    [materiales],
+    [etapas],
   );
 
   const rows = useMemo<GridRow[]>(
@@ -102,7 +110,8 @@ export function ProductosQueVende({
           // Always the price of one unit (an old row with a quantity is shown divided; saving it keeps that unit price).
           precio_referencial: decimalInputText(producto.precio_por_unidad),
           moneda: producto.moneda,
-          material: producto.material ?? "",
+          tipo:
+            materiales.find((m) => m.codigo === producto.material)?.etapa ?? "",
         },
         extras: [
           formatDate(producto.vigente_desde),
@@ -111,7 +120,7 @@ export function ProductosQueVende({
             : "—",
         ],
       })),
-    [productos],
+    [productos, materiales],
   );
 
   function onSave(save: GridSave) {
@@ -123,7 +132,7 @@ export function ProductosQueVende({
 
   return (
     <EditableGrid
-      label="Productos que vende el proveedor"
+      label="Productos que ofrece el proveedor"
       rowHeader="Código"
       columns={columns}
       extraHeaders={["Vigente desde", "Precio anterior"]}

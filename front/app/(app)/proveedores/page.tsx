@@ -15,9 +15,8 @@ import {
   thClass,
 } from "@/components/ui";
 import { apiGet } from "@/lib/api";
-import { materialOptions } from "@/lib/proveedores";
 import { requireRole } from "@/lib/session";
-import type { Material, Proveedor } from "@/lib/types";
+import type { Proveedor } from "@/lib/types";
 import { createProveedor } from "./actions";
 import { ProveedorForm } from "./proveedor-form";
 
@@ -53,13 +52,12 @@ export default async function ProveedoresPage({
     `/proveedores${query.size > 0 ? `?${query}` : ""}`,
   );
   const filtered = Boolean(q || activo);
-  const materiales = await apiGet<Material[]>("/materiales");
   return (
     <>
       <PageHeader
         eyebrow="Datos de base"
         title="Proveedores"
-        description="Agenda de proveedores con sus facturas e imágenes. Un proveedor desactivado se oculta de las listas pero conserva sus archivos."
+        description="Agenda de proveedores. Entrá a uno para ver lo que ofrece y sus pedidos."
       />
       <div className="space-y-10">
         <section aria-label="Buscar proveedores">
@@ -164,7 +162,6 @@ export default async function ProveedoresPage({
           <Card>
             <ProveedorForm
               action={createProveedor}
-              materials={materiales.ok ? materialOptions(materiales.data) : []}
               submitLabel="Crear proveedor"
               pendingLabel="Creando…"
             />

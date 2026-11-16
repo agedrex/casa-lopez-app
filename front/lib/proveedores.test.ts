@@ -26,9 +26,19 @@ test("a valid row becomes the API body, amounts as text", () => {
       moneda: "ARS",
       iva_incluido: false,
       material: null,
+      etapa: null,
       nota: null,
     },
   });
+});
+
+test("a product being listed for the first time needs its kind, which travels as etapa", () => {
+  const [nueva] = filasParaGuardar({ changes: [], added: [fila] }, []);
+  const sinTipo = leerProductoDeProveedor(nueva, 1);
+  assert.equal(sinTipo.ok, false);
+  const conTipo = leerProductoDeProveedor({ ...nueva, tipo: "CUERO" }, 1);
+  assert.equal(conTipo.ok && conTipo.body.etapa, "CUERO");
+  assert.equal(conTipo.ok && conTipo.body.material, null);
 });
 
 test("the quantity is optional, and so are the material, the note and the VAT flag", () => {
@@ -125,7 +135,7 @@ test("the note of the saved product travels with the changed row", () => {
 });
 
 test("a new row keeps its own name and goes after the changed ones", () => {
-  const nueva = { ...fila, nombre: "Tela forro" };
+  const nueva = { ...fila, nombre: "Tela forro", tipo: "FORRO" };
   const filas = filasParaGuardar(
     {
       changes: [
@@ -141,7 +151,7 @@ test("a new row keeps its own name and goes after the changed ones", () => {
   );
   assert.equal(filas.length, 2);
   assert.equal(filas[0].nombre, "Flex 1 × 1,40");
-  assert.deepEqual(filas[1], nueva);
+  assert.deepEqual(filas[1], { ...nueva, nuevo: "si" });
   const result = leerProductoDeProveedor(filas[1], 2);
   assert.equal(result.ok, true);
   if (result.ok) assert.equal(result.body.nombre, "Tela forro");

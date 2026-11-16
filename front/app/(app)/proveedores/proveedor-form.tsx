@@ -7,21 +7,17 @@ import {
   PrimaryButton,
 } from "@/components/form";
 import type { FormState } from "@/lib/action-state";
-import type { MaterialOption } from "@/lib/proveedores";
 import { useActionForm } from "@/lib/use-action-form";
-import { MaterialesGrid } from "./materiales-que-provee";
 
 type Action = (previous: FormState, formData: FormData) => Promise<FormState>;
 
-/** New supplier: its data plus the grid of materials it provides. The code is assigned by the backend, never typed. */
+/** New supplier: its data only (what it offers is listed on its page). The code is assigned by the backend, never typed. */
 export function ProveedorForm({
   action,
-  materials,
   submitLabel,
   pendingLabel,
 }: {
   action: Action;
-  materials: MaterialOption[];
   submitLabel: string;
   pendingLabel: string;
 }) {
@@ -87,14 +83,6 @@ export function ProveedorForm({
           className={inputClass}
         />
       </Field>
-      <div>
-        <h3 className="mb-1 font-bold">Productos que provee</h3>
-        <p className="mb-3 text-sm text-muted">
-          Marque lo que este proveedor realmente nos vende. La lista sale de la
-          grilla de materiales; después se puede cambiar desde su ficha.
-        </p>
-        <MaterialesGrid materials={materials} />
-      </div>
       <FormFeedback state={state} />
       <PrimaryButton pending={pending}>
         {pending ? pendingLabel : submitLabel}

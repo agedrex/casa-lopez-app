@@ -698,6 +698,35 @@ def list_products(session: Session, code: str, *, historial: bool = False) -> li
     return sorted(result, key=lambda product: _product_key(product["nombre"]))
 
 
+def _material_del_producto(session: Session, supplier, product: dict, position: int) -> int:
+    """The material of a product listed with a `etapa` and no material: the one its earlier versions already point to, one
+    with the same name (ignoring case and spaces), or a new one without a price (its prices arrive with the orders)."""
+    key = _product_key(product["nombre"])
+    for row in session.scalars(select(ProveedorProducto).where(
+            ProveedorProducto.proveedor_id == supplier.id, ProveedorProducto.material_id.is_not(None))
+            .order_by(ProveedorProducto.id.desc())):
+        if _product_key(row.nombre) == key:
+            return row.material_id
+    for material in session.execute(select(Material.id, Material.nombre)):
+        if _product_key(material.nombre) == key:
+            return material.id
+    from backend.materiales import _nuevo_material  # local: `materiales` imports from `servicios`, like this module
+    fila, _ = _nuevo_material(
+        session, {"nombre": product["nombre"], "etapa": product["etapa"], "unidad_de_consumo": product["unidad"]},
+        f"Producto {position} ({product['nombre']})", date.today())
+    return fila.id
+
+
+def _marcar_que_provee(session: Session, supplier_id: int, material_id: int, creado_por: str) -> None:
+    """Makes sure the material is in the list this supplier provides (the one the order form offers)."""
+    row = session.scalar(select(ProveedorMaterial).where(
+        ProveedorMaterial.proveedor_id == supplier_id, ProveedorMaterial.material_id == material_id))
+    if row is None:
+        session.add(ProveedorMaterial(proveedor_id=supplier_id, material_id=material_id, activo=True, creado_por=creado_por))
+    else:
+        row.activo = True
+
+
 def add_products(session: Session, code: str, *, productos: list[dict], creado_por: str) -> list[dict]:
     """Append one row per item, all or nothing; an item whose name is already in the list is a new version of it."""
     supplier = _supplier(session, code)
@@ -720,6 +749,10 @@ def add_products(session: Session, code: str, *, productos: list[dict], creado_p
                       "vigente_desde": product["vigente_desde"] or today, "nota": _texto_o_nada(product["nota"])})
     with session.begin_nested():
         for position, product in enumerate(clean, start=1):
+            if product["material_id"] is None and product.get("etapa"):
+                product["material_id"] = _material_del_producto(session, supplier, product, position)
+            if product["material_id"] is not None:
+                _marcar_que_provee(session, supplier.id, product["material_id"], creado_por)
             _insertar(session, ProveedorProducto(
                 codigo=f"PPR-{_siguiente_numero(session, ProveedorProducto.codigo, 'PPR'):04d}", proveedor_id=supplier.id,
                 material_id=product["material_id"], nombre=product["nombre"], unidad=product["unidad"],

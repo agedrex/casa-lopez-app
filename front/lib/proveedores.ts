@@ -110,6 +110,8 @@ export type ProductoDeProveedorBody = {
   moneda: string;
   iva_incluido: boolean;
   material: string | null;
+  // Kind of the product (cuero, flex...): the API creates its material under it when there is no `material`.
+  etapa: string | null;
   nota: string | null;
 };
 
@@ -155,6 +157,12 @@ export function leerProductoDeProveedor(
       "la cantidad tiene que ser un número mayor que cero, o quedar vacía. Ejemplo: 1,4.",
     );
   }
+  const material = cell("material") || null;
+  const etapa = cell("tipo") || null;
+  // Only a product being listed for the first time has to pick its kind; an old row without material may be saved as is.
+  if (!material && !etapa && cell("nuevo") === "si") {
+    return fail("elija el tipo (cuero, flex, herrajes...).");
+  }
   return {
     ok: true,
     body: {
@@ -164,7 +172,8 @@ export function leerProductoDeProveedor(
       precio_referencial: precio,
       moneda,
       iva_incluido: cell("iva") === "si",
-      material: cell("material") || null,
+      material,
+      etapa: material ? null : etapa,
       nota: cell("nota") || null,
     },
   };
@@ -184,7 +193,12 @@ export function filasParaGuardar(
     }[];
     added: ProductoDeProveedorFila[];
   },
-  productos: { codigo: string; nombre: string; nota: string | null }[],
+  productos: {
+    codigo: string;
+    nombre: string;
+    nota: string | null;
+    material?: string | null;
+  }[],
 ): ProductoDeProveedorFila[] {
   const changed = save.changes.map((change) => {
     const original = productos.find((p) => p.codigo === change.id);
@@ -192,9 +206,12 @@ export function filasParaGuardar(
       ...change.cells,
       nombre: original?.nombre ?? "",
       nota: original?.nota ?? "",
+      // A saved product keeps its material: the kind is only chosen when it is first listed.
+      material: original?.material ?? "",
     };
   });
-  return [...changed, ...save.added];
+  const added = save.added.map((cells) => ({ ...cells, nuevo: "si" }));
+  return [...changed, ...added];
 }
 
 export function materialOptions(materiales: Material[]): MaterialOption[] {

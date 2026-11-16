@@ -126,6 +126,24 @@ def test_pg_a_product_can_point_to_a_material_or_to_none(api):
     assert count(api) == 1
 
 
+def test_pg_a_product_with_a_kind_creates_its_material_and_lists_it_as_provided(api):
+    como("admin")
+    code = make_supplier(api)
+    response = add(api, code, item("Cuero de carpincho", unidad="m2", etapa="CUERO"))
+    assert response.status_code == 201, response.text
+    body = response.json()[0]
+    assert body["material"] is not None and body["material_nombre"] == "Cuero de carpincho"
+    materiales = {m["codigo"]: m for m in api.get("/materiales").json()}
+    assert materiales[body["material"]]["etapa"] == "CUERO" and materiales[body["material"]]["unidad_de_consumo"] == "m2"
+    assert api.get(f"/proveedores/{code}/provee").json() == [body["material"]]
+    # A new price of the same product reuses the material instead of creating another one.
+    again = add(api, code, item("cuero de carpincho", etapa="CUERO", precio_referencial="20000"))
+    assert again.json()[0]["material"] == body["material"]
+    assert len(api.get("/materiales").json()) == len(materiales)
+    bad = add(api, code, item("Otro", etapa="CORTE"))
+    assert bad.status_code == 422 and count(api) == 2
+
+
 def test_pg_a_change_is_a_new_row_of_the_same_product_and_the_list_shows_the_newest(api):
     como("admin")
     code = make_supplier(api)

@@ -1,7 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { buttonClass, labelClass } from "@/components/cueros/estilos";
-import { inputClass } from "@/components/form";
 import {
   Badge,
   Card,
@@ -17,18 +15,12 @@ import { canWrite, hasRole } from "@/lib/permissions";
 import { materialOptions } from "@/lib/proveedores";
 import { requireRole } from "@/lib/session";
 import type {
-  DocumentoProveedor,
   EtapaCatalogo,
   Material,
-  MaterialesDeProveedor,
   PedidoProveedor,
   Proveedor,
   ProveedorProducto,
 } from "@/lib/types";
-import { MaterialesQueProveeForm } from "../materiales-que-provee";
-import { DocumentoCard } from "./documento-card";
-import { MaterialNuevoForm } from "./material-nuevo-form";
-import { MaterialesDelProveedor } from "./materiales-del-proveedor";
 import { PedidoForm } from "./pedido-form";
 import { PedidosRecibidos } from "./pedidos-recibidos";
 import { ProductosQueVende } from "./productos-que-vende";
@@ -56,19 +48,13 @@ function decodeCode(raw: string): string | null {
   }
 }
 
-const first = (value: string | string[] | undefined) =>
-  (Array.isArray(value) ? value[0] : value) ?? "";
-
 export default async function ProveedorPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ codigo: string }>;
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { user } = await requireRole("admin");
   const code = decodeCode((await params).codigo);
-  const q = first((await searchParams).q).trim();
   if (code === null) {
     return (
       <>
@@ -83,28 +69,16 @@ export default async function ProveedorPage({
   // Orders are read by admin and gerente; the taller never sees them (the API refuses them too).
   const readsPedidos =
     hasRole(user.role, "admin") || hasRole(user.role, "gerente");
-  const [
-    proveedor,
-    documentos,
-    historia,
-    materiales,
-    pedidos,
-    provee,
-    etapas,
-    productos,
-  ] = await Promise.all([
-    apiGet<Proveedor>(path),
-    apiGet<DocumentoProveedor[]>(
-      `${path}/documentos${q ? `?${new URLSearchParams({ q })}` : ""}`,
-    ),
-    apiGet<MaterialesDeProveedor>(`${path}/materiales`),
-    // Only the form needs the catalogs, and only a writer sees it.
-    writer ? apiGet<Material[]>("/materiales") : null,
-    readsPedidos ? apiGet<PedidoProveedor[]>(`${path}/pedidos`) : null,
-    apiGet<string[]>(`${path}/provee`),
-    writer ? apiGet<EtapaCatalogo[]>("/catalogo/etapas") : null,
-    apiGet<ProveedorProducto[]>(`${path}/productos`),
-  ]);
+  const [proveedor, materiales, pedidos, provee, etapas, productos] =
+    await Promise.all([
+      apiGet<Proveedor>(path),
+      // Only the form needs the catalogs, and only a writer sees it.
+      writer ? apiGet<Material[]>("/materiales") : null,
+      readsPedidos ? apiGet<PedidoProveedor[]>(`${path}/pedidos`) : null,
+      apiGet<string[]>(`${path}/provee`),
+      writer ? apiGet<EtapaCatalogo[]>("/catalogo/etapas") : null,
+      apiGet<ProveedorProducto[]>(`${path}/productos`),
+    ]);
 
   if (!proveedor.ok) {
     return (
@@ -134,46 +108,25 @@ export default async function ProveedorPage({
       />
       <div className="space-y-10">
         <section>
-          <SectionTitle>Productos que provee</SectionTitle>
-          <div className="space-y-6">
-            {provee.ok ? (
-              writer && materiales?.ok ? (
-                <MaterialesQueProveeForm
-                  codigo={data.codigo}
-                  materials={materialOptions(materiales.data)}
-                  selected={provee.data}
-                />
-              ) : provee.data.length === 0 ? (
-                <Notice
-                  tone="info"
-                  title="Todavía no hay productos marcados."
-                />
-              ) : (
-                <p className="text-sm">{provee.data.join(" · ")}</p>
-              )
-            ) : (
-              <ErrorNotice message={provee.message} />
-            )}
-          </div>
-        </section>
-
-        <section>
-          <SectionTitle>Qué más ofrece</SectionTitle>
+          <SectionTitle>Productos que ofrece</SectionTitle>
           <div className="space-y-6">
             <p className="text-sm text-muted">
-              Otros materiales o productos que ofrece, con su precio por unidad.
-              Es una referencia: no cambia los costos. Un precio nuevo se suma y
-              queda el anterior.
+              Elija el tipo (cuero, flex, herrajes…) y escriba el detalle, por
+              ejemplo &ldquo;Cuero de carpincho&rdquo;. Al guardar, el producto
+              queda también en Materiales. Un precio nuevo se suma y queda el
+              anterior.
             </p>
             {productos.ok ? (
               <ProductosQueVende
                 codigo={data.codigo}
                 productos={productos.data}
+                etapas={materialStages(etapas?.ok ? etapas.data : null)}
                 materiales={
                   materiales?.ok
-                    ? materialOptions(materiales.data).map((m) => ({
+                    ? materiales.data.map((m) => ({
                         codigo: m.codigo,
-                        label: m.label,
+                        label: m.nombre,
+                        etapa: m.etapa,
                       }))
                     : []
                 }
@@ -184,51 +137,26 @@ export default async function ProveedorPage({
           </div>
         </section>
 
-        <section>
-          <SectionTitle>Materiales y precios</SectionTitle>
-          <div className="space-y-6">
-            <p className="text-sm text-muted">
-              Lo que este proveedor nos cobra por cada material, con la historia
-              de sus precios. Un precio nuevo no reemplaza al anterior: se suma
-              y queda la variación.
-            </p>
-            {historia.ok ? (
-              historia.data.materiales.length === 0 ? (
-                <Notice
-                  tone="info"
-                  title="Este proveedor todavía no tiene precios cargados."
-                >
-                  Cargue el primero abajo y va a aparecer acá con su historia.
-                </Notice>
-              ) : (
-                <MaterialesDelProveedor materiales={historia.data.materiales} />
-              )
-            ) : (
-              <ErrorNotice message={historia.message} />
-            )}
-          </div>
-        </section>
-
         {readsPedidos ? (
           <section>
             <SectionTitle>Pedidos recibidos</SectionTitle>
             <div className="space-y-6">
               {writer && materiales?.ok ? (
-                <div className="space-y-4">
-                  <Card>
-                    <h3 className="mb-3 font-bold">
-                      Registrar pedido recibido
-                    </h3>
-                    <PedidoForm
-                      codigo={data.codigo}
-                      materials={materialOptions(materiales.data)}
-                      today={todayIso()}
-                    />
-                  </Card>
-                  <MaterialNuevoForm
-                    etapas={materialStages(etapas?.ok ? etapas.data : null)}
+                <Card>
+                  <h3 className="mb-3 font-bold">Registrar pedido recibido</h3>
+                  <PedidoForm
+                    codigo={data.codigo}
+                    materials={materialOptions(
+                      materiales.data.filter(
+                        (m) =>
+                          !provee.ok ||
+                          provee.data.length === 0 ||
+                          provee.data.includes(m.codigo),
+                      ),
+                    )}
+                    today={todayIso()}
                   />
-                </div>
+                </Card>
               ) : null}
               {pedidos?.ok ? (
                 pedidos.data.length === 0 ? (
@@ -245,54 +173,6 @@ export default async function ProveedorPage({
             </div>
           </section>
         ) : null}
-
-        <section>
-          <SectionTitle>Facturas e imágenes</SectionTitle>
-          <div className="space-y-6">
-            <form method="get" className="grid gap-4 sm:grid-cols-[1fr_auto]">
-              <div>
-                <label htmlFor="buscar-documentos" className={labelClass}>
-                  Buscar en los archivos
-                </label>
-                <input
-                  id="buscar-documentos"
-                  name="q"
-                  type="search"
-                  defaultValue={q}
-                  autoComplete="off"
-                  placeholder="Nombre del archivo, número o una palabra del texto"
-                  className={inputClass}
-                />
-              </div>
-              <div className="flex items-end">
-                <button type="submit" className={buttonClass}>
-                  Buscar
-                </button>
-              </div>
-            </form>
-
-            {documentos.ok ? (
-              documentos.data.length === 0 ? (
-                <Notice
-                  tone="info"
-                  title={
-                    q
-                      ? "Ningún archivo coincide con la búsqueda."
-                      : "Este proveedor todavía no tiene archivos."
-                  }
-                />
-              ) : (
-                <ul className="space-y-4">
-                  {documentos.data.map((documento) => (
-                    <DocumentoCard key={documento.id} documento={documento} />
-                  ))}
-                </ul>
-              )
-            ) : (
-              <ErrorNotice message={documentos.message} />
-            )}
-          </div>
-        </section>
       </div>
     </>
   );
