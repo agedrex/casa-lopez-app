@@ -222,8 +222,6 @@ def build(workbook_path):
     tables = []
     for name, sheet, key_header, columns in TABLES:
         payload = table_payload(workbook, name, sheet, key_header, columns)
-        if name == "taller":
-            payload["rows"] = []  # the template's three example workshops are not seeded: workshops are loaded by hand
         if payload["rows"]:
             tables.append(payload)
         if name == "impuesto":
