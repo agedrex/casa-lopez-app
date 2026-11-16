@@ -29,6 +29,6 @@ export async function guardarMargenTransferencia(
     nota: "Cargado desde la pantalla Negocio",
   });
   if (!result.ok) return fromFailure(result);
-  revalidatePath("/admin/negocio");
+  revalidatePath("/admin/panel");
   return ok("Margen guardado. Los dos escenarios ya lo usan.");
 }

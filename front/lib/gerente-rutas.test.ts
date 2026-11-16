@@ -77,15 +77,24 @@ test("the legacy role corte opens the same pages as taller", () => {
   assert.deepEqual(abiertas, RUTAS_DEL_TALLER);
 });
 
-// Admin only pages that must stay closed to the other roles: Negocio (gastos, fábrica and tienda scenarios), a tab of Negocio y Administración.
-test("Negocio is open to admin and closed to gerente, taller and the legacy roles", () => {
+// Negocio was merged into the Panel (S1) and Impuestos moved to Costos variables (S2): their old paths only redirect,
+// and they stay closed to every role but admin.
+test("Negocio and Impuestos old paths still exist as redirects, open to admin and closed to the other roles", () => {
+  const routes = appRoutes();
+  for (const old of ["/admin/negocio", "/admin/impuestos"]) {
+    assert.ok(routes.includes(old), `${old} redirect page is missing`);
+    assert.equal(canAccessPath("admin", old), true, old);
+    for (const role of ["gerente", "consulta", "taller", "corte", ""]) {
+      assert.equal(canAccessPath(role, old), false, `${role} ${old}`);
+    }
+  }
   assert.ok(
-    appRoutes().includes("/admin/negocio"),
-    "the Negocio page is missing",
+    routes.includes("/costos-fijos/impuestos"),
+    "the Impuestos page of Costos variables is missing",
   );
-  assert.equal(canAccessPath("admin", "/admin/negocio"), true);
+  assert.equal(canAccessPath("admin", "/costos-fijos/impuestos"), true);
   for (const role of ["gerente", "consulta", "taller", "corte", ""]) {
-    assert.equal(canAccessPath(role, "/admin/negocio"), false, role);
+    assert.equal(canAccessPath(role, "/costos-fijos/impuestos"), false, role);
   }
 });
 
