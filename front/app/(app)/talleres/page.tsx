@@ -12,7 +12,6 @@ import {
   thClass,
 } from "@/components/ui";
 import { apiGet } from "@/lib/api";
-import { formatArs, formatDate, formatQuantity } from "@/lib/format";
 import { canWrite } from "@/lib/permissions";
 import { requireSession } from "@/lib/session";
 import type { Taller } from "@/lib/types";
@@ -52,9 +51,7 @@ export default async function TalleresPage() {
                   <th className={thClass}>Contacto</th>
                   <th className={thClass}>Teléfono</th>
                   <th className={`${thClass} ${numClass}`}>Lotes</th>
-                  <th className={`${thClass} ${numClass}`}>Unidades</th>
                   <th className={thClass}>Último lote</th>
-                  <th className={`${thClass} ${numClass}`}>Cobró en total</th>
                 </tr>
               </thead>
               <tbody>
@@ -75,14 +72,17 @@ export default async function TalleresPage() {
                     <td className={tdClass}>{taller.contacto ?? "—"}</td>
                     <td className={tdClass}>{taller.telefono ?? "—"}</td>
                     <td className={`${tdClass} ${numClass}`}>{taller.lotes}</td>
-                    <td className={`${tdClass} ${numClass}`}>
-                      {formatQuantity(taller.unidades)}
-                    </td>
                     <td className={tdClass}>
-                      {formatDate(taller.ultimo_lote)}
-                    </td>
-                    <td className={`${tdClass} ${numClass}`}>
-                      {formatArs(taller.cobro_total_ars)}
+                      {taller.ultimo_lote_codigo ? (
+                        <Link
+                          href={`/fabricacion/${encodeURIComponent(taller.ultimo_lote_codigo)}`}
+                          className="underline decoration-gold underline-offset-4"
+                        >
+                          {taller.ultimo_lote_codigo}
+                        </Link>
+                      ) : (
+                        "—"
+                      )}
                     </td>
                   </tr>
                 ))}

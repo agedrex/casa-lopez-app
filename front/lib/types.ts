@@ -251,6 +251,8 @@ export type Taller = {
   lotes: number;
   unidades: string;
   ultimo_lote: string | null;
+  // Code of the most recent lot of the workshop (null: no lots yet).
+  ultimo_lote_codigo: string | null;
   cobro_total_ars: string;
 };
 
