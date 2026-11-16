@@ -25,6 +25,7 @@ import {
 import { canFillFormularios, hasRole } from "@/lib/permissions";
 import { requireSession } from "@/lib/session";
 import type { FormularioResumen } from "@/lib/types";
+import { LotesYModelos } from "../../fabricacion/lotes-y-modelos";
 
 export const metadata: Metadata = { title: "Modelos del taller" };
 
@@ -38,18 +39,14 @@ export default async function ModelosDelTallerPage({
   const { user } = await requireSession();
   if (!canFillFormularios(user.role)) redirect("/");
   const esAdmin = hasRole(user.role, "admin");
+  // The taller has one screen with its lots and its models (the same one the Lotes menu opens).
+  if (!esAdmin) return <LotesYModelos userId={user.id} />;
 
-  // The admin reviews: it opens on what is waiting for it (COMPLETADO); `?estado=todas` shows every state. The taller
-  // sees every sheet the API gives it (the ones to fill, the completed ones and its own) with no filter.
+  // The admin reviews: it opens on what is waiting for it (COMPLETADO); `?estado=todas` shows every state.
   const { estado: pedido } = await searchParams;
   const pedida = (Array.isArray(pedido) ? pedido[0] : pedido)?.trim() ?? "";
-  const filtro = esAdmin
-    ? pedida === "todas"
-      ? null
-      : isEstado(pedida)
-        ? pedida
-        : "COMPLETADO"
-    : null;
+  const filtro =
+    pedida === "todas" ? null : isEstado(pedida) ? pedida : "COMPLETADO";
   const result = await apiGet<FormularioResumen[]>(
     `/formularios${filtro ? `?estado=${filtro}` : ""}`,
   );
@@ -58,27 +55,21 @@ export default async function ModelosDelTallerPage({
     <>
       <PageHeader
         eyebrow="Producción"
-        title={esAdmin ? "Hojas de consumos" : "Mis modelos"}
-        description={
-          esAdmin
-            ? "Las hojas que carga el taller con las medidas reales. Abrí una completada para validarla (las medidas pasan al modelo) o devolverla con un comentario."
-            : "Los modelos nuevos y su hoja de consumos y herrajes. Tocá uno para completarla."
-        }
+        title="Hojas de consumos"
+        description="Las hojas que carga el taller con las medidas reales. Abrí una completada para validarla (las medidas pasan al modelo) o devolverla con un comentario."
       />
-      {esAdmin ? <Filtros actual={filtro} /> : null}
+      <Filtros actual={filtro} />
       {result.ok ? (
         result.data.length === 0 ? (
           <Notice
             tone="info"
             title={
-              esAdmin && filtro === "COMPLETADO"
+              filtro === "COMPLETADO"
                 ? "No hay hojas esperando revisión."
                 : "Todavía no hay hojas."
             }
           >
-            {esAdmin
-              ? "Cuando el taller complete una hoja aparece acá."
-              : "Cuando te envíen un modelo aparece acá."}
+            Cuando el taller complete una hoja aparece acá.
           </Notice>
         ) : (
           <Lista hojas={result.data} userId={user.id} />
