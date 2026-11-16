@@ -10,9 +10,12 @@ import { Metric } from "./grupo-card";
 export function AlcanzaResumen({
   resultado,
   nombres,
+  enPestanaNueva = false,
 }: {
   resultado: AlcanzaCuero;
   nombres: Record<string, string>;
+  /** Open the skin sheets in another tab (used inside a form, so nothing typed is lost). */
+  enPestanaNueva?: boolean;
 }) {
   return (
     <div className="space-y-4">
@@ -48,6 +51,9 @@ export function AlcanzaResumen({
             <Link
               key={pieza.codigo}
               href={`/cueros/${encodeURIComponent(pieza.codigo)}`}
+              {...(enPestanaNueva
+                ? { target: "_blank", rel: "noopener noreferrer" }
+                : {})}
               className="flex min-h-12 flex-wrap items-center justify-between gap-2 rounded-card border border-line px-4 py-2 hover:border-gold"
             >
               <span className="flex items-center gap-2">

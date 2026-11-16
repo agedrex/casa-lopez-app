@@ -43,10 +43,10 @@ export default async function PielPage({
 
   const volver = (
     <Link
-      href="/cueros"
+      href="/fabricacion/nuevo"
       className="inline-flex min-h-12 items-center text-base underline decoration-gold underline-offset-4"
     >
-      ← Volver a cueros
+      ← Volver al nuevo lote
     </Link>
   );
 

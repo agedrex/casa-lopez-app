@@ -8,12 +8,13 @@ import {
 } from "@/components/form";
 import { SIZES } from "@/lib/modelos";
 import { useActionForm } from "@/lib/use-action-form";
+import { CatalogoSelect } from "../catalogo-select";
 import { createModelo } from "./actions";
 
-/** The only "Nuevo modelo" form (also shown in /productos/nuevo): no consumptions, the workshop measures them. */
+/** The only "Nuevo modelo" form (also shown in /productos/nuevo): no consumptions, they are loaded from the model page. */
 export function ModeloNuevoForm({ categorias }: { categorias: string[] }) {
   const { state, pending, onSubmit } = useActionForm(createModelo);
-  // No form key: on success the action redirects to the consumption form sent to the workshop.
+  // No form key: on success the action redirects to the new model.
   return (
     <form onSubmit={onSubmit} className="space-y-5">
       <div className="grid gap-5 sm:grid-cols-3">
@@ -32,24 +33,16 @@ export function ModeloNuevoForm({ categorias }: { categorias: string[] }) {
             className={`${inputClass} uppercase`}
           />
         </Field>
-        <Field id="modelo-categoria" label="Categoría">
-          <select
-            id="modelo-categoria"
-            name="categoria"
-            required
-            defaultValue=""
-            className={inputClass}
-          >
-            <option value="" disabled>
-              Elegir…
-            </option>
-            {categorias.map((categoria) => (
-              <option key={categoria} value={categoria}>
-                {categoria}
-              </option>
-            ))}
-          </select>
-        </Field>
+        <CatalogoSelect
+          id="modelo-categoria"
+          name="categoria"
+          label="Categoría"
+          createLabel="+ Crear categoría nueva…"
+          newNameLabel="Nombre de la categoría nueva"
+          emptyLabel="Elegir…"
+          options={categorias}
+          required
+        />
         <Field id="modelo-tamano" label="Tamaño (opcional)">
           <select
             id="modelo-tamano"
@@ -69,7 +62,7 @@ export function ModeloNuevoForm({ categorias }: { categorias: string[] }) {
       <Field
         id="modelo-nota"
         label="Notas del modelo (opcional)"
-        hint="Medidas, materiales, detalles: el taller las lee arriba de la hoja de consumos."
+        hint="Medidas, materiales, detalles."
       >
         <textarea
           id="modelo-nota"
@@ -82,7 +75,7 @@ export function ModeloNuevoForm({ categorias }: { categorias: string[] }) {
       </Field>
       <FormFeedback state={state} />
       <PrimaryButton pending={pending}>
-        {pending ? "Creando…" : "Crear modelo y enviar al taller"}
+        {pending ? "Creando…" : "Crear modelo"}
       </PrimaryButton>
     </form>
   );

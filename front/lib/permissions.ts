@@ -92,18 +92,6 @@ export function canUseVoice(value: string | null | undefined): boolean {
   return roles.includes("admin") || roles.includes("taller");
 }
 
-/** Consumption forms: admin and taller read them (the backend shows the taller only ENVIADO / COMPLETADO); gerente has no access. */
-export function canReadFormularios(value: string | null | undefined): boolean {
-  const roles = parseRoles(value);
-  return roles.includes("admin") || roles.includes("taller");
-}
-
-/** Consumption forms: admin and taller fill them in and complete them; every other action is admin only (canWrite). */
-export function canWorkFormularios(value: string | null | undefined): boolean {
-  const roles = parseRoles(value);
-  return roles.includes("admin") || roles.includes("taller");
-}
-
 /**
  * Where each role lands and which paths it may open. `null` paths = everything. `paths` open a
  * route and everything below it; `exact` open only that route. `denyExact` and `denyPrefix` carve
@@ -122,18 +110,18 @@ const ROLE_ACCESS: Record<
 > = {
   admin: { home: "/admin/panel", paths: null },
   // Gerente reads Productos (list, sheet and Modelos) and runs the scenario simulator. Nothing else:
-  // no Panel, Lotes, Formularios, Cueros, Proveedores nor Talleres (S8).
+  // no Panel, Lotes, Cueros, Proveedores nor Talleres (S8).
   gerente: {
     home: "/productos",
     paths: ["/productos", "/escenarios"],
   },
   // Taller has ONE entry: the lots list (what to make and how many). From each product of a lot it
-  // opens the product sheet (materials and recipe, no prices); Formularios is the consumption sheet
-  // it practices and completes; Voz is a header button (not in the menu). The product LIST, Modelos,
-  // Materiales, Corte and Cueros are closed to it (demo-staging-taller-grilla S2).
+  // opens the product sheet (materials and recipe, no prices); Voz is a header button (not in the
+  // menu). The product LIST, Modelos, Materiales, Corte and Cueros are closed to it
+  // (demo-staging-taller-grilla S2).
   taller: {
     home: "/fabricacion",
-    paths: ["/fabricacion", "/formularios", "/voz", "/productos"],
+    paths: ["/fabricacion", "/voz", "/productos"],
     denyExact: ["/productos"],
     denyPrefix: ["/productos/modelos"],
   },
@@ -145,9 +133,8 @@ export const NO_ROLE_HOME = "/sin-acceso";
 const matchesPath = (pathname: string, route: string) =>
   pathname === route || pathname.startsWith(`${route}/`);
 
-/** Catalogs and every "new" form: only an admin opens them (the other roles read, they do not write). */
+/** Every "new" form: only an admin opens them (the other roles read, they do not write). */
 const ADMIN_ONLY_PATHS = [
-  "/productos/catalogos",
   "/productos/nuevo",
   "/productos/modelos/nuevo",
   "/fabricacion/nuevo",

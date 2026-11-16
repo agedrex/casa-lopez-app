@@ -1814,8 +1814,16 @@ def precios_de_talleres(session: Session, codigo: str, hoy: date, mismo_tamano: 
 
 # --- Workshops ------------------------------------------------------------------------------------------------
 
+def _ultimo_lote_por_taller(filas) -> dict[int, str]:
+    """First code seen per workshop; `filas` are (taller id, lot code) already sorted newest first."""
+    ultimos: dict[int, str] = {}
+    for taller_id, codigo in filas:
+        ultimos.setdefault(taller_id, codigo)
+    return ultimos
+
+
 def _agregados_de_talleres(session: Session) -> dict[int, tuple]:
-    """Per workshop: lots, units, last lot date and what it charged in total (Talleres!J:M)."""
+    """Per workshop: lots, units, what it charged, last lot date and last lot code (Talleres!J:M)."""
     filas = session.execute(
         select(
             OrdenFabricacion.taller_id, func.count(func.distinct(OrdenFabricacion.id)),
@@ -1826,15 +1834,25 @@ def _agregados_de_talleres(session: Session) -> dict[int, tuple]:
         .outerjoin(OrdenItem, OrdenItem.orden_fabricacion_id == OrdenFabricacion.id)
         .where(OrdenFabricacion.taller_id.is_not(None)).group_by(OrdenFabricacion.taller_id)
     ).all()
-    return {taller_id: (lotes, unidades, cobro, ultimo) for taller_id, lotes, unidades, cobro, ultimo in filas}
+    # Same order as `_cargar_lotes`: newest day first, undated last, then the newest id.
+    codigos = _ultimo_lote_por_taller(session.execute(
+        select(OrdenFabricacion.taller_id, OrdenFabricacion.codigo)
+        .where(OrdenFabricacion.taller_id.is_not(None))
+        .order_by(_dia_del_lote().desc().nulls_last(), OrdenFabricacion.id.desc())
+    ).all())
+    return {
+        taller_id: (lotes, unidades, cobro, ultimo, codigos.get(taller_id))
+        for taller_id, lotes, unidades, cobro, ultimo in filas
+    }
 
 
 def _taller_a_dict(t: Taller, agregados: dict[int, tuple]) -> dict:
-    lotes, unidades, cobro, ultimo = agregados.get(t.id, (0, ZERO, ZERO, None))
+    lotes, unidades, cobro, ultimo, ultimo_codigo = agregados.get(t.id, (0, ZERO, ZERO, None, None))
     return {
         "codigo": t.codigo, "nombre": t.nombre, "cuit": t.cuit, "telefono": t.telefono, "direccion": t.direccion,
         "contacto": t.contacto, "activo": t.activo, "nota": t.nota, "ejemplo": es_taller_de_ejemplo(t.nota),
-        "lotes": lotes, "unidades": unidades, "ultimo_lote": ultimo, "cobro_total_ars": cobro,
+        "lotes": lotes, "unidades": unidades, "ultimo_lote": ultimo, "ultimo_lote_codigo": ultimo_codigo,
+        "cobro_total_ars": cobro,
     }
 
 

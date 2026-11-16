@@ -29,7 +29,7 @@ export default async function ImpuestosPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Administración"
+        eyebrow="Negocio y Administración"
         title="Impuestos"
         description="Cada impuesto activo se calcula sobre el precio de venta que designás para un producto, no sobre su costo. Nada se borra: un impuesto que ya no corre se desactiva."
       />

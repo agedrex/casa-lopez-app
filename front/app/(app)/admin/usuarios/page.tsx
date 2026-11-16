@@ -55,7 +55,7 @@ export default async function UsuariosPage({
   return (
     <>
       <PageHeader
-        eyebrow="Administración"
+        eyebrow="Negocio y Administración"
         title="Usuarios"
         description="Quién puede entrar a la aplicación. Elija un usuario para editar sus datos, rol y contraseña, o para eliminarlo (se archiva y se puede restaurar)."
         actions={

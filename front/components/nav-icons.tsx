@@ -7,7 +7,6 @@ export const ICONS: Record<string, string> = {
   "/fabricacion": "M3 20h18M5 20V9l5 3V9l5 3V5h4v15",
   "/corte": "M4 4l16 16M20 4L4 20M8 8l2-2M14 18l2-2",
   "/unidades": "M4 20V10m6 10V4m6 16v-7m4 7H2",
-  "/cueros": "M4 7l8-4 8 4v10l-8 4-8-4V7zm0 0l8 4 8-4M12 11v10",
   "/calidad": "M12 3 2 21h20L12 3zm0 6v5m0 3h.01",
   more: "M5 12h.01M12 12h.01M19 12h.01",
   mic: "M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM6 11a6 6 0 0 0 12 0M12 17v4",
@@ -23,7 +22,6 @@ export const ICONS: Record<string, string> = {
   "/productos/modelos": "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z",
   "/admin/usuarios":
     "M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 5.5a3 3 0 0 1 0 5.5M18 14.5c1.8.8 3 2.6 3 5.5",
-  "/productos/catalogos": "M4 6h16M4 12h16M4 18h10",
   "/admin/impuestos": "M19 5 5 19M7 9a2 2 0 1 0 0-.01M17 19a2 2 0 1 0 0-.01",
   "/admin/sync":
     "M20 11a8 8 0 0 0-14.5-3.5L4 9M4 5v4h4M4 13a8 8 0 0 0 14.5 3.5L20 15M20 19v-4h-4",

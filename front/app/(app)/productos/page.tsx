@@ -1,15 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { Avisos } from "@/components/avisos";
 import { inputClass } from "@/components/form";
 import {
-  Badge,
   CardItem,
   CardList,
   ErrorNotice,
   Notice,
-  numClass,
   PageHeader,
   ResponsiveTable,
   TableWrap,
@@ -18,27 +15,17 @@ import {
   thClass,
 } from "@/components/ui";
 import { apiGet } from "@/lib/api";
-import {
-  formatArs,
-  formatPercent,
-  formatUsd,
-  lifecycleLabel,
-} from "@/lib/format";
-import { canOpenProductSheet, canWrite, isTallerOnly } from "@/lib/permissions";
+import { lifecycleLabel } from "@/lib/format";
+import { canOpenProductSheet, canWrite } from "@/lib/permissions";
 import {
   collapseSpaces,
-  costoFaltante,
-  cotizacionCaption,
   LIFECYCLE_STATES,
   type LifecycleState,
   modeloDe,
   parseLifecycleState,
-  SIN_COTIZACION,
-  tieneCotizacion,
 } from "@/lib/productos";
 import { requireSession } from "@/lib/session";
 import type { Catalogos, Conteo, ProductoResumen } from "@/lib/types";
-import { ProductosGrid } from "./productos-grid";
 import { ProductosNav } from "./productos-nav";
 
 export const metadata: Metadata = { title: "Productos" };
@@ -77,7 +64,6 @@ export default async function ProductosPage({
   // The list is closed to the taller (its single entry is Lotes); if it ever reaches it, no prices and no catalog
   // (`/catalogos` is closed to it), so no category selector.
   const openSheet = canOpenProductSheet(user.role);
-  const showPrices = openSheet && !isTallerOnly(user.role);
 
   const filter = new URLSearchParams();
   if (q) filter.set("q", q);
@@ -130,8 +116,6 @@ export default async function ProductosPage({
           filter={filter}
           filtered={filter.size > 0}
           openSheet={openSheet}
-          showPrices={showPrices}
-          editable={canWrite(user.role)}
         />
       ) : (
         <ErrorNotice message={result.message} />
@@ -316,57 +300,6 @@ function SheetLink({
   );
 }
 
-/** "Revisar" badge plus the reasons as visible text (the tooltip is not the only place). */
-function MarcaRevisar({ motivos }: { motivos: string[] }) {
-  return (
-    <span className="flex flex-col items-start gap-1">
-      <Badge tone="warn">Revisar</Badge>
-      {motivos.length > 0 ? (
-        <span className="text-xs text-muted">{motivos.join(" · ")}</span>
-      ) : null}
-    </span>
-  );
-}
-
-/** Without a cost, the first warning is already shown where the cost would be: the rest goes in the warnings. */
-function restoDeAvisos(producto: ProductoResumen): string[] {
-  return producto.costo_hoy_ars === null
-    ? producto.avisos.slice(1)
-    : producto.avisos;
-}
-
-/** First column of the admin grid: code (PRD-nnnn), name and badges. Model, category, state and warnings have their own columns. */
-function EtiquetaProducto({
-  producto,
-  openSheet,
-}: {
-  producto: ProductoResumen;
-  openSheet: boolean;
-}) {
-  return (
-    <div className="max-w-sm">
-      <SheetLink
-        codigo={producto.codigo}
-        openSheet={openSheet}
-        className={`text-sm ${openSheet ? "underline decoration-gold underline-offset-4" : ""}`}
-      >
-        {producto.codigo}
-      </SheetLink>
-      <div className="mt-0.5">
-        <NombreProducto nombre={producto.nombre} />
-      </div>
-      {producto.es_kit || producto.revisar ? (
-        <div className="mt-1 flex flex-wrap items-start gap-2">
-          {producto.es_kit ? <Badge>Kit</Badge> : null}
-          {producto.revisar ? (
-            <MarcaRevisar motivos={producto.motivos_revisar} />
-          ) : null}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 function ProductTable({
   productos,
   page,
@@ -374,8 +307,6 @@ function ProductTable({
   filter,
   filtered,
   openSheet,
-  showPrices,
-  editable,
 }: {
   productos: ProductoResumen[];
   page: number;
@@ -383,10 +314,6 @@ function ProductTable({
   filter: URLSearchParams;
   filtered: boolean;
   openSheet: boolean;
-  /** Sale prices and margin: admin and gerente only. */
-  showPrices: boolean;
-  /** Admin: the table becomes a grid where the margin is edited. */
-  editable: boolean;
 }) {
   if (productos.length === 0) {
     return (
@@ -421,7 +348,12 @@ function ProductTable({
                   openSheet={openSheet}
                   className="block"
                 >
-                  <div className="flex items-start justify-between gap-3">
+                  <p className="text-xs text-muted">
+                    {modeloDe(producto).nombre ??
+                      modeloDe(producto).codigo ??
+                      "—"}
+                  </p>
+                  <div className="mt-1 flex items-start justify-between gap-3">
                     <p className="min-w-0 font-bold">
                       <NombreProducto nombre={producto.nombre} />
                     </p>
@@ -432,242 +364,83 @@ function ProductTable({
                     </span>
                   </div>
                   <p className="mt-1 text-xs text-muted">
-                    {modeloDe(producto).nombre
-                      ? `Modelo ${modeloDe(producto).nombre}${modeloDe(producto).codigo ? ` (${modeloDe(producto).codigo})` : ""} · `
-                      : ""}
-                    {producto.categoria ?? "—"} ·{" "}
-                    {lifecycleLabel(producto.estado_del_ciclo)}
+                    {producto.categoria ?? "—"}
                   </p>
-                  <p className="mt-2 text-xs text-muted tabular-nums">
-                    {tieneCotizacion(producto)
-                      ? `Cotizado ${formatArs(producto.costo_cotizado_ars)} · ${cotizacionCaption(producto.cotizacion_dolar, producto.cotizacion_fecha)}`
-                      : SIN_COTIZACION}
-                  </p>
-                  {producto.costo_hoy_ars === null ? (
-                    <p className="mt-3 text-sm text-muted">
-                      {costoFaltante(producto.avisos)}
-                    </p>
-                  ) : (
-                    <p className="mt-3 flex items-baseline justify-between gap-3 tabular-nums">
-                      <span className="text-lg">
-                        {formatArs(producto.costo_hoy_ars)}
-                      </span>
-                      <span className="text-sm text-muted">
-                        {formatUsd(producto.costo_hoy_usd)}
-                      </span>
-                    </p>
-                  )}
-                  {showPrices && producto.precio_final_ars !== null ? (
-                    <p className="mt-1 flex items-baseline justify-between gap-3 text-sm text-muted tabular-nums">
-                      <span>
-                        Precio final {formatArs(producto.precio_final_ars)}
-                      </span>
-                      <span>Margen {formatPercent(producto.margen_pct)}</span>
-                    </p>
-                  ) : null}
                 </SheetLink>
-                {/* Badges and warnings stay outside the link: they are not part of its name. */}
-                {producto.es_kit || producto.revisar ? (
-                  <div className="mt-2 flex flex-wrap items-start gap-2">
-                    {producto.es_kit ? <Badge>Kit</Badge> : null}
-                    {producto.revisar ? (
-                      <MarcaRevisar motivos={producto.motivos_revisar} />
-                    ) : null}
-                  </div>
-                ) : null}
-                {restoDeAvisos(producto).length > 0 ? (
-                  <div className="mt-2">
-                    <Avisos avisos={restoDeAvisos(producto)} wrap />
-                  </div>
-                ) : null}
               </CardItem>
             ))}
           </CardList>
         }
         table={
-          editable ? (
-            <ProductosGrid
-              productos={productos}
-              etiquetas={Object.fromEntries(
-                productos.map((producto) => [
-                  producto.codigo,
-                  <EtiquetaProducto
-                    key={producto.codigo}
-                    producto={producto}
-                    openSheet={openSheet}
-                  />,
-                ]),
-              )}
-            />
-          ) : (
-            <TableWrap>
-              <table className={tableClass}>
-                <thead>
-                  <tr>
-                    <th scope="col" className={thClass}>
-                      Producto
-                    </th>
-                    <th scope="col" className={thClass}>
-                      Modelo
-                    </th>
-                    <th scope="col" className={`${thClass} ${numClass}`}>
-                      Costo cotizado (ARS)
-                    </th>
-                    <th scope="col" className={`${thClass} ${numClass}`}>
-                      Costo cotizado (USD)
-                    </th>
-                    <th scope="col" className={`${thClass} ${numClass}`}>
-                      Costo hoy (ARS)
-                    </th>
-                    <th scope="col" className={`${thClass} ${numClass}`}>
-                      Costo hoy (USD)
-                    </th>
-                    <th scope="col" className={thClass}>
-                      Categoría
-                    </th>
-                    <th scope="col" className={thClass}>
-                      Estado
-                    </th>
-                    <th scope="col" className={thClass}>
-                      Avisos
-                    </th>
-                    {showPrices ? (
-                      <>
-                        <th scope="col" className={`${thClass} ${numClass}`}>
-                          Margen
-                        </th>
-                        <th scope="col" className={`${thClass} ${numClass}`}>
-                          Precio neto (ARS)
-                        </th>
-                        <th scope="col" className={`${thClass} ${numClass}`}>
-                          Precio final (ARS)
-                        </th>
-                      </>
-                    ) : null}
-                  </tr>
-                </thead>
-                <tbody>
-                  {productos.map((producto) => {
-                    const modelo = modeloDe(producto);
-                    const cotizado = tieneCotizacion(producto);
-                    return (
-                      <tr
-                        key={producto.codigo}
-                        className="hover:bg-paper-mid/50"
-                      >
-                        <td className={tdClass}>
-                          <div className="max-w-sm">
-                            {openSheet ? (
+          <TableWrap>
+            <table className={tableClass}>
+              <thead>
+                <tr>
+                  <th scope="col" className={thClass}>
+                    Modelo
+                  </th>
+                  <th scope="col" className={thClass}>
+                    Producto
+                  </th>
+                  <th scope="col" className={thClass}>
+                    Categoría
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {productos.map((producto) => {
+                  const modelo = modeloDe(producto);
+                  return (
+                    <tr key={producto.codigo} className="hover:bg-paper-mid/50">
+                      <td className={tdClass}>
+                        {modelo.nombre || modelo.codigo ? (
+                          <div className="max-w-48">
+                            {modelo.busqueda ? (
                               <Link
-                                href={`/productos/${encodeURIComponent(producto.codigo)}`}
-                                className="text-sm underline decoration-gold underline-offset-4"
+                                href={`/productos?q=${encodeURIComponent(modelo.busqueda)}`}
+                                title="Ver los productos de este modelo"
+                                className="underline decoration-gold underline-offset-4"
                               >
-                                {producto.codigo}
+                                {modelo.nombre ?? modelo.codigo}
                               </Link>
                             ) : (
-                              <span className="text-sm">{producto.codigo}</span>
+                              modelo.nombre
                             )}
-                            <div className="mt-0.5">
-                              <NombreProducto nombre={producto.nombre} />
-                            </div>
-                            {producto.es_kit || producto.revisar ? (
-                              <div className="mt-1 flex flex-wrap items-start gap-2">
-                                {producto.es_kit ? <Badge>Kit</Badge> : null}
-                                {producto.revisar ? (
-                                  <MarcaRevisar
-                                    motivos={producto.motivos_revisar}
-                                  />
-                                ) : null}
-                              </div>
+                            {modelo.codigo &&
+                            modelo.nombre !== modelo.codigo ? (
+                              <span className="block text-xs text-muted">
+                                {modelo.codigo}
+                              </span>
                             ) : null}
                           </div>
-                        </td>
-                        <td className={tdClass}>
-                          {modelo.nombre || modelo.codigo ? (
-                            <div className="max-w-48">
-                              {modelo.busqueda ? (
-                                <Link
-                                  href={`/productos?q=${encodeURIComponent(modelo.busqueda)}`}
-                                  title="Ver los productos de este modelo"
-                                  className="underline decoration-gold underline-offset-4"
-                                >
-                                  {modelo.nombre ?? modelo.codigo}
-                                </Link>
-                              ) : (
-                                modelo.nombre
-                              )}
-                              {modelo.codigo &&
-                              modelo.nombre !== modelo.codigo ? (
-                                <span className="block text-xs text-muted">
-                                  {modelo.codigo}
-                                </span>
-                              ) : null}
-                            </div>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className={tdClass}>
+                        <div className="max-w-sm">
+                          <NombreProducto nombre={producto.nombre} />
+                          {openSheet ? (
+                            <Link
+                              href={`/productos/${encodeURIComponent(producto.codigo)}`}
+                              className="block text-xs underline decoration-gold underline-offset-4"
+                            >
+                              {producto.codigo}
+                            </Link>
                           ) : (
-                            "—"
-                          )}
-                        </td>
-                        {cotizado ? (
-                          <td className={`${tdClass} ${numClass}`}>
-                            {formatArs(producto.costo_cotizado_ars)}
                             <span className="block text-xs text-muted">
-                              {cotizacionCaption(
-                                producto.cotizacion_dolar,
-                                producto.cotizacion_fecha,
-                              )}
+                              {producto.codigo}
                             </span>
-                          </td>
-                        ) : (
-                          <td className={`${tdClass} text-muted`}>
-                            {SIN_COTIZACION}
-                          </td>
-                        )}
-                        <td className={`${tdClass} ${numClass}`}>
-                          {cotizado
-                            ? formatUsd(producto.costo_cotizado_usd)
-                            : "—"}
-                        </td>
-                        {producto.costo_hoy_ars === null ? (
-                          <td className={`${tdClass} text-muted`} colSpan={2}>
-                            {costoFaltante(producto.avisos)}
-                          </td>
-                        ) : (
-                          <>
-                            <td className={`${tdClass} ${numClass}`}>
-                              {formatArs(producto.costo_hoy_ars)}
-                            </td>
-                            <td className={`${tdClass} ${numClass}`}>
-                              {formatUsd(producto.costo_hoy_usd)}
-                            </td>
-                          </>
-                        )}
-                        <td className={tdClass}>{producto.categoria ?? "—"}</td>
-                        <td className={tdClass}>
-                          {lifecycleLabel(producto.estado_del_ciclo)}
-                        </td>
-                        <td className={tdClass}>
-                          <Avisos avisos={restoDeAvisos(producto)} wrap />
-                        </td>
-                        {showPrices ? (
-                          <>
-                            <td className={`${tdClass} ${numClass}`}>
-                              {formatPercent(producto.margen_pct)}
-                            </td>
-                            <td className={`${tdClass} ${numClass}`}>
-                              {formatArs(producto.precio_venta_ars)}
-                            </td>
-                            <td className={`${tdClass} ${numClass}`}>
-                              {formatArs(producto.precio_final_ars)}
-                            </td>
-                          </>
-                        ) : null}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </TableWrap>
-          )
+                          )}
+                        </div>
+                      </td>
+                      <td className={tdClass}>{producto.categoria ?? "—"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </TableWrap>
         }
       />
 

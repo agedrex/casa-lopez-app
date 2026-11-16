@@ -724,6 +724,7 @@ class TallerOut(Salida):
     lotes: int
     unidades: Decimal
     ultimo_lote: date | None
+    ultimo_lote_codigo: str | None = None
     cobro_total_ars: Decimal
 
 

@@ -24,7 +24,7 @@ import type {
   ProductoReventa,
   ResumenGastos,
 } from "@/lib/types";
-import { EscenarioDeVentas, type ProductOption } from "../cvu/escenario";
+import { EscenarioDeVentas, type ProductOption } from "../../cvu/escenario";
 import { MargenForm } from "./margen-form";
 
 export const metadata: Metadata = { title: "Negocio" };
@@ -64,7 +64,7 @@ function Tabs({ vista, periodo }: { vista: Vista; periodo: string }) {
           return (
             <li key={tab.id}>
               <Link
-                href={`/negocio?${query}`}
+                href={`/admin/negocio?${query}`}
                 aria-current={vista === tab.id ? "page" : undefined}
                 className={`-mb-px flex min-h-11 items-center whitespace-nowrap border-b-2 px-3 text-sm transition-colors ${
                   vista === tab.id
@@ -262,7 +262,7 @@ export default async function NegocioPage({
   return (
     <>
       <PageHeader
-        eyebrow="Resumen"
+        eyebrow="Negocio y Administración"
         title="Negocio"
         description="Cuánto gasta el negocio por mes y cuánto tienen que vender la fábrica y la tienda para cubrirlo."
       />

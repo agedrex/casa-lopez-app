@@ -3,7 +3,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Avisos } from "@/components/avisos";
 import { ReadOnlyNote } from "@/components/form";
-import { FormularioConsumos } from "@/components/formulario-consumos";
 import { PrecioReferencia } from "@/components/precio-referencia";
 import {
   Badge,
@@ -30,7 +29,6 @@ import {
   STAGE_ORDER,
   stageLabel,
 } from "@/lib/format";
-import { seesValidatedFormulario } from "@/lib/formulario";
 import { parseNota } from "@/lib/notas";
 import { canWrite, isTallerOnly } from "@/lib/permissions";
 import { collapseSpaces, costoFaltante } from "@/lib/productos";
@@ -40,8 +38,6 @@ import type {
   Desglose,
   EtapaCatalogo,
   Ficha,
-  Formulario,
-  FormularioResumen,
   Material,
   PreciosTalleres,
 } from "@/lib/types";
@@ -128,9 +124,6 @@ export default async function FichaPage({
         ) : (
           <Recipe ficha={ficha} showMoney={!isTallerOnly(user.role)} />
         )}
-        {seesValidatedFormulario(user.role) ? (
-          <FormularioValidado codigo={ficha.codigo} />
-        ) : null}
         <details className="rounded-card border border-line p-5">
           <summary className="cursor-pointer text-sm uppercase tracking-caps-sm text-muted">
             Más detalle
@@ -158,50 +151,6 @@ export default async function FichaPage({
         </details>
       </div>
     </>
-  );
-}
-
-/** The newest VALIDADO consumption form linked to this product, read only and without the empty rows. */
-async function FormularioValidado({ codigo }: { codigo: string }) {
-  const lista = await apiGet<FormularioResumen[]>(
-    `/formularios?${new URLSearchParams({ producto: codigo, estado: "VALIDADO" })}`,
-  );
-  if (!lista.ok) {
-    return (
-      <ErrorNotice
-        title="No pudimos cargar el formulario de consumos."
-        message={lista.message}
-      />
-    );
-  }
-  const [validado] = lista.data; // newest first
-  if (!validado) return null;
-  const detalle = await apiGet<Formulario>(
-    `/formularios/${encodeURIComponent(validado.codigo)}`,
-  );
-  if (!detalle.ok) {
-    return (
-      <ErrorNotice
-        title="No pudimos cargar el formulario de consumos."
-        message={detalle.message}
-      />
-    );
-  }
-  return (
-    <section>
-      <SectionTitle>Formulario de consumos</SectionTitle>
-      <Card>
-        <FormularioConsumos formulario={detalle.data} mode="readonly" compact />
-        <p className="mt-4 text-sm">
-          <Link
-            href={`/formularios/${encodeURIComponent(validado.codigo)}`}
-            className="text-muted underline decoration-gold underline-offset-4"
-          >
-            Ver el formulario {validado.codigo} →
-          </Link>
-        </p>
-      </Card>
-    </section>
   );
 }
 
