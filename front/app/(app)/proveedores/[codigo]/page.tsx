@@ -23,6 +23,7 @@ import type {
   MaterialesDeProveedor,
   PedidoProveedor,
   Proveedor,
+  ProveedorProducto,
 } from "@/lib/types";
 import { MaterialesQueProveeForm } from "../materiales-que-provee";
 import { DocumentoCard } from "./documento-card";
@@ -30,6 +31,7 @@ import { MaterialNuevoForm } from "./material-nuevo-form";
 import { MaterialesDelProveedor } from "./materiales-del-proveedor";
 import { PedidoForm } from "./pedido-form";
 import { PedidosRecibidos } from "./pedidos-recibidos";
+import { ProductosQueVende } from "./productos-que-vende";
 
 export const metadata: Metadata = { title: "Proveedor" };
 
@@ -81,19 +83,28 @@ export default async function ProveedorPage({
   // Orders are read by admin and gerente; the taller never sees them (the API refuses them too).
   const readsPedidos =
     hasRole(user.role, "admin") || hasRole(user.role, "gerente");
-  const [proveedor, documentos, historia, materiales, pedidos, provee, etapas] =
-    await Promise.all([
-      apiGet<Proveedor>(path),
-      apiGet<DocumentoProveedor[]>(
-        `${path}/documentos${q ? `?${new URLSearchParams({ q })}` : ""}`,
-      ),
-      apiGet<MaterialesDeProveedor>(`${path}/materiales`),
-      // Only the form needs the catalogs, and only a writer sees it.
-      writer ? apiGet<Material[]>("/materiales") : null,
-      readsPedidos ? apiGet<PedidoProveedor[]>(`${path}/pedidos`) : null,
-      apiGet<string[]>(`${path}/provee`),
-      writer ? apiGet<EtapaCatalogo[]>("/catalogo/etapas") : null,
-    ]);
+  const [
+    proveedor,
+    documentos,
+    historia,
+    materiales,
+    pedidos,
+    provee,
+    etapas,
+    productos,
+  ] = await Promise.all([
+    apiGet<Proveedor>(path),
+    apiGet<DocumentoProveedor[]>(
+      `${path}/documentos${q ? `?${new URLSearchParams({ q })}` : ""}`,
+    ),
+    apiGet<MaterialesDeProveedor>(`${path}/materiales`),
+    // Only the form needs the catalogs, and only a writer sees it.
+    writer ? apiGet<Material[]>("/materiales") : null,
+    readsPedidos ? apiGet<PedidoProveedor[]>(`${path}/pedidos`) : null,
+    apiGet<string[]>(`${path}/provee`),
+    writer ? apiGet<EtapaCatalogo[]>("/catalogo/etapas") : null,
+    apiGet<ProveedorProducto[]>(`${path}/productos`),
+  ]);
 
   if (!proveedor.ok) {
     return (
@@ -147,6 +158,33 @@ export default async function ProveedorPage({
         </section>
 
         <section>
+          <SectionTitle>Qué más ofrece</SectionTitle>
+          <div className="space-y-6">
+            <p className="text-sm text-muted">
+              Otros materiales o productos que ofrece, con su precio por unidad.
+              Es una referencia: no cambia los costos. Un precio nuevo se suma y
+              queda el anterior.
+            </p>
+            {productos.ok ? (
+              <ProductosQueVende
+                codigo={data.codigo}
+                productos={productos.data}
+                materiales={
+                  materiales?.ok
+                    ? materialOptions(materiales.data).map((m) => ({
+                        codigo: m.codigo,
+                        label: m.label,
+                      }))
+                    : []
+                }
+              />
+            ) : (
+              <ErrorNotice message={productos.message} />
+            )}
+          </div>
+        </section>
+
+        <section>
           <SectionTitle>Materiales y precios</SectionTitle>
           <div className="space-y-6">
             <p className="text-sm text-muted">
@@ -175,16 +213,10 @@ export default async function ProveedorPage({
           <section>
             <SectionTitle>Pedidos recibidos</SectionTitle>
             <div className="space-y-6">
-              <p className="text-sm text-muted">
-                Lo que llegó de este proveedor: qué materiales, cómo vinieron y
-                cuánto costó cada unidad. Cada línea carga el precio del
-                material desde la fecha de recepción. Un pedido no se edita ni
-                se borra: si hay un error, se registra otro.
-              </p>
               {writer && materiales?.ok ? (
                 <div className="space-y-4">
                   <Card>
-                    <h3 className="mb-4 font-bold">
+                    <h3 className="mb-3 font-bold">
                       Registrar pedido recibido
                     </h3>
                     <PedidoForm
