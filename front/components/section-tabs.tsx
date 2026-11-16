@@ -8,6 +8,8 @@ export type SectionTab = {
   title: string;
   /** Active only on this exact path (the list page that other tabs live under). */
   exact?: boolean;
+  /** Other path prefixes that keep this tab highlighted (a tab that groups several pages). */
+  alsoActiveOn?: string[];
 };
 
 /** A scrollable tab strip, one tab per area of a section. */
@@ -26,9 +28,11 @@ export function SectionTabs({
     >
       <ul className="flex min-w-max gap-1">
         {tabs.map((tab) => {
+          const matches = (prefix: string) =>
+            pathname === prefix || pathname.startsWith(`${prefix}/`);
           const active = tab.exact
             ? pathname === tab.href
-            : pathname === tab.href || pathname.startsWith(`${tab.href}/`);
+            : matches(tab.href) || (tab.alsoActiveOn ?? []).some(matches);
           return (
             <li key={tab.href}>
               <Link
