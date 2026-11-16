@@ -1,7 +1,7 @@
 // Pure helpers of the materials page: what each material shows and how the materials are grouped.
 // Nothing is calculated here: the price of a row is chosen among the ones the API sent.
 import { STAGE_ORDER } from "./format";
-import type { Material, Precio } from "./types";
+import type { EtapaCatalogo, Material, Precio } from "./types";
 
 export type FilaDeMaterial = {
   material: Material;
@@ -61,4 +61,13 @@ export function agruparMateriales(
         };
       }),
   }));
+}
+
+/** Stages that hold materials (the others are tasks); the quote order if the catalog cannot be read. */
+export function materialStages(catalogo: EtapaCatalogo[] | null): string[] {
+  if (!catalogo) return STAGE_ORDER.slice(0, 6);
+  return [...catalogo]
+    .filter((etapa) => etapa.tipo === "MATERIAL")
+    .sort((a, b) => a.orden - b.orden)
+    .map((etapa) => etapa.codigo);
 }
