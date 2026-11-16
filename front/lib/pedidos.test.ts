@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { PRESENTACIONES, unitPricePreview } from "./pedidos";
+import {
+  leerLineaSimpleDePedido,
+  llegoTexto,
+  PRESENTACIONES,
+  unitPricePreview,
+} from "./pedidos";
 
 test("divides price by content with exact decimals", () => {
   assert.equal(unitPricePreview("14000", "1.4"), "10000.0000");
@@ -46,5 +51,85 @@ test("suggests the usual presentations", () => {
   assert.deepEqual(
     [...PRESENTACIONES],
     ["CARRETE", "CAJA", "ROLLO", "BOLSA", "UNIDAD", "PLANCHA"],
+  );
+});
+
+test("a simple line is stored as quantity x one unit of the material", () => {
+  const result = leerLineaSimpleDePedido(
+    {
+      material: "MAT-0001",
+      cantidad: "5,5",
+      precio: "10000",
+      moneda: "ARS",
+      iva: false,
+    },
+    1,
+  );
+  assert.deepEqual(result, {
+    ok: true,
+    linea: {
+      material: "MAT-0001",
+      cantidad_presentaciones: "5.5",
+      presentacion: "UNIDAD",
+      contenido_por_presentacion: "1",
+      precio_por_presentacion: "10000",
+      moneda: "ARS",
+      iva_incluido: false,
+    },
+  });
+});
+
+test("a simple line names the first thing that is wrong", () => {
+  const base = {
+    material: "MAT-0001",
+    cantidad: "2",
+    precio: "10",
+    moneda: "USD",
+    iva: true,
+  };
+  const fail = (patch: Partial<typeof base>) =>
+    leerLineaSimpleDePedido({ ...base, ...patch }, 2);
+  assert.deepEqual(fail({ material: "" }), {
+    ok: false,
+    message: "Línea 2: elija el material.",
+  });
+  assert.deepEqual(fail({ cantidad: "0" }), {
+    ok: false,
+    message: "Línea 2: la cantidad debe ser un número mayor que 0.",
+  });
+  assert.deepEqual(fail({ cantidad: "abc" }), {
+    ok: false,
+    message: "Línea 2: la cantidad debe ser un número mayor que 0.",
+  });
+  assert.deepEqual(fail({ precio: "" }), {
+    ok: false,
+    message:
+      "Línea 2: ingrese el precio por unidad, por ejemplo 14000 o 5857,14.",
+  });
+  assert.deepEqual(fail({ moneda: "EUR" }), {
+    ok: false,
+    message: "Línea 2: elija la moneda.",
+  });
+  assert.equal((fail({}) as { ok: true }).ok, true);
+});
+
+test("what arrived reads as a plain quantity when there is no real presentation", () => {
+  assert.equal(
+    llegoTexto({
+      cantidad_presentaciones: "5.500000",
+      presentacion: "UNIDAD",
+      contenido_por_presentacion: "1.000000",
+      unidad_de_consumo: "m2",
+    }),
+    "5,5 m2",
+  );
+  assert.equal(
+    llegoTexto({
+      cantidad_presentaciones: "3.000000",
+      presentacion: "ROLLO",
+      contenido_por_presentacion: "1.400000",
+      unidad_de_consumo: "m2",
+    }),
+    "3 × ROLLO",
   );
 });

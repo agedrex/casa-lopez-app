@@ -6,12 +6,8 @@ import {
   tdClass,
   thClass,
 } from "@/components/ui";
-import {
-  formatDate,
-  formatMoney,
-  formatQuantity,
-  formatRate,
-} from "@/lib/format";
+import { formatDate, formatMoney, formatRate } from "@/lib/format";
+import { llegoTexto } from "@/lib/pedidos";
 import type { PedidoProveedor } from "@/lib/types";
 
 /** Orders already registered, newest first. Read only: an order is never edited or deleted. */
@@ -41,7 +37,6 @@ export function PedidosRecibidos({ pedidos }: { pedidos: PedidoProveedor[] }) {
                   <tr>
                     <th className={thClass}>Material</th>
                     <th className={thClass}>Llegó</th>
-                    <th className={`${thClass} ${numClass}`}>Contenido</th>
                     <th className={`${thClass} ${numClass}`}>Precio</th>
                     <th className={`${thClass} ${numClass}`}>
                       Precio unitario
@@ -57,14 +52,7 @@ export function PedidosRecibidos({ pedidos }: { pedidos: PedidoProveedor[] }) {
                           {linea.material}
                         </span>
                       </td>
-                      <td className={tdClass}>
-                        {formatQuantity(linea.cantidad_presentaciones)} ×{" "}
-                        {linea.presentacion}
-                      </td>
-                      <td className={`${tdClass} ${numClass}`}>
-                        {formatQuantity(linea.contenido_por_presentacion)}{" "}
-                        {linea.unidad_de_consumo}
-                      </td>
+                      <td className={tdClass}>{llegoTexto(linea)}</td>
                       <td className={`${tdClass} ${numClass}`}>
                         {formatMoney(
                           linea.precio_por_presentacion,
