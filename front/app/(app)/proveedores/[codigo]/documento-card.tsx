@@ -1,7 +1,6 @@
 import { Badge } from "@/components/ui";
 import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
 import {
-  canRetryOcr,
   documentFileUrl,
   documentTypeLabel,
   formatFileSize,
@@ -10,8 +9,6 @@ import {
   ocrTone,
 } from "@/lib/proveedores";
 import type { DocumentoProveedor } from "@/lib/types";
-import { ConfirmarDatosForm } from "./confirmar-datos-form";
-import { ReintentarOcrForm } from "./reintentar-ocr-form";
 
 const PDF_ICON = "M7 3h7l5 5v13H7zM14 3v5h5M9.5 14h5M9.5 17.5h5";
 
@@ -62,10 +59,8 @@ function Datum({ label, value }: { label: string; value: string }) {
 
 export function DocumentoCard({
   documento,
-  writer,
 }: {
   documento: DocumentoProveedor;
-  writer: boolean;
 }) {
   const sugerencia = documento.ocr_sugerencia;
   const hasSuggestion =
@@ -168,26 +163,6 @@ export function DocumentoCard({
             confirmar.
           </span>
         </p>
-      ) : null}
-
-      {writer ? (
-        <div className="space-y-4 border-t border-line pt-4">
-          {/* Remount when the saved data changes so the fields show the new values. */}
-          <ConfirmarDatosForm
-            key={[
-              documento.id,
-              documento.tipo,
-              documento.numero,
-              documento.fecha_documento,
-              documento.total,
-              documento.moneda,
-            ].join("|")}
-            documento={documento}
-          />
-          {canRetryOcr(documento.ocr_estado) ? (
-            <ReintentarOcrForm id={documento.id} />
-          ) : null}
-        </div>
       ) : null}
     </li>
   );

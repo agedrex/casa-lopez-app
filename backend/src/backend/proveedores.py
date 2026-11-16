@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session, undefer
 
 from backend.models import (
     DOCUMENT_TYPES, Color, DocumentoProveedor, Material, PedidoLinea, PedidoProveedor, PrecioMaterial, Proveedor,
-    ProveedorProducto,
+    ProveedorMaterial, ProveedorProducto,
 )
 from backend.ocr_llm import OcrError, OcrLLM, OcrResult, OcrSuggestion
 from backend.servicios import (
@@ -690,3 +690,32 @@ def add_products(session: Session, code: str, *, productos: list[dict], creado_p
             ), f"Producto {position} ({product['nombre']}): no se pudo asignar el código; intentá de nuevo.")
     session.commit()
     return list_products(session, code)
+
+
+def list_provided_materials(session: Session, code: str) -> list[str]:
+    """Codes of the materials this supplier really provides (the active ones), in code order."""
+    supplier = _supplier(session, code)
+    return list(session.scalars(
+        select(Material.codigo).join(ProveedorMaterial, ProveedorMaterial.material_id == Material.id)
+        .where(ProveedorMaterial.proveedor_id == supplier.id, ProveedorMaterial.activo.is_(True))
+        .order_by(Material.codigo)))
+
+
+def set_provided_materials(session: Session, code: str, *, materiales: list[str], creado_por: str) -> list[str]:
+    """Leaves exactly `materiales` active for the supplier. Nothing is deleted: the rest are marked inactive."""
+    supplier = _supplier(session, code)
+    wanted = set(materiales)
+    found = {row.codigo: row.id for row in session.execute(
+        select(Material.codigo, Material.id).where(Material.codigo.in_(wanted)))} if wanted else {}
+    missing = sorted(wanted - found.keys())
+    if missing:
+        raise DatosInvalidos(f"No existe el material {missing[0]}.")
+    rows = {row.material_id: row for row in session.scalars(
+        select(ProveedorMaterial).where(ProveedorMaterial.proveedor_id == supplier.id))}
+    wanted_ids = set(found.values())
+    for material_id, row in rows.items():
+        row.activo = material_id in wanted_ids
+    for material_id in wanted_ids - rows.keys():
+        session.add(ProveedorMaterial(proveedor_id=supplier.id, material_id=material_id, activo=True, creado_por=creado_por))
+    session.commit()
+    return list_provided_materials(session, code)

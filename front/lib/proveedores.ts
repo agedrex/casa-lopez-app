@@ -1,5 +1,12 @@
-import { formatPercent, parseDecimalInput } from "./format";
-import type { DocumentoTipo, OcrEstado } from "./types";
+import { formatPercent, parseDecimalInput, stageLabel } from "./format";
+import type { DocumentoTipo, Material, OcrEstado } from "./types";
+
+export type MaterialOption = {
+  codigo: string;
+  label: string;
+  unidad: string;
+  group: string;
+};
 
 // Client-side hint only: the API checks the real size and the file's magic bytes.
 export const MAX_FILE_BYTES = 10 * 1024 * 1024;
@@ -188,4 +195,15 @@ export function filasParaGuardar(
     };
   });
   return [...changed, ...save.added];
+}
+
+export function materialOptions(materiales: Material[]): MaterialOption[] {
+  return materiales
+    .filter((m) => m.cotizable)
+    .map((m) => ({
+      codigo: m.codigo,
+      label: `${m.codigo} · ${m.nombre} (${m.unidad_de_consumo})`,
+      unidad: m.unidad_de_consumo,
+      group: stageLabel(m.etapa),
+    }));
 }

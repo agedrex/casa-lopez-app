@@ -154,11 +154,11 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
     ("GET", "/proveedores"): ADMIN, ("GET", "/proveedores/{codigo}"): ADMIN,
     ("GET", "/proveedores/{codigo}/documentos"): ADMIN, ("GET", "/documentos-proveedor/{id}/archivo"): ADMIN,
     ("GET", "/proveedores/{codigo}/materiales"): ADMIN, ("GET", "/proveedores/{codigo}/pedidos"): ADMIN,
-    ("GET", "/proveedores/{codigo}/productos"): ADMIN,
+    ("GET", "/proveedores/{codigo}/productos"): ADMIN, ("GET", "/proveedores/{codigo}/provee"): ADMIN,
     **{("POST", ruta): ADMIN for ruta in (
         "/reventa", "/reventa/lote", "/reventa/{codigo}/activo", "/reventa/{codigo}/compras",
         "/proveedores", "/proveedores/{codigo}", "/proveedores/{codigo}/activo", "/proveedores/{codigo}/documentos",
-        "/proveedores/{codigo}/precios", "/proveedores/{codigo}/pedidos", "/proveedores/{codigo}/productos",
+        "/proveedores/{codigo}/precios", "/proveedores/{codigo}/pedidos", "/proveedores/{codigo}/productos", "/proveedores/{codigo}/provee",
         "/documentos-proveedor/{id}/ocr", "/documentos-proveedor/{id}/datos")},
 }
 # Open on purpose: the health check of the deploy and the stage catalog of routers.py, which carries no business data

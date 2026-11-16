@@ -7,32 +7,25 @@ import {
   PrimaryButton,
 } from "@/components/form";
 import type { FormState } from "@/lib/action-state";
+import type { MaterialOption } from "@/lib/proveedores";
 import { useActionForm } from "@/lib/use-action-form";
+import { MaterialesGrid } from "./materiales-que-provee";
 
 type Action = (previous: FormState, formData: FormData) => Promise<FormState>;
 
-export type ProveedorValues = {
-  nombre: string;
-  cuit: string | null;
-  contacto: string | null;
-  telefono: string | null;
-  direccion: string | null;
-  nota: string | null;
-};
-
-/** Create and edit share the fields; the code is assigned by the backend, never typed. */
+/** New supplier: its data plus the grid of materials it provides. The code is assigned by the backend, never typed. */
 export function ProveedorForm({
   action,
-  initial,
+  materials,
   submitLabel,
   pendingLabel,
 }: {
   action: Action;
-  initial?: ProveedorValues;
+  materials: MaterialOption[];
   submitLabel: string;
   pendingLabel: string;
 }) {
-  // On create the action redirects to the new supplier; on edit the page refreshes.
+  // The action redirects to the new supplier.
   const { state, pending, formKey, onSubmit } = useActionForm(action);
   return (
     <form key={formKey} onSubmit={onSubmit} className="space-y-5">
@@ -43,7 +36,6 @@ export function ProveedorForm({
             name="nombre"
             required
             autoComplete="off"
-            defaultValue={initial?.nombre ?? ""}
             className={inputClass}
           />
         </Field>
@@ -57,7 +49,6 @@ export function ProveedorForm({
             name="cuit"
             autoComplete="off"
             inputMode="numeric"
-            defaultValue={initial?.cuit ?? ""}
             aria-describedby="proveedor-cuit-hint"
             className={inputClass}
           />
@@ -67,7 +58,6 @@ export function ProveedorForm({
             id="proveedor-contacto"
             name="contacto"
             autoComplete="off"
-            defaultValue={initial?.contacto ?? ""}
             className={inputClass}
           />
         </Field>
@@ -77,7 +67,6 @@ export function ProveedorForm({
             name="telefono"
             type="tel"
             autoComplete="off"
-            defaultValue={initial?.telefono ?? ""}
             className={inputClass}
           />
         </Field>
@@ -87,19 +76,25 @@ export function ProveedorForm({
           id="proveedor-direccion"
           name="direccion"
           autoComplete="off"
-          defaultValue={initial?.direccion ?? ""}
           className={inputClass}
         />
       </Field>
-      <Field id="proveedor-nota" label="Nota (opcional)">
+      <Field id="proveedor-nota" label="Descripción (opcional)">
         <input
           id="proveedor-nota"
           name="nota"
           autoComplete="off"
-          defaultValue={initial?.nota ?? ""}
           className={inputClass}
         />
       </Field>
+      <div>
+        <h3 className="mb-1 font-bold">Productos que provee</h3>
+        <p className="mb-3 text-sm text-muted">
+          Marque lo que este proveedor realmente nos vende. La lista sale de la
+          grilla de materiales; después se puede cambiar desde su ficha.
+        </p>
+        <MaterialesGrid materials={materials} />
+      </div>
       <FormFeedback state={state} />
       <PrimaryButton pending={pending}>
         {pending ? pendingLabel : submitLabel}

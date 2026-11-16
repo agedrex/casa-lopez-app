@@ -9,9 +9,9 @@ import {
 } from "@/components/form";
 import { formatRate } from "@/lib/format";
 import { PRESENTACIONES, unitPricePreview } from "@/lib/pedidos";
+import type { MaterialOption } from "@/lib/proveedores";
 import { useActionForm } from "@/lib/use-action-form";
 import { createPedidoDeProveedor } from "./pedido-actions";
-import type { MaterialOption } from "./precio-form";
 
 const PRESENTACIONES_LIST = "pedido-presentaciones";
 

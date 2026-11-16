@@ -143,7 +143,7 @@ SOLO_ADMIN = {"/parametros/{codigo}", "/personas", "/personas/{codigo}/activo", 
               "/materiales/lote",
               # Suppliers and documents (see test_proveedores_api.py and test_roles.py).
               "/proveedores", "/proveedores/{codigo}", "/proveedores/{codigo}/activo",
-              "/proveedores/{codigo}/documentos", "/proveedores/{codigo}/precios", "/proveedores/{codigo}/pedidos", "/proveedores/{codigo}/productos",
+              "/proveedores/{codigo}/documentos", "/proveedores/{codigo}/precios", "/proveedores/{codigo}/pedidos", "/proveedores/{codigo}/productos", "/proveedores/{codigo}/provee",
               "/documentos-proveedor/{id}/ocr",
               "/documentos-proveedor/{id}/datos",
               # Transfers to the store and real sales (see test_ventas_stock.py and test_roles.py).
