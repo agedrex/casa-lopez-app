@@ -51,15 +51,6 @@
    ]
   },
   {
-   "name": "taller",
-   "columns": [{"name": "codigo", "tag": "text"}, {"name": "nombre", "tag": "text"}, {"name": "cuit", "tag": "text"}, {"name": "telefono", "tag": "text"}, {"name": "direccion", "tag": "text"}, {"name": "contacto", "tag": "text"}, {"name": "activo", "tag": "bool"}, {"name": "nota", "tag": "text"}],
-   "rows": [
-    ["TAL-0001", "Taller A (ejemplo)", null, null, null, null, true, "Ejemplo: Robert 24/10, \"trabajan con tres talleres a lo sumo, tres talleres de ejemplo\". Reemplazar por el real."],
-    ["TAL-0002", "Taller B (ejemplo)", null, null, null, null, true, "Ejemplo: Robert 24/10, \"trabajan con tres talleres a lo sumo, tres talleres de ejemplo\". Reemplazar por el real."],
-    ["TAL-0003", "Taller C (ejemplo)", null, null, null, null, true, "Ejemplo: Robert 24/10, \"trabajan con tres talleres a lo sumo, tres talleres de ejemplo\". Reemplazar por el real."]
-   ]
-  },
-  {
    "name": "impuesto",
    "columns": [{"name": "codigo", "tag": "text"}, {"name": "nombre", "tag": "text"}, {"name": "alicuota", "tag": "decimal"}, {"name": "base", "tag": "text"}, {"name": "es_costo_del_producto", "tag": "bool"}, {"name": "nota", "tag": "text"}],
    "rows": [

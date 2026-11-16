@@ -16,7 +16,7 @@ from backend.models import Base
 BACKEND = Path(__file__).parents[1]
 SEED_FILE = BACKEND / "migrations" / "seed_data" / "seed_v3.json"
 EXPECTED_COUNTS = {
-    "etapa": 8, "categoria": 16, "material": 13, "persona": 7, "taller": 3, "impuesto": 3,
+    "etapa": 8, "categoria": 16, "material": 13, "persona": 7, "impuesto": 3,
     "parametro": 8, "tipo_cambio": 1, "precio_material": 11, "modelo": 325, "gasto_periodo": 15,
 }
 
@@ -99,7 +99,7 @@ def test_exchange_rate_prices_and_example_workshops(seed):
     prices = records(seed["precio_material"])
     assert {price["vigente_desde"] for price in prices} == {"2026-09-01", "2026-09-03"}
     assert {price["material_id"] for price in prices}.isdisjoint({"MAT-CU03", "MAT-CU04"})
-    assert all("ejemplo" in workshop["nota"].lower() for workshop in records(seed["taller"]))
+    assert "taller" not in seed  # the example workshops are not seeded: workshops are loaded by hand
 
 
 def test_models_seed_is_complete_and_flags_nothing_as_validated(seed):
