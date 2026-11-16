@@ -8,6 +8,7 @@ import {
 } from "@/components/form";
 import { useActionForm } from "@/lib/use-action-form";
 import { createProducto } from "../actions";
+import { CatalogoSelect } from "../catalogo-select";
 
 export type ModeloOption = { codigo: string; label: string };
 export type CueroOption = { codigo: string; label: string };
@@ -72,33 +73,15 @@ export function ProductoForm({
             ))}
           </select>
         </Field>
-        <Field
+        <CatalogoSelect
           id="producto-color"
+          name="color"
           label="Color (opcional)"
-          hint={
-            colores.length === 0
-              ? "Todavía no hay colores cargados."
-              : undefined
-          }
-        >
-          <select
-            id="producto-color"
-            name="color"
-            defaultValue=""
-            disabled={colores.length === 0}
-            aria-describedby={
-              colores.length === 0 ? "producto-color-hint" : undefined
-            }
-            className={inputClass}
-          >
-            <option value="">Sin color</option>
-            {colores.map((color) => (
-              <option key={color} value={color}>
-                {color}
-              </option>
-            ))}
-          </select>
-        </Field>
+          createLabel="+ Crear color nuevo…"
+          newNameLabel="Nombre del color nuevo"
+          emptyLabel="Sin color"
+          options={colores}
+        />
         <Field id="producto-quien" label="Quién lo confecciona">
           <select
             id="producto-quien"
@@ -155,22 +138,6 @@ export function ProductoForm({
           <span className="block text-xs text-muted">
             Un kit se arma con otros productos: después de crearlo, agregue sus
             componentes desde la ficha. Un kit puede ir sin modelo ni cuero.
-          </span>
-        </label>
-      </div>
-      <div className="flex items-start gap-3">
-        <input
-          id="producto-formulario"
-          name="enviar_formulario"
-          type="checkbox"
-          defaultChecked={!modeloInicial}
-          className="mt-0.5 size-5 accent-ink"
-        />
-        <label htmlFor="producto-formulario" className="text-sm">
-          Mandar el formulario de consumos al taller
-          <span className="block text-xs text-muted">
-            El taller recibe la hoja con el nombre del artículo y la completa.
-            Después la revisás y la validás desde Formularios.
           </span>
         </label>
       </div>

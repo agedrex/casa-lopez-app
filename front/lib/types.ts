@@ -1051,48 +1051,6 @@ export type HistorialDeTaller = {
   productos: ProductoDeTaller[];
 };
 
-// Consumption form ("formulario de consumos y herrajes"), mirrors FormularioOut in api.py. No amounts of money:
-// `cantidad` is a decimal string (m2 or units) exactly as stored.
-export type FormularioEstado =
-  | "BORRADOR"
-  | "ENVIADO"
-  | "COMPLETADO"
-  | "VALIDADO";
-
-export type FormularioSeccion = "CONSUMO" | "HERRAJE";
-
-export type FormularioLinea = {
-  seccion: FormularioSeccion;
-  orden: number;
-  nombre: string;
-  cantidad: string | null;
-  comentario: string | null;
-};
-
-export type FormularioResumen = {
-  codigo: string;
-  articulo: string;
-  estado: FormularioEstado;
-  producto: string | null;
-  modelo: string | null;
-  taller: string | null;
-  creado_por: string;
-  created_at: string;
-  enviado_en: string | null;
-  completado_en: string | null;
-  validado_en: string | null;
-};
-
-export type Formulario = FormularioResumen & {
-  nota: string | null;
-  comentario_revision: string | null;
-  completado_por: string | null;
-  validado_por: string | null;
-  lineas: FormularioLinea[];
-  // Only the answer of `validar` fills it: rows with a quantity that matched no material (not saved as supplies).
-  sin_material?: string[] | null;
-};
-
 /** Answer of `POST /materiales/lote`: the prices the save added and the codes of the new materials. */
 export type MaterialesLote = {
   precios: Precio[];

@@ -7,7 +7,7 @@ export type NavItem = {
   shortLabel?: string;
   /** Key in ICONS when it differs from the href (filters of one page share it). */
   icon?: string;
-  /** Path prefix that keeps this item highlighted when it differs from the href (Administración lands on /admin/panel). */
+  /** Path prefix that keeps this item highlighted when it differs from the href (Negocio y Administración lands on /admin/panel). */
   activePrefix?: string;
   adminOnly?: boolean;
 };
@@ -20,8 +20,8 @@ export const NAV_ITEMS: NavGroup[] = [
     items: [
       {
         href: "/admin/panel",
-        label: "Administración",
-        shortLabel: "Admin",
+        label: "Negocio y Administración",
+        shortLabel: "Negocio",
         icon: "/admin",
         activePrefix: "/admin",
         adminOnly: true,
@@ -30,22 +30,7 @@ export const NAV_ITEMS: NavGroup[] = [
   },
   {
     title: "Resumen",
-    items: [
-      { href: "/escenarios", label: "Escenarios", adminOnly: true },
-      {
-        href: "/negocio",
-        label: "Negocio",
-        icon: "/escenarios",
-        adminOnly: true,
-      },
-      {
-        href: "/ventas",
-        label: "Ventas y stock",
-        shortLabel: "Ventas",
-        icon: "/reventa",
-        adminOnly: true,
-      },
-    ],
+    items: [{ href: "/escenarios", label: "Escenarios", adminOnly: true }],
   },
   {
     title: "1 · Datos de base",
@@ -64,7 +49,6 @@ export const NAV_ITEMS: NavGroup[] = [
     items: [
       { href: "/productos", label: "Productos" },
       { href: "/productos/modelos", label: "Modelos", adminOnly: true },
-      { href: "/productos/catalogos", label: "Catálogos", adminOnly: true },
       { href: "/reventa", label: "Mercadería", adminOnly: true },
       { href: "/unidades", label: "Unidades producidas", adminOnly: true },
     ],
@@ -73,11 +57,6 @@ export const NAV_ITEMS: NavGroup[] = [
     title: "3 · Producción",
     items: [
       { href: "/fabricacion", label: "Lotes" },
-      {
-        href: "/formularios",
-        label: "Formularios",
-        icon: "/costos-fijos",
-      },
       { href: "/talleres", label: "Talleres" },
     ],
   },
@@ -94,8 +73,8 @@ export const NAV_ITEMS: NavGroup[] = [
 const MOBILE_TAB_HREFS: Record<Role, readonly string[]> = {
   admin: ["/admin/panel", "/productos", "/materiales", "/fabricacion"],
   gerente: ["/productos", "/escenarios"],
-  // Lotes (the single entry) and Formularios around the "+" button; Voz stays one tap away in that button's quick actions.
-  taller: ["/fabricacion", "/formularios"],
+  // Lotes (the single entry); Voz stays one tap away in the "+" button's quick actions.
+  taller: ["/fabricacion"],
 };
 
 // Menus of the restricted roles. They match the paths of ROLE_ACCESS in permissions.ts.
@@ -114,18 +93,11 @@ const GERENTE_NAV: NavGroup[] = [
 ];
 
 // Voz is not listed: on desktop it is the microphone button of the header, on mobile the "+" quick action.
-// One entry (Lotes) and the consumption sheet to practice (Formularios). The product sheet is opened from a lot.
+// One entry (Lotes). The product sheet is opened from a lot.
 const TALLER_NAV: NavGroup[] = [
   {
     title: "Producción",
-    items: [
-      { href: "/fabricacion", label: "Lotes" },
-      {
-        href: "/formularios",
-        label: "Formularios",
-        icon: "/costos-fijos",
-      },
-    ],
+    items: [{ href: "/fabricacion", label: "Lotes" }],
   },
 ];
 
@@ -136,8 +108,8 @@ const DESKTOP_NAV: NavGroup[] = [
     items: [
       {
         href: "/admin/panel",
-        label: "Administración",
-        shortLabel: "Admin",
+        label: "Negocio y Administración",
+        shortLabel: "Negocio",
         icon: "/admin",
         activePrefix: "/admin",
         adminOnly: true,
@@ -149,13 +121,7 @@ const DESKTOP_NAV: NavGroup[] = [
     items: [
       { href: "/productos", label: "Productos" },
       { href: "/productos/modelos", label: "Modelos", adminOnly: true },
-      { href: "/productos/catalogos", label: "Catálogos", adminOnly: true },
       { href: "/fabricacion", label: "Lotes" },
-      {
-        href: "/formularios",
-        label: "Formularios",
-        icon: "/costos-fijos",
-      },
       { href: "/cueros", label: "Inventario de cuero" },
     ],
   },
@@ -184,22 +150,7 @@ const DESKTOP_NAV: NavGroup[] = [
   },
   {
     title: "Simulador",
-    items: [
-      { href: "/escenarios", label: "Escenarios", adminOnly: true },
-      {
-        href: "/negocio",
-        label: "Negocio",
-        icon: "/escenarios",
-        adminOnly: true,
-      },
-      {
-        href: "/ventas",
-        label: "Ventas y stock",
-        shortLabel: "Ventas",
-        icon: "/reventa",
-        adminOnly: true,
-      },
-    ],
+    items: [{ href: "/escenarios", label: "Escenarios", adminOnly: true }],
   },
   {
     title: "Costos variables",

@@ -49,26 +49,20 @@ test("the legacy role consulta opens the same pages as gerente", () => {
 });
 
 test("the gerente opens none of the admin only pages under /productos", () => {
-  for (const path of [
-    "/productos/nuevo",
-    "/productos/catalogos",
-    "/productos/modelos/nuevo",
-  ]) {
+  for (const path of ["/productos/nuevo", "/productos/modelos/nuevo"]) {
     assert.equal(canAccessPath("gerente", path), false, path);
   }
 });
 
-// What the taller opens: the lots (list and detail), the consumption sheets (list and detail), Voz and the product sheet. Nothing else.
+// What the taller opens: the lots (list and detail), Voz and the product sheet. Nothing else.
 const RUTAS_DEL_TALLER = [
   "/fabricacion",
   "/fabricacion/X-1",
-  "/formularios",
-  "/formularios/X-1",
   "/productos/X-1",
   "/voz",
 ];
 
-test("the pages the taller opens are exactly Lotes, Formularios, Voz and the product sheet", () => {
+test("the pages the taller opens are exactly Lotes, Voz and the product sheet", () => {
   const abiertas = appRoutes().filter((route) =>
     canAccessPath("taller", route),
   );
@@ -80,20 +74,22 @@ test("the legacy role corte opens the same pages as taller", () => {
   assert.deepEqual(abiertas, RUTAS_DEL_TALLER);
 });
 
-// Admin only pages that must stay closed to the other roles: Negocio (gastos, fábrica and tienda scenarios).
+// Admin only pages that must stay closed to the other roles: Negocio (gastos, fábrica and tienda scenarios), a tab of Negocio y Administración.
 test("Negocio is open to admin and closed to gerente, taller and the legacy roles", () => {
-  assert.ok(appRoutes().includes("/negocio"), "the Negocio page is missing");
-  assert.equal(canAccessPath("admin", "/negocio"), true);
+  assert.ok(
+    appRoutes().includes("/admin/negocio"),
+    "the Negocio page is missing",
+  );
+  assert.equal(canAccessPath("admin", "/admin/negocio"), true);
   for (const role of ["gerente", "consulta", "taller", "corte", ""]) {
-    assert.equal(canAccessPath(role, "/negocio"), false, role);
+    assert.equal(canAccessPath(role, "/admin/negocio"), false, role);
   }
 });
 
-// Admin only: Ventas y stock (real sales, transfers to the store, derived stock and real margin).
-test("Ventas y stock is open to admin and closed to gerente, taller and the legacy roles", () => {
-  assert.ok(appRoutes().includes("/ventas"), "the Ventas page is missing");
-  assert.equal(canAccessPath("admin", "/ventas"), true);
-  for (const role of ["gerente", "consulta", "taller", "corte", ""]) {
-    assert.equal(canAccessPath(role, "/ventas"), false, role);
+// The old standalone pages are gone for good.
+test("Catálogos, Formularios and Ventas y stock no longer exist as pages", () => {
+  const routes = appRoutes();
+  for (const gone of ["/productos/catalogos", "/formularios", "/ventas"]) {
+    assert.ok(!routes.includes(gone), `${gone} should not exist`);
   }
 });

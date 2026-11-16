@@ -39,7 +39,7 @@ export default async function SyncPage({
   if (!estado.ok) {
     return (
       <>
-        <PageHeader eyebrow="Administración" title="Google Sheets" />
+        <PageHeader eyebrow="Negocio y Administración" title="Google Sheets" />
         <ErrorNotice message={estado.message} />
       </>
     );
@@ -60,7 +60,7 @@ export default async function SyncPage({
   return (
     <>
       <PageHeader
-        eyebrow="Administración"
+        eyebrow="Negocio y Administración"
         title="Google Sheets"
         description="Una copia para ver y consultar. La app calcula todo y empuja los datos al Sheet; nada vuelve del Sheet a la app, y lo que se escriba allá se pisa en la próxima sincronización."
       />

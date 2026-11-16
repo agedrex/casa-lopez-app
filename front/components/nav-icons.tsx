@@ -23,7 +23,6 @@ export const ICONS: Record<string, string> = {
   "/productos/modelos": "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z",
   "/admin/usuarios":
     "M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 5.5a3 3 0 0 1 0 5.5M18 14.5c1.8.8 3 2.6 3 5.5",
-  "/productos/catalogos": "M4 6h16M4 12h16M4 18h10",
   "/admin/impuestos": "M19 5 5 19M7 9a2 2 0 1 0 0-.01M17 19a2 2 0 1 0 0-.01",
   "/admin/sync":
     "M20 11a8 8 0 0 0-14.5-3.5L4 9M4 5v4h4M4 13a8 8 0 0 0 14.5 3.5L20 15M20 19v-4h-4",

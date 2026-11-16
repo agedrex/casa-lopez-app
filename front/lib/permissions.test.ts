@@ -37,12 +37,10 @@ test("gerente opens Productos, Modelos and the scenario simulator", () => {
   }
 });
 
-test("gerente is refused Lotes, Formularios, Cueros, Proveedores, Talleres and every write form", () => {
+test("gerente is refused Lotes, Cueros, Proveedores, Talleres and every write form", () => {
   for (const path of [
     "/fabricacion",
     "/fabricacion/LOT-1",
-    "/formularios",
-    "/formularios/FCO-1",
     "/cueros",
     "/cueros/PZC-1",
     "/proveedores",
@@ -53,7 +51,6 @@ test("gerente is refused Lotes, Formularios, Cueros, Proveedores, Talleres and e
     "/talleres/nuevo",
     "/productos/nuevo",
     "/productos/modelos/nuevo",
-    "/productos/catalogos",
     "/materiales",
     "/costos-fijos",
     "/corte",
@@ -74,12 +71,10 @@ test("taller and users without a role are refused the scenario simulator; admin 
   assert.equal(canAccessPath("admin", "/escenarios"), true);
 });
 
-test("taller has one entry (Lotes): it opens lots, Formularios, Voz and the product sheet only", () => {
+test("taller has one entry (Lotes): it opens lots, Voz and the product sheet only", () => {
   for (const path of [
     "/fabricacion",
     "/fabricacion/LOT-1",
-    "/formularios",
-    "/formularios/FCO-1",
     "/voz",
     "/productos/PRD-1",
   ]) {
@@ -90,8 +85,9 @@ test("taller has one entry (Lotes): it opens lots, Formularios, Voz and the prod
     "/productos/modelos",
     "/productos/modelos/MOD-1",
     "/productos/nuevo",
-    "/productos/catalogos",
     "/fabricacion/nuevo",
+    "/formularios",
+    "/formularios/FCO-1",
     "/corte",
     "/cueros",
     "/cueros/PZC-1",
@@ -145,14 +141,14 @@ test("the gerente menu lists only Productos, Modelos and Escenarios, and each en
   );
 });
 
-test("the taller menu lists only Lotes and Formularios, and each entry is a path it can open", () => {
+test("the taller menu lists only Lotes, and each entry is a path it can open", () => {
   const hrefs = (groups: { items: { href: string }[] }[]) =>
     groups.flatMap((group) => group.items.map((item) => item.href));
   for (const groups of [
     desktopNavForRole(["taller"]),
     navForRole(["taller"]),
   ]) {
-    assert.deepEqual(hrefs(groups), ["/fabricacion", "/formularios"]);
+    assert.deepEqual(hrefs(groups), ["/fabricacion"]);
     for (const href of hrefs(groups)) {
       assert.equal(canAccessPath("taller", href), true, href);
     }
@@ -160,7 +156,7 @@ test("the taller menu lists only Lotes and Formularios, and each entry is a path
   const tabs = mobileTabs(navForRole(["taller"]), ["taller"]);
   assert.deepEqual(
     tabs.map((tab) => tab.href),
-    ["/fabricacion", "/formularios"],
+    ["/fabricacion"],
   );
 });
 
@@ -182,7 +178,6 @@ test("admin and gerente matrices hold; taller cannot reach admin-only product pa
   }
   for (const p of [
     "/fabricacion",
-    "/formularios",
     "/corte",
     "/cueros",
     "/materiales",
@@ -194,7 +189,6 @@ test("admin and gerente matrices hold; taller cannot reach admin-only product pa
   for (const p of [
     "/productos/modelos",
     "/productos/nuevo",
-    "/productos/catalogos",
     "/fabricacion/nuevo",
     "/materiales",
     "/talleres",
