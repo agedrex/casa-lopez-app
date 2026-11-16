@@ -12,11 +12,10 @@ import {
   thClass,
 } from "@/components/ui";
 import { apiGet } from "@/lib/api";
-import { formatArs, formatDate, formatQuantity } from "@/lib/format";
+import { formatArs } from "@/lib/format";
 import { canWrite } from "@/lib/permissions";
 import { requireSession } from "@/lib/session";
 import type { Catalogos, ProductoReventa } from "@/lib/types";
-import { formatMargenPct } from "./margen";
 import { ReventaGrid } from "./reventa-grid";
 
 export const metadata: Metadata = { title: "Reventa" };
@@ -31,11 +30,7 @@ export default async function ReventaPage() {
 
   return (
     <>
-      <PageHeader
-        eyebrow="Productos y costos"
-        title="Mercadería"
-        description="Acá se cargan los productos que la casa compra hechos, a qué precio se compran y a cuánto se van a vender. Editar un costo o un precio agrega una actualización al historial: nada se pisa. Las compras con unidades se registran en la ficha del producto."
-      />
+      <PageHeader eyebrow="Productos y costos" title="Mercadería" />
       {result.ok && catalogos && !catalogos.ok ? (
         <ErrorNotice message={catalogos.message} />
       ) : result.ok && catalogos?.ok ? (
@@ -74,15 +69,11 @@ export default async function ReventaPage() {
             <table className={tableClass}>
               <thead>
                 <tr>
+                  <th className={thClass}>ID</th>
                   <th className={thClass}>Producto</th>
-                  <th className={thClass}>Proveedor</th>
+                  <th className={thClass}>Categoría</th>
                   <th className={`${thClass} ${numClass}`}>Costo unitario</th>
-                  <th className={`${thClass} ${numClass}`}>Precio de venta</th>
-                  <th className={`${thClass} ${numClass}`}>Margen</th>
-                  <th className={thClass}>Última compra</th>
-                  <th className={`${thClass} ${numClass}`}>
-                    Unidades compradas
-                  </th>
+                  <th className={thClass}>Proveedor</th>
                 </tr>
               </thead>
               <tbody>
@@ -93,35 +84,20 @@ export default async function ReventaPage() {
                         href={`/reventa/${encodeURIComponent(producto.codigo)}`}
                         className="underline decoration-gold underline-offset-4"
                       >
-                        {producto.nombre}
-                      </Link>
-                      <span className="block text-xs text-muted">
                         {producto.codigo}
-                        {producto.categoria ? ` · ${producto.categoria}` : ""}
-                      </span>
+                      </Link>
+                    </td>
+                    <td className={tdClass}>
+                      {producto.nombre}
                       {producto.activo ? null : (
                         <Badge tone="warn">Archivado</Badge>
                       )}
                     </td>
-                    <td className={tdClass}>{producto.proveedor ?? "—"}</td>
+                    <td className={tdClass}>{producto.categoria ?? "—"}</td>
                     <td className={`${tdClass} ${numClass}`}>
                       {formatArs(producto.costo_unitario_ars)}
                     </td>
-                    <td className={`${tdClass} ${numClass}`}>
-                      {formatArs(producto.precio_venta_unitario_ars)}
-                    </td>
-                    <td className={`${tdClass} ${numClass}`}>
-                      {formatArs(producto.margen_unitario_ars)}
-                      <span className="block text-xs text-muted">
-                        {formatMargenPct(producto.margen_pct)}
-                      </span>
-                    </td>
-                    <td className={tdClass}>
-                      {formatDate(producto.ultima_compra)}
-                    </td>
-                    <td className={`${tdClass} ${numClass}`}>
-                      {formatQuantity(producto.unidades_compradas)}
-                    </td>
+                    <td className={tdClass}>{producto.proveedor ?? "—"}</td>
                   </tr>
                 ))}
               </tbody>
