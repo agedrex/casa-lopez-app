@@ -1132,6 +1132,25 @@ class ResumenGastosOut(Salida):
     margen_transferencia_pct: Decimal
 
 
+class CompraDelMesOut(Salida):
+    producto: str
+    producto_nombre: str
+    fecha: date
+    unidades: Decimal
+    costo_unitario_ars: Decimal
+    total_ars: Decimal
+    proveedor: str | None
+    nota: str | None
+
+
+class MercaderiaDelMesOut(Salida):
+    periodo: str
+    total_mercaderia: Decimal
+    total_gastos_tienda: Decimal
+    total_tienda: Decimal
+    compras: list[CompraDelMesOut]
+
+
 class TendenciaMesOut(Salida):
     periodo: str
     unidades: Decimal
@@ -1791,6 +1810,12 @@ def stock_derivado(session: Sesion):
 def margen_real(session: Sesion, periodo: Annotated[str | None, Query(pattern=PERIODO)] = None):
     """Real margin of the factory, the store and both together for the month (default: this month), from frozen costs."""
     return servicios.margen_real(session, periodo)
+
+
+@router.get("/costos-fijos/mercaderia", dependencies=LECTURA_ADMIN, response_model=MercaderiaDelMesOut)
+def mercaderia_del_mes(session: Sesion, periodo: Annotated[str, Query(pattern=PERIODO)] | None = None):
+    """Mercadería comprada en el mes (default: este mes), imputada a la tienda, y el total de costos de la tienda."""
+    return servicios.mercaderia_del_mes(session, periodo)
 
 
 @router.get("/costos-fijos/resumen", dependencies=LECTURA_ADMIN, response_model=ResumenGastosOut)

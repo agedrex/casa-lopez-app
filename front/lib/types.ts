@@ -425,6 +425,26 @@ export type CostosFijos = {
   gastos: Gasto[];
 };
 
+// GET /costos-fijos/mercaderia (MercaderiaDelMesOut): Mercadería comprada en el mes, imputada a la tienda.
+export type CompraDelMes = {
+  producto: string;
+  producto_nombre: string;
+  fecha: string;
+  unidades: string;
+  costo_unitario_ars: string;
+  total_ars: string;
+  proveedor: string | null;
+  nota: string | null;
+};
+
+export type MercaderiaDelMes = {
+  periodo: string;
+  total_mercaderia: string;
+  total_gastos_tienda: string;
+  total_tienda: string;
+  compras: CompraDelMes[];
+};
+
 export type PeriodosCostosFijos = {
   vigente: string | null;
   periodos: string[];

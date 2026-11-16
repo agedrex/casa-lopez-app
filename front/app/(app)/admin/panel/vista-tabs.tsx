@@ -6,20 +6,15 @@ export const VISTAS_DEL_PANEL = {
     title: "Costos",
     description: "Los costos del mes comparados con el anterior.",
   },
-  gastos: {
-    title: "Gastos del negocio",
-    description:
-      "Cuánto gasta el negocio por mes, venda o no venda, repartido entre la fábrica y la tienda.",
-  },
   fabrica: {
     title: "Fábrica",
     description:
-      "Cuánto tiene que vender la fábrica para cubrir sus costos fijos.",
+      "Los costos de la fábrica del mes, uno por línea, y cuánto tiene que vender para cubrirlos.",
   },
   tienda: {
     title: "Tienda",
     description:
-      "Cuánto tiene que vender la tienda para cubrir sus costos fijos.",
+      "Los costos de la tienda del mes, con la Mercadería que compró, y cuánto tiene que vender para cubrirlos.",
   },
 } as const;
 
