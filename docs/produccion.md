@@ -294,5 +294,5 @@ Este cambio **no** los resuelve; quedan como trabajo aparte.
 | 5 | Rotar la credencial de admin de staging | Pendiente de la auditoría; hacerlo antes de usar datos reales |
 | 6 | Observabilidad | Sin alertas ni monitoreo continuo: Railway no vigila el healthcheck después del deploy [V: doc de healthchecks] |
 | 7 | ~~CI sin Postgres~~ | **Resuelto** en el workflow (servicio `postgres:16` y `TEST_DATABASE_URL`); falta verlo correr en GitHub |
-| 8 | Cron del dólar | La actualización automática del dólar no está programada |
+| 8 | Cron del dólar | **Resuelto** (2026-11-15): servicios `dolar-cron` (staging) y `dolar-cron-production`, lunes a viernes 12:00 UTC; falta ver la primera corrida en production (ver `docs/dolar-bna.md`) |
 | 9 | Migrar `railway.toml` a Infrastructure as Code | Config as Code deja de leerse el **2026-12-01** [V]; mientras tanto el pre-deploy va también en el dashboard (sección 0) |

@@ -363,7 +363,7 @@ La lista completa de preguntas, ordenada por sección y prioridad, estaba en `pr
 - **10 Recotización:** la app marca RECOTIZAR si el costo se desvía más de `TOLERANCIA_DESVIO_PCT` (0,05) o el dólar se movió más de `VARIACION_DOLAR_RECOTIZAR_PCT` (0,10). Ambos están sembrados como "Propuesta, a confirmar con Robert" (SUPUESTO).
 - **Escenario CVU (multiproducto):** el aporte por unidad del escenario es precio neto - costo variable - gastos de venta (`GASTOS_VENTA_PCT` × precio neto, en 0) - IIBB (alícuota del impuesto activo con código `IIBB` y base VENTA × precio neto; sin alícuota cuenta 0 y avisa `IIBB_SIN_ALICUOTA`). También muestra el aporte por hora de taller cuando el modelo tiene `horas_de_confeccion` (SUPUESTO: validar con el contador y Robert). Sigue sin existir `venta`: el volumen es el que se escribe en el escenario.
 - **11 Impuestos:** existe la tabla `impuesto` (IVA 21 %, no es costo: supuesto del DER, a validar con el contador; IIBB y Ganancias sin alícuota) y `ARREGLOS_PCT` = 0.
-- **12 Dólar:** `tipo_cambio.tipo` (`VENDEDOR` o `COMPRADOR`); el botón y `backend.actualizar_dolar` cargan el vendedor del BNA (SUPUESTO: validar con Gerardo, ver `docs/dolar-bna.md`). El cron todavía no está configurado.
+- **12 Dólar:** `tipo_cambio.tipo` (`VENDEDOR` o `COMPRADOR`); el botón y `backend.actualizar_dolar` cargan el vendedor del BNA (SUPUESTO: validar con Gerardo, ver `docs/dolar-bna.md`). El cron corre en staging (`dolar-cron`) y production (`dolar-cron-production`), de lunes a viernes 12:00 UTC; falta ver su primera corrida en production.
 - **13 IVA en precios de compra:** existe `precio_material.iva_incluido` (por defecto `false`); sigue sin saberse si los precios del Excel lo incluyen.
 - **14 Presentación de compra:** el modelo v3 no guarda plancha ni rollo; solo precio por unidad de consumo.
 
@@ -417,7 +417,7 @@ Detalle y comandos: `docs/produccion.md` (promoción, rollback y backups), `docs
 - **Guardas de los scripts:** `importar_productos.py` (`--entorno` + `--confirmar`, ver sección 7), `cargar_ejemplo.py` y `verificar_db` solo corren en staging o local [V: los tres scripts]. Los scripts de staging nunca se apuntan a production.
 - **Roles en la app:** `admin`, `gerente` y `taller` (sección 5.1). El `taller` ve la lista de productos con costos, no la ficha.
 - **Estado de production:** SUPUESTO. El equipo dice que production corre el modelo v3; `docs/produccion.md` (2026-11-10) daba la base en `0004_semillas_v3`, informado por Agustin y sin verificar, y el `README.md` decía que todavía no había un deploy exitoso. Antes de apoyarse en esto: `railway deployment list -e production -s backend` y `alembic current` dentro del contenedor.
-- **Pendientes de la auditoría:** healthcheck real que mire la base, `/db/estado` y `/api/demo/*` públicos, cabeceras de seguridad, CI con Postgres, rotar la credencial de admin de staging, observabilidad, cron del dólar y pasar `railway.toml` a Infrastructure as Code (`docs/produccion.md` sección 8; el estado vivo está en `odd/tasks/produccion-listo.md`).
+- **Pendientes de la auditoría:** healthcheck real que mire la base, `/db/estado` y `/api/demo/*` públicos, cabeceras de seguridad, CI con Postgres, rotar la credencial de admin de staging, observabilidad, pasar `railway.toml` a Infrastructure as Code (`docs/produccion.md` sección 8; el estado vivo está en `odd/tasks/produccion-listo.md`).
 
 ---
 

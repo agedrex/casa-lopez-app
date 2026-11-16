@@ -47,12 +47,18 @@ uv run python -m backend.actualizar_dolar
   distinta, base inaccesible). El mensaje nunca incluye la página ni la conexión.
 - Habla directo con la base: no necesita usuario ni token de la API.
 
-## Programarlo (todavía NO está configurado)
+## Programarlo
 
-Se puede agendar con un **cron de Railway** que corra ese mismo comando, por ejemplo los días
-hábiles a las 10:30 y a las 16:00 hs de Argentina (el banco actualiza durante el día; correr
-dos veces es seguro porque no duplica). **Hoy no hay ningún cron creado**: hasta que se
-configure, el dólar se actualiza al abrir el Panel (ver arriba).
+Hay un **cron de Railway** que corre ese mismo comando: servicio `dolar-cron` (raíz `/backend`,
+comando `uv run python -m backend.actualizar_dolar`, sin reintentos), de lunes a viernes a las
+`0 12 * * 1-5` UTC (09:00 de Argentina). Correr el comando dos veces es seguro porque no duplica.
+Existe en los dos ambientes (creado el 2026-11-15): `dolar-cron` en `staging` y
+`dolar-cron-production` en `production` (el nombre de servicio es único en el proyecto). Los dos
+usan `DATABASE_URL` del Postgres de su ambiente (`${{Postgres.DATABASE_URL}}` y
+`${{Postgres-rZDV.DATABASE_URL}}`). El de staging se probó a mano en el contenedor del backend;
+el de production desplegó bien (SUCCESS) pero su primera corrida programada todavía no se vio:
+mirar sus logs después del primer día hábil a las 12:00 UTC. El Panel sigue trayendo el dólar al
+abrirse si el cron falla.
 
 ## Cuándo se rompe
 
