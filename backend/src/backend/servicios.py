@@ -2924,6 +2924,34 @@ def modelos_para_exportar(session: Session) -> list[dict]:
     } for m, categoria, forro_codigo in filas]
 
 
+def mercaderia_del_mes(session: Session, periodo: str | None = None) -> dict:
+    """Mercadería comprada en el mes, imputada a la TIENDA (la mercadería se compra directamente para la tienda).
+
+    Cuenta cada compra con unidades (`unidades × costo_unitario_ars`) de la fecha dentro del mes; una fila sin unidades
+    es un cambio de precio de la grilla, no una compra. No toca `gasto_periodo`: los totales de costos fijos de la
+    fábrica y la tienda siguen siendo los de siempre y el total de la tienda los suma acá, nunca la pantalla.
+    SUPUESTO: validar con Robert (la compra se imputa al mes de su fecha; sin porcentajes ni pase de lotes, ver S9).
+    """
+    periodo = periodo or mes_de(date.today())
+    desde, hasta = _rango_del_mes(periodo)
+    filas = session.execute(
+        select(CompraReventa, ProductoReventa.codigo, ProductoReventa.nombre)
+        .join(ProductoReventa, ProductoReventa.id == CompraReventa.producto_reventa_id)
+        .where(CompraReventa.unidades.is_not(None), CompraReventa.fecha >= desde, CompraReventa.fecha < hasta)
+        .order_by(CompraReventa.fecha.desc(), CompraReventa.id.desc())).all()
+    compras = [{
+        "producto": codigo, "producto_nombre": nombre, "fecha": c.fecha, "unidades": c.unidades,
+        "costo_unitario_ars": c.costo_unitario_ars, "total_ars": c.unidades * c.costo_unitario_ars,
+        "proveedor": c.proveedor, "nota": c.nota,
+    } for c, codigo, nombre in filas]
+    total_mercaderia = sum((c["total_ars"] for c in compras), ZERO)
+    total_gastos_tienda = costos_fijos(session, periodo)["total_tienda"]
+    return {
+        "periodo": periodo, "total_mercaderia": total_mercaderia, "total_gastos_tienda": total_gastos_tienda,
+        "total_tienda": total_gastos_tienda + total_mercaderia, "compras": compras,
+    }
+
+
 def costos_fijos_de_todos_los_periodos(session: Session) -> list[dict]:
     """`costos_fijos` of every period that has rows (newest first), each with its factory / store totals."""
     return [costos_fijos(session, periodo) for periodo in periodos_de_costos_fijos(session)["periodos"]]
