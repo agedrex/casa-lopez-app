@@ -54,15 +54,19 @@ test("the gerente opens none of the admin only pages under /productos", () => {
   }
 });
 
-// What the taller opens: the lots (list and detail), Voz and the product sheet. Nothing else.
+// What the taller opens: the lots (list and detail), Voz, the product sheet and the three screens of the new model flow
+// (modelo-taller-foto T4: my models, new model and the sheet of a model). Nothing else.
 const RUTAS_DEL_TALLER = [
   "/fabricacion",
   "/fabricacion/X-1",
   "/productos/X-1",
+  "/taller/modelos",
+  "/taller/modelos/X-1",
+  "/taller/modelos/nuevo",
   "/voz",
 ];
 
-test("the pages the taller opens are exactly Lotes, Voz and the product sheet", () => {
+test("the pages the taller opens are exactly Lotes, Voz, the product sheet and the model screens", () => {
   const abiertas = appRoutes().filter((route) =>
     canAccessPath("taller", route),
   );

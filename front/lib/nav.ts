@@ -52,6 +52,13 @@ export const NAV_ITEMS: NavGroup[] = [
     title: "3 · Producción",
     items: [
       { href: "/fabricacion", label: "Lotes" },
+      {
+        href: "/taller/modelos",
+        label: "Hojas de consumos",
+        shortLabel: "Hojas",
+        icon: "/costos-fijos",
+        adminOnly: true,
+      },
       { href: "/talleres", label: "Talleres" },
     ],
   },
@@ -72,8 +79,8 @@ export const NAV_ITEMS: NavGroup[] = [
 const MOBILE_TAB_HREFS: Record<Role, readonly string[]> = {
   admin: ["/admin/panel", "/productos", "/materiales", "/fabricacion"],
   gerente: ["/productos", "/escenarios"],
-  // Lotes (the single entry); Voz stays one tap away in the "+" button's quick actions.
-  taller: ["/fabricacion"],
+  // Lotes, the new model and my models; Voz stays one tap away in the "+" button's quick actions.
+  taller: ["/fabricacion", "/taller/modelos/nuevo", "/taller/modelos"],
 };
 
 // Menus of the restricted roles. They match the paths of ROLE_ACCESS in permissions.ts.
@@ -92,11 +99,26 @@ const GERENTE_NAV: NavGroup[] = [
 ];
 
 // Voz is not listed: on desktop it is the microphone button of the header, on mobile the "+" quick action.
-// One entry (Lotes). The product sheet is opened from a lot.
+// Lotes (the product sheet is opened from a lot) and the two entries of the new model flow.
 const TALLER_NAV: NavGroup[] = [
   {
     title: "Producción",
     items: [{ href: "/fabricacion", label: "Lotes" }],
+  },
+  {
+    title: "Modelos",
+    items: [
+      {
+        href: "/taller/modelos/nuevo",
+        label: "Nuevo modelo",
+        icon: "box",
+      },
+      {
+        href: "/taller/modelos",
+        label: "Mis modelos",
+        icon: "/productos/modelos",
+      },
+    ],
   },
 ];
 
@@ -121,6 +143,12 @@ const DESKTOP_NAV: NavGroup[] = [
       { href: "/productos", label: "Productos" },
       { href: "/productos/modelos", label: "Modelos", adminOnly: true },
       { href: "/fabricacion", label: "Lotes" },
+      {
+        href: "/taller/modelos",
+        label: "Hojas de consumos",
+        icon: "/costos-fijos",
+        adminOnly: true,
+      },
     ],
   },
   {

@@ -93,6 +93,15 @@ export function canUseVoice(value: string | null | undefined): boolean {
 }
 
 /**
+ * The consumption sheet of a new model (the screens under /taller/modelos): admin and taller work on it, the taller fills
+ * it with real data and the admin reviews it. The gerente never opens it. The backend checks it again (403).
+ */
+export function canFillFormularios(value: string | null | undefined): boolean {
+  const roles = parseRoles(value);
+  return roles.includes("admin") || roles.includes("taller");
+}
+
+/**
  * Where each role lands and which paths it may open. `null` paths = everything. `paths` open a
  * route and everything below it; `exact` open only that route. `denyExact` and `denyPrefix` carve
  * holes in `paths` (taller opens the product SHEET, /productos/<code>, but not the product LIST,
@@ -116,13 +125,21 @@ const ROLE_ACCESS: Record<
     home: "/productos",
     paths: ["/productos", "/escenarios", "/api/modelos"],
   },
-  // Taller has ONE entry: the lots list (what to make and how many). From each product of a lot it
-  // opens the product sheet (materials and recipe, no prices); Voz is a header button (not in the
-  // menu). The product LIST, Modelos, Materiales, Corte and Cueros are closed to it
+  // Taller opens the lots list (what to make and how many) and, from each product of a lot, the
+  // product sheet (materials and recipe, no prices); Voz is a header button (not in the menu). Since
+  // modelo-taller-foto T4 it also creates a model and fills its consumption sheet: /taller/modelos
+  // (my models), /taller/modelos/nuevo and /taller/modelos/<FCO-nnnn>. The product LIST, Modelos
+  // (the admin ones under /productos), Materiales, Corte and Cueros stay closed to it
   // (demo-staging-taller-grilla S2).
   taller: {
     home: "/fabricacion",
-    paths: ["/fabricacion", "/voz", "/productos", "/api/modelos"],
+    paths: [
+      "/fabricacion",
+      "/voz",
+      "/productos",
+      "/taller/modelos",
+      "/api/modelos",
+    ],
     denyExact: ["/productos"],
     denyPrefix: ["/productos/modelos"],
   },

@@ -14,6 +14,7 @@ import hashlib
 from sqlalchemy import select
 from sqlalchemy.orm import Session, undefer
 
+from backend.formulario import comprobar_foto_de_modelo
 from backend.models import FOTO_MIMES, Modelo, ModeloFoto
 from backend.proveedores import ArchivoMuyGrande, detect_mime
 from backend.servicios import DatosInvalidos, NoEncontrado, _insertar, _siguiente_numero
@@ -36,12 +37,16 @@ def validate_photo(content: bytes) -> tuple[str, str]:
     return mime, hashlib.sha256(content).hexdigest()
 
 
-def add_photo(session: Session, codigo: str, *, contenido: bytes, subido_por: str) -> dict:
-    """Stores a new photo for the model (a new row, the older ones are kept) and answers its data, without the bytes."""
+def add_photo(session: Session, codigo: str, *, contenido: bytes, subido_por: str, roles: frozenset[str]) -> dict:
+    """Stores a new photo for the model (a new row, the older ones are kept) and answers its data, without the bytes.
+
+    `roles` decides who may: admin any model; a taller only a model with a sheet in ENVIADO or created by `subido_por`
+    (`formulario.comprobar_foto_de_modelo`, 403 otherwise)."""
     mime, digest = validate_photo(contenido)
     modelo = session.scalar(select(Modelo).where(Modelo.codigo == codigo))
     if modelo is None:
         raise NoEncontrado(f"No existe el modelo {codigo}.")
+    comprobar_foto_de_modelo(session, modelo.id, roles=roles, quien=subido_por)
     fila = ModeloFoto(
         codigo=f"MFO-{_siguiente_numero(session, ModeloFoto.codigo, 'MFO'):04d}", modelo_id=modelo.id,
         contenido=contenido, tipo_mime=mime, sha256=digest, tamano_bytes=len(contenido), subido_por=subido_por,

@@ -1469,10 +1469,10 @@ def foto_de_modelo(codigo: str, session: Sesion):
 def subir_foto_de_modelo(
     codigo: str, session: Sesion, usuario: Annotated[Usuario, Depends(FORMULARIO_TRABAJAR)], archivo: Annotated[UploadFile, File()],
 ):
-    """Admin and taller (the same pair that fills the consumption sheet). Adds a new photo: JPEG, PNG or WebP by its bytes,
-    5 MB at most; the previous ones are kept and the newest is the current one."""
+    """Admin (any model) and taller (only a model whose sheet is ENVIADO or that it created: 403 otherwise). Adds a new photo:
+    JPEG, PNG or WebP by its bytes, 5 MB at most; the previous ones are kept and the newest is the current one."""
     contenido = archivo.file.read(modelos_foto.MAX_FOTO_BYTES + 1)
-    return modelos_foto.add_photo(session, codigo, contenido=contenido, subido_por=usuario.id)
+    return modelos_foto.add_photo(session, codigo, contenido=contenido, subido_por=usuario.id, roles=usuario.roles)
 
 
 @router.get("/materiales", dependencies=LECTURA_GENERAL, response_model=list[MaterialOut])
@@ -2591,9 +2591,11 @@ class ProductoNuevoOut(BaseModel):
 
 
 @router.post("/productos/nuevo", response_model=ProductoNuevoOut, status_code=201)
-def crear_producto_solo_con_nombre(cuerpo: ProductoNuevoIn, session: Sesion, usuario: SoloAdmin):
+def crear_producto_solo_con_nombre(cuerpo: ProductoNuevoIn, session: Sesion, usuario: FormularioTrabajador):
     """New model (name, category, size and notes; no consumption): the app makes the model code and its consumption form,
-    already sent to the workshop, which reads the notes there. The product comes after the admin validates the form."""
+    already sent to the workshop, which reads the notes there. Admin and taller may create it (the taller then fills the
+    sheet with real data; the form remembers who created it). The product comes after the admin validates the form.
+    The category must already exist: only the admin creates categories (`POST /categorias`)."""
     return formulario.alta_rapida(session, quien=usuario.id, **cuerpo.model_dump())
 
 
@@ -2603,15 +2605,15 @@ def listar_formularios(
     estado: Literal[*FORM_STATES] | None = None, producto: Annotated[str | None, Query(max_length=40)] = None,
     modelo: Annotated[str | None, Query(max_length=40)] = None,
 ):
-    """Newest first. A taller only gets the ENVIADO and COMPLETADO ones. `producto` (PRD-NNNN) / `modelo` (MOD-NNNN) keep the forms of that product / model."""
+    """Newest first. A taller gets the ENVIADO and COMPLETADO ones plus the ones it created. `producto` (PRD-NNNN) / `modelo` (MOD-NNNN) keep the forms of that product / model."""
     return formulario.listar_formularios(
-        session, q=q, estado=estado, producto=producto, modelo=modelo, roles=usuario.roles)
+        session, q=q, estado=estado, producto=producto, modelo=modelo, roles=usuario.roles, quien=usuario.id)
 
 
 @router.get("/formularios/{codigo}", response_model=FormularioOut)
 def obtener_formulario(codigo: str, session: Sesion, usuario: FormularioLector):
-    """404 when it does not exist or the caller may not see it (a taller never sees BORRADOR or VALIDADO)."""
-    return formulario.obtener_formulario(session, codigo, usuario.roles)
+    """404 when it does not exist or the caller may not see it (a taller never sees the BORRADOR or VALIDADO of others)."""
+    return formulario.obtener_formulario(session, codigo, usuario.roles, quien=usuario.id)
 
 
 @router.put("/formularios/{codigo}", response_model=FormularioOut)
@@ -2619,7 +2621,7 @@ def guardar_formulario(codigo: str, cuerpo: FormularioGuardarIn, session: Sesion
     """Replaces articulo, nota and the full set of rows. 409 if VALIDADO; a taller only edits rows, only while ENVIADO."""
     return formulario.guardar_formulario(
         session, codigo, articulo=cuerpo.articulo, nota=cuerpo.nota,
-        lineas=[linea.model_dump() for linea in cuerpo.lineas], roles=usuario.roles)
+        lineas=[linea.model_dump() for linea in cuerpo.lineas], roles=usuario.roles, quien=usuario.id)
 
 
 @router.post("/formularios/{codigo}/enviar", response_model=FormularioOut)

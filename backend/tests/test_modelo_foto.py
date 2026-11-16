@@ -58,7 +58,7 @@ def _subir(cliente, contenido=PNG, nombre="foto.png", tipo="image/png"):
 @pytest.mark.parametrize("contenido, mime", [(PNG, "image/png"), (JPEG, "image/jpeg"), (WEBP, "image/webp")])
 def test_a_valid_image_is_stored_with_the_type_its_bytes_say(contenido, mime):
     session = _sesion(ultimo=3)
-    resultado = modelos_foto.add_photo(session, "MOD-0001", contenido=contenido, subido_por="u1")
+    resultado = modelos_foto.add_photo(session, "MOD-0001", contenido=contenido, subido_por="u1", roles=frozenset({"admin"}))
     fila = session.add.call_args.args[0]
     assert isinstance(fila, ModeloFoto)
     assert (fila.codigo, fila.modelo_id, fila.tipo_mime, fila.tamano_bytes, fila.subido_por) == (
@@ -75,7 +75,7 @@ def test_a_valid_image_is_stored_with_the_type_its_bytes_say(contenido, mime):
 def test_anything_that_is_not_jpeg_png_or_webp_is_refused_and_nothing_is_stored(contenido, mensaje):
     session = _sesion()
     with pytest.raises(servicios.DatosInvalidos) as error:
-        modelos_foto.add_photo(session, "MOD-0001", contenido=contenido, subido_por="u1")
+        modelos_foto.add_photo(session, "MOD-0001", contenido=contenido, subido_por="u1", roles=frozenset({"admin"}))
     assert str(error.value) == mensaje
     session.add.assert_not_called()
     session.commit.assert_not_called()
@@ -100,7 +100,7 @@ def test_a_photo_over_the_limit_is_refused_with_413_and_nothing_is_stored():
 def test_a_photo_exactly_at_the_limit_is_accepted():
     justo = PNG + b"\x00" * (modelos_foto.MAX_FOTO_BYTES - len(PNG))
     session = _sesion()
-    modelos_foto.add_photo(session, "MOD-0001", contenido=justo, subido_por="u1")
+    modelos_foto.add_photo(session, "MOD-0001", contenido=justo, subido_por="u1", roles=frozenset({"admin"}))
     session.add.assert_called_once()
 
 
@@ -111,20 +111,20 @@ def test_the_limit_is_5_mb_and_never_above_the_one_of_the_supplier_documents():
 def test_a_photo_for_a_model_that_does_not_exist_is_a_404_and_nothing_is_stored():
     session = _sesion(modelo=None)
     with pytest.raises(servicios.NoEncontrado):
-        modelos_foto.add_photo(session, "MOD-9999", contenido=PNG, subido_por="u1")
+        modelos_foto.add_photo(session, "MOD-9999", contenido=PNG, subido_por="u1", roles=frozenset({"admin"}))
     session.add.assert_not_called()
 
 
 def test_the_first_photo_of_the_table_is_mfo_0001():
     session = _sesion(ultimo=None)
-    assert modelos_foto.add_photo(session, "MOD-0001", contenido=PNG, subido_por="u1")["codigo"] == "MFO-0001"
+    assert modelos_foto.add_photo(session, "MOD-0001", contenido=PNG, subido_por="u1", roles=frozenset({"admin"}))["codigo"] == "MFO-0001"
 
 
 def test_a_new_upload_is_a_new_row_and_never_updates_or_deletes_the_previous_one():
     session = MagicMock()
     for numero in (None, 1):
         session.scalar.side_effect = [SimpleNamespace(id=7, codigo="MOD-0001"), numero]
-        modelos_foto.add_photo(session, "MOD-0001", contenido=PNG, subido_por="u1")
+        modelos_foto.add_photo(session, "MOD-0001", contenido=PNG, subido_por="u1", roles=frozenset({"admin"}))
     assert [c.args[0].codigo for c in session.add.call_args_list] == ["MFO-0001", "MFO-0002"]
     session.delete.assert_not_called()
     session.merge.assert_not_called()
@@ -154,7 +154,7 @@ def test_admin_and_taller_can_upload(monkeypatch, role):
     monkeypatch.setattr(modelos_foto, "add_photo", lambda session, codigo, **k: vistos.update(codigo=codigo, **k) or RESPUESTA)
     respuesta = _subir(_cliente(role))
     assert respuesta.status_code == 201 and respuesta.json()["codigo"] == "MFO-0001"
-    assert vistos == {"codigo": "MOD-0001", "contenido": PNG, "subido_por": "u1"}
+    assert vistos == {"codigo": "MOD-0001", "contenido": PNG, "subido_por": "u1", "roles": frozenset({role})}
 
 
 @pytest.mark.parametrize("role", ["gerente", "consulta", "otro", None])

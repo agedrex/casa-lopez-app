@@ -1181,3 +1181,45 @@ export type MargenReal = {
   // False when the month cannot be trusted (see `avisos`).
   confiable: boolean;
 };
+
+// Consumption sheet of a new model (backend formulario.py). Quantities are NUMERIC strings; null = not filled in yet.
+export type FormularioEstado =
+  | "BORRADOR"
+  | "ENVIADO"
+  | "COMPLETADO"
+  | "VALIDADO";
+
+export type FormularioResumen = {
+  codigo: string;
+  articulo: string;
+  estado: FormularioEstado;
+  producto: string | null;
+  modelo: string | null;
+  taller: string | null;
+  creado_por: string;
+  created_at: string;
+  enviado_en: string | null;
+  completado_en: string | null;
+  validado_en: string | null;
+};
+
+export type FormularioLinea = {
+  seccion: "CONSUMO" | "HERRAJE";
+  orden: number;
+  nombre: string;
+  cantidad: string | null;
+  comentario: string | null;
+};
+
+export type FormularioDetalle = FormularioResumen & {
+  nota: string | null;
+  comentario_revision: string | null;
+  completado_por: string | null;
+  validado_por: string | null;
+  lineas: FormularioLinea[];
+  /** Only the answer of "validar": rows with a quantity that matched no material. */
+  sin_material?: string[] | null;
+};
+
+/** What `POST /productos/nuevo` answers: the codes of the new model and of its sheet. */
+export type AltaModelo = { modelo: string; formulario: string; nombre: string };

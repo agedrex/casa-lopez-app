@@ -9,9 +9,11 @@ import {
   SectionTitle,
 } from "@/components/ui";
 import { apiGet } from "@/lib/api";
+import { formatDate } from "@/lib/format";
+import { ESTADO_TONE, estadoLabel } from "@/lib/formularios";
 import { originLabel, sizeLabel } from "@/lib/modelos";
 import { requireRole } from "@/lib/session";
-import type { ModeloDetalle } from "@/lib/types";
+import type { FormularioResumen, ModeloDetalle } from "@/lib/types";
 import { ConsumosTable, EditarConsumos, loadForros } from "../modelo-consumos";
 import { FotoModelo } from "./foto-modelo";
 import { ValidadoForm } from "./modelo-forms";
@@ -54,9 +56,12 @@ export default async function ModeloPage({
       </>
     );
   }
-  const [result, forros] = await Promise.all([
+  const [result, forros, hojas] = await Promise.all([
     apiGet<ModeloDetalle>(`/modelos/${encodeURIComponent(code)}`),
     loadForros(),
+    apiGet<FormularioResumen[]>(
+      `/formularios?modelo=${encodeURIComponent(code)}`,
+    ),
   ]);
   if (!result.ok) {
     return (
@@ -151,6 +156,43 @@ export default async function ModeloPage({
               tieneFoto={modelo.tiene_foto}
               puedeSubir
             />
+          </Card>
+        </section>
+        <section>
+          <SectionTitle>Hoja de consumos del taller</SectionTitle>
+          <Card>
+            {hojas.ok ? (
+              hojas.data.length === 0 ? (
+                <p className="text-sm text-muted">
+                  Este modelo no tiene hoja de consumos (los modelos del Excel
+                  viejo traen sus consumos cargados).
+                </p>
+              ) : (
+                <ul className="divide-y divide-line/70 text-sm">
+                  {hojas.data.map((hoja) => (
+                    <li
+                      key={hoja.codigo}
+                      className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2"
+                    >
+                      <Link
+                        href={`/taller/modelos/${encodeURIComponent(hoja.codigo)}`}
+                        className="tabular-nums underline decoration-gold underline-offset-4"
+                      >
+                        {hoja.codigo}
+                      </Link>
+                      <Badge tone={ESTADO_TONE[hoja.estado]}>
+                        {estadoLabel(hoja.estado)}
+                      </Badge>
+                      <span className="text-muted">
+                        Creada el {formatDate(hoja.created_at)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )
+            ) : (
+              <ErrorNotice message={hojas.message} />
+            )}
           </Card>
         </section>
         <section>

@@ -16,14 +16,16 @@ State machine (`ACCIONES`):
 
 Who edits what (`comprobar_edicion`): the admin edits articulo, nota and the rows while BORRADOR / ENVIADO / COMPLETADO.
 A `taller` user edits ONLY the rows (add, remove, rename, quantities, comments) and ONLY while ENVIADO. Who sees what
-(`es_visible`): admin sees every form; `taller` sees only ENVIADO and COMPLETADO; `gerente` sees none (the module is closed to it).
-SUPUESTO: validar. The `taller` role is not tied to one specific workshop, so any taller user sees every ENVIADO /
+(`es_visible`): admin sees every form; `taller` sees ENVIADO and COMPLETADO ones plus every form it created itself (in any
+state, so it can follow its new model up to VALIDADO; it still edits only while ENVIADO); `gerente` sees none (the module is
+closed to it). SUPUESTO: validar. The `taller` role is not tied to one specific workshop, so any taller user sees every ENVIADO /
 COMPLETADO form; `formulario_consumo.taller_id` is informative only.
 
 HTTP (routes in api.py; errors are `{"detail": <Spanish message>}`: 403 not allowed, 404 missing or not visible,
 409 invalid transition or immutable form, 422 invalid data):
     POST /formularios                       admin   {articulo, taller?, producto?, nota?} -> BORRADOR with the preloaded rows
-    GET  /formularios?q=&estado=&producto=&modelo=  admin, taller (taller: only ENVIADO / COMPLETADO); producto = PRD-NNNN, modelo = MOD-NNNN
+    POST /productos/nuevo                   admin, taller   {nombre, categoria, tamano?, nota?} -> new model + its sheet already ENVIADO
+    GET  /formularios?q=&estado=&producto=&modelo=  admin, taller (taller: ENVIADO / COMPLETADO and its own); producto = PRD-NNNN, modelo = MOD-NNNN
     GET  /formularios/{codigo}              same visibility; 404 otherwise
     PUT  /formularios/{codigo}              admin or taller; {articulo, nota?, lineas: [{seccion, nombre, cantidad?, comentario?}]}
                                             replaces articulo / nota and the FULL set of rows (list order = row order
@@ -99,11 +101,12 @@ def lineas_precargadas() -> list[dict]:
     ]
 
 
-def es_visible(estado: str, roles: frozenset[str]) -> bool:
-    """Admin sees every form; taller only the ones sent to it (ENVIADO) or completed (COMPLETADO); any other role none."""
+def es_visible(estado: str, roles: frozenset[str], propio: bool = False) -> bool:
+    """Admin sees every form; taller the ones sent to it (ENVIADO), completed (COMPLETADO) or created by itself (`propio`, any
+    state); any other role none."""
     if ADMIN in roles:
         return True
-    return TALLER in roles and estado in ESTADOS_VISIBLES_PARA_TALLER
+    return TALLER in roles and (propio or estado in ESTADOS_VISIBLES_PARA_TALLER)
 
 
 def comprobar_edicion(estado: str, roles: frozenset[str]) -> bool:
@@ -202,31 +205,35 @@ def _consulta_base():
     )
 
 
-def _cargar(session: Session, codigo: str, roles: frozenset[str], *, bloquear: bool = False):
-    """The form and its product / workshop codes; 404 when it does not exist OR the caller may not see it."""
+def _cargar(session: Session, codigo: str, roles: frozenset[str], *, quien: str | None = None, bloquear: bool = False):
+    """The form and its product / workshop / model codes; 404 when it does not exist OR the caller may not see it.
+
+    `quien` is the user id: a taller also sees the forms it created itself."""
     consulta = _consulta_base().where(FormularioConsumo.codigo == codigo)
     if bloquear:
         consulta = consulta.with_for_update(of=FormularioConsumo)  # two saves / transitions of one form do not interleave
     encontrado = session.execute(consulta).one_or_none()
-    if encontrado is None or not es_visible(encontrado[0].estado, roles):
+    if encontrado is None or not es_visible(encontrado[0].estado, roles, propio=quien is not None and encontrado[0].creado_por == quien):
         raise NoEncontrado(f"No existe el formulario {codigo}.")
     return encontrado
 
 
 def listar_formularios(
     session: Session, *, q: str | None, estado: str | None, roles: frozenset[str], producto: str | None = None,
-    modelo: str | None = None,
+    modelo: str | None = None, quien: str | None = None,
 ) -> list[dict]:
     """Newest first. Every word of `q` must appear in the code, the article, the product code or the workshop name.
 
     `producto` (a PRD-NNNN code) keeps only the forms linked to that product: the product sheet uses it to show its validated form.
     `modelo` (a MOD-NNNN code) does the same for a model: its sheet shows the state of the form the workshop got.
+    `quien` (the user id) adds to what a taller sees the forms it created, in any state.
     """
     if estado is not None and estado not in FORM_STATES:
         raise DatosInvalidos(f"El estado tiene que ser uno de: {', '.join(FORM_STATES)}.")
     consulta = _consulta_base().order_by(FormularioConsumo.id.desc())
     if ADMIN not in roles:
-        consulta = consulta.where(FormularioConsumo.estado.in_(sorted(ESTADOS_VISIBLES_PARA_TALLER)))
+        visibles = FormularioConsumo.estado.in_(sorted(ESTADOS_VISIBLES_PARA_TALLER))
+        consulta = consulta.where(or_(visibles, FormularioConsumo.creado_por == quien) if quien is not None else visibles)
     if estado:
         consulta = consulta.where(FormularioConsumo.estado == estado)
     if producto:
@@ -240,8 +247,8 @@ def listar_formularios(
     return [_resumen(*fila) for fila in session.execute(consulta).all()]
 
 
-def obtener_formulario(session: Session, codigo: str, roles: frozenset[str]) -> dict:
-    return _detalle(session, *_cargar(session, codigo, roles))
+def obtener_formulario(session: Session, codigo: str, roles: frozenset[str], quien: str | None = None) -> dict:
+    return _detalle(session, *_cargar(session, codigo, roles, quien=quien))
 
 
 # --- Writes -----------------------------------------------------------------------------------------------------------
@@ -269,6 +276,20 @@ def crear_formulario(
         nota=nota, quien=quien, lineas=lineas_precargadas())
     session.commit()
     return _detalle(session, fila, producto, taller)
+
+
+def comprobar_foto_de_modelo(session: Session, modelo_id: int, *, roles: frozenset[str], quien: str) -> None:
+    """Who may add a photo to a model: admin always; a taller only when the model has a sheet that is ENVIADO (the one it is
+    asked to fill) or that this same user created (so it can add the photo of the model it just made). SUPUESTO: validar."""
+    if ADMIN in roles:
+        return
+    permitido = TALLER in roles and session.scalar(
+        select(FormularioConsumo.id).where(
+            FormularioConsumo.modelo_id == modelo_id,
+            or_(FormularioConsumo.estado == ENVIADO, FormularioConsumo.creado_por == quien),
+        ).limit(1))
+    if not permitido:
+        raise SinPermiso("No tenés permiso para subir la foto de este modelo.")
 
 
 # Rows of the form whose measure goes to the model when the admin validates (m2 per unit). FORRO is not copied: the model also
@@ -409,9 +430,10 @@ def _aplicar_medidas(session: Session, fila: FormularioConsumo) -> list[str] | N
 
 def guardar_formulario(
     session: Session, codigo: str, *, articulo: str, nota: str | None, lineas: list[dict], roles: frozenset[str],
+    quien: str | None = None,
 ) -> dict:
     """Replace articulo / nota and the FULL set of rows. A taller user may change only the rows (it sends articulo / nota as they are)."""
-    fila, producto, taller, modelo = _cargar(session, codigo, roles, bloquear=True)
+    fila, producto, taller, modelo = _cargar(session, codigo, roles, quien=quien, bloquear=True)
     solo_lineas = comprobar_edicion(fila.estado, roles)
     nuevas = armar_lineas(lineas)
     articulo = _articulo(articulo)
@@ -433,7 +455,7 @@ def cambiar_estado(
 ) -> dict:
     """Apply one action of `ACCIONES` and stamp who / when. `devolver` needs a non-empty comment."""
     ahora = ahora or datetime.now(timezone.utc)
-    fila, producto, taller, modelo = _cargar(session, codigo, roles, bloquear=True)
+    fila, producto, taller, modelo = _cargar(session, codigo, roles, quien=quien, bloquear=True)
     nuevo = siguiente_estado(accion, fila.estado, roles)
     sin_material = None
     if accion == "devolver":

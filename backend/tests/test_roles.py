@@ -123,8 +123,10 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
     # rows and complete, the rest is admin only. The gerente has no access to the module.
     ("GET", "/formularios"): CORTE, ("GET", "/formularios/{codigo}"): CORTE,
     ("PUT", "/formularios/{codigo}"): CORTE, ("POST", "/formularios/{codigo}/completar"): CORTE,
+    # A new model: admin and taller (the taller creates it and fills its sheet, the admin validates). Categories stay admin only.
+    ("POST", "/productos/nuevo"): CORTE,
     **{("POST", ruta): ADMIN for ruta in (
-        "/productos/nuevo", "/formularios", "/formularios/{codigo}/enviar", "/formularios/{codigo}/devolver", "/formularios/{codigo}/validar",
+        "/formularios", "/formularios/{codigo}/enviar", "/formularios/{codigo}/devolver", "/formularios/{codigo}/validar",
         "/formularios/{codigo}/duplicar")},
     # The only write the voice grants a taller: the price a workshop quoted or was paid for a lot line.
     ("POST", "/ordenes/{codigo}/items/{item}/precios"): CORTE,
@@ -246,7 +248,7 @@ def test_admin_only_routes_refuse_everyone_else_without_calling_the_service(monk
                 ("GET", "/modelos"), ("GET", "/modelos/MOD-1"), ("GET", "/precios"), ("GET", "/categorias"), ("GET", "/catalogos"), ("GET", "/dolar"),
                 ("POST", "/cueros/PZC-1/cortes"), ("POST", "/cueros/PZC-1/sobrante"), ("POST", "/voz/interpretar"),
                 ("GET", "/formularios"), ("GET", "/formularios/FCO-0001"), ("PUT", "/formularios/FCO-0001"),
-                ("POST", "/formularios/FCO-0001/completar")]),
+                ("POST", "/formularios/FCO-0001/completar"), ("POST", "/productos/nuevo"), ("POST", "/modelos/MOD-0001/foto")]),
     ("admin", [("GET", "/panel/costos"), ("GET", "/grilla"), ("GET", "/precios"), ("GET", "/dolar"), ("GET", "/colores"),
                ("GET", "/categorias"), ("GET", "/cvu/periodo"), ("GET", "/costos-fijos"), ("GET", "/ordenes"), ("GET", "/productos"),
                ("GET", "/cueros"), ("GET", "/voz/estado"), ("POST", "/cvu/escenario"), ("POST", "/ordenes"),
@@ -291,7 +293,8 @@ CERRADO_PARA_GERENTE = {
     "lotes": [("GET", "/ordenes"), ("GET", "/ordenes/LOT-1"), ("GET", "/fabricacion/casa-vs-taller"),
               ("GET", "/ordenes/unidades-por-producto"), ("POST", "/ordenes")],
     "formularios": [("GET", "/formularios"), ("GET", "/formularios/FCO-0001"), ("PUT", "/formularios/FCO-0001"),
-                    ("POST", "/formularios"), ("POST", "/formularios/FCO-0001/completar"), ("POST", "/formularios/FCO-0001/validar")],
+                    ("POST", "/formularios"), ("POST", "/formularios/FCO-0001/completar"), ("POST", "/formularios/FCO-0001/validar"),
+                    ("POST", "/productos/nuevo")],
     "cueros": [("GET", "/cueros"), ("GET", "/cueros/alcanza"), ("GET", "/cueros/PZC-1"), ("POST", "/cueros"),
                ("POST", "/cueros/PZC-1/cortes")],
     "proveedores": [("GET", "/proveedores"), ("GET", "/proveedores/PRV-1"), ("GET", "/proveedores/PRV-1/materiales"),

@@ -1,7 +1,18 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import {
+  armarLineas,
+  filasDeHoja,
+  modoDeHoja,
+  puedeSubirFoto,
+} from "./formularios";
 import { desktopNavForRole, mobileTabs, navForRole } from "./nav";
-import { canAccessPath, homePath, isTallerOnly } from "./permissions";
+import {
+  canAccessPath,
+  canFillFormularios,
+  homePath,
+  isTallerOnly,
+} from "./permissions";
 
 test("gerente opens nothing under /admin, not even the Panel (S8)", () => {
   for (const path of [
@@ -71,12 +82,15 @@ test("taller and users without a role are refused the scenario simulator; admin 
   assert.equal(canAccessPath("admin", "/escenarios"), true);
 });
 
-test("taller has one entry (Lotes): it opens lots, Voz and the product sheet only", () => {
+test("taller opens lots, Voz, the product sheet and the three new model screens only", () => {
   for (const path of [
     "/fabricacion",
     "/fabricacion/LOT-1",
     "/voz",
     "/productos/PRD-1",
+    "/taller/modelos",
+    "/taller/modelos/nuevo",
+    "/taller/modelos/FCO-0001",
   ]) {
     assert.equal(canAccessPath("taller", path), true, path);
   }
@@ -85,9 +99,12 @@ test("taller has one entry (Lotes): it opens lots, Voz and the product sheet onl
     "/productos/modelos",
     "/productos/modelos/MOD-1",
     "/productos/nuevo",
+    "/productos/modelos/nuevo",
     "/fabricacion/nuevo",
     "/formularios",
     "/formularios/FCO-1",
+    "/taller",
+    "/tallerx/modelos",
     "/corte",
     "/cueros",
     "/cueros/PZC-1",
@@ -162,14 +179,65 @@ test("the gerente menu lists only Productos, Modelos and Escenarios, and each en
   );
 });
 
-test("the taller menu lists only Lotes, and each entry is a path it can open", () => {
+test("the gerente and users without a role are refused the new model screens; admin opens them", () => {
+  for (const path of [
+    "/taller/modelos",
+    "/taller/modelos/nuevo",
+    "/taller/modelos/FCO-0001",
+  ]) {
+    assert.equal(canAccessPath("gerente", path), false, path);
+    assert.equal(canAccessPath("consulta", path), false, path);
+    assert.equal(canAccessPath(null, path), false, path);
+    assert.equal(canAccessPath("admin", path), true, path);
+    assert.equal(canAccessPath("taller", path), true, path);
+  }
+});
+
+test("only admin and taller may fill sheets", () => {
+  assert.equal(canFillFormularios("admin"), true);
+  assert.equal(canFillFormularios("taller"), true);
+  assert.equal(canFillFormularios("corte"), true);
+  assert.equal(canFillFormularios("cotizador"), true);
+  assert.equal(canFillFormularios("gerente"), false);
+  assert.equal(canFillFormularios("consulta"), false);
+  assert.equal(canFillFormularios(null), false);
+});
+
+test("the admin menu lists Hojas de consumos and the taller menu Nuevo modelo and Mis modelos", () => {
+  const hrefs = (groups: { items: { href: string }[] }[]) =>
+    groups.flatMap((group) => group.items.map((item) => item.href));
+  assert.ok(hrefs(desktopNavForRole(["admin"])).includes("/taller/modelos"));
+  assert.ok(hrefs(navForRole(["admin"])).includes("/taller/modelos"));
+  for (const groups of [
+    desktopNavForRole(["taller"]),
+    navForRole(["taller"]),
+  ]) {
+    assert.deepEqual(hrefs(groups), [
+      "/fabricacion",
+      "/taller/modelos/nuevo",
+      "/taller/modelos",
+    ]);
+  }
+  for (const groups of [
+    desktopNavForRole(["gerente"]),
+    navForRole(["gerente"]),
+  ]) {
+    assert.ok(!hrefs(groups).some((href) => href.startsWith("/taller")));
+  }
+});
+
+test("the taller menu lists Lotes and the model screens, and each entry is a path it can open", () => {
   const hrefs = (groups: { items: { href: string }[] }[]) =>
     groups.flatMap((group) => group.items.map((item) => item.href));
   for (const groups of [
     desktopNavForRole(["taller"]),
     navForRole(["taller"]),
   ]) {
-    assert.deepEqual(hrefs(groups), ["/fabricacion"]);
+    assert.deepEqual(hrefs(groups), [
+      "/fabricacion",
+      "/taller/modelos/nuevo",
+      "/taller/modelos",
+    ]);
     for (const href of hrefs(groups)) {
       assert.equal(canAccessPath("taller", href), true, href);
     }
@@ -177,7 +245,7 @@ test("the taller menu lists only Lotes, and each entry is a path it can open", (
   const tabs = mobileTabs(navForRole(["taller"]), ["taller"]);
   assert.deepEqual(
     tabs.map((tab) => tab.href),
-    ["/fabricacion"],
+    ["/fabricacion", "/taller/modelos/nuevo", "/taller/modelos"],
   );
 });
 
@@ -217,4 +285,107 @@ test("admin and gerente matrices hold; taller cannot reach admin-only product pa
     assert.equal(canAccessPath("taller", p), false, p);
   }
   assert.equal(homePath("gerente,taller"), "/productos");
+});
+
+// --- The sheet screens (lib/formularios.ts) ---------------------------------------------------------------------------
+
+test("the taller edits a sheet only while it is ENVIADO; the admin reviews a COMPLETADO one; everything else is read only", () => {
+  const estados = ["BORRADOR", "ENVIADO", "COMPLETADO", "VALIDADO"] as const;
+  assert.deepEqual(
+    estados.map((estado) => modoDeHoja("taller", estado)),
+    ["leer", "editar", "leer", "leer"],
+  );
+  assert.deepEqual(
+    estados.map((estado) => modoDeHoja("admin", estado)),
+    ["leer", "leer", "revisar", "leer"],
+  );
+  // Admin wins when a user holds both roles; a gerente never edits.
+  assert.equal(modoDeHoja("taller,admin", "ENVIADO"), "leer");
+  assert.equal(modoDeHoja("gerente", "ENVIADO"), "leer");
+});
+
+test("a taller may add a photo while the sheet is ENVIADO or when it created it; admin always; gerente never", () => {
+  assert.equal(puedeSubirFoto("taller", "ENVIADO", "otro", "yo"), true);
+  assert.equal(puedeSubirFoto("taller", "VALIDADO", "yo", "yo"), true);
+  assert.equal(puedeSubirFoto("taller", "COMPLETADO", "otro", "yo"), false);
+  assert.equal(puedeSubirFoto("admin", "VALIDADO", "otro", "yo"), true);
+  assert.equal(puedeSubirFoto("gerente", "ENVIADO", "yo", "yo"), false);
+});
+
+test("the rows go to the API as typed: empty is null, comma and dot are the same, a bad number is refused with its row", () => {
+  const fila = (cantidad: string, extra = {}) => ({
+    seccion: "CONSUMO" as const,
+    nombre: "CUERO",
+    cantidad,
+    comentario: "",
+    ...extra,
+  });
+  assert.deepEqual(
+    armarLineas([
+      fila(""),
+      fila("0,25"),
+      fila("0.5", { comentario: " dos tapas " }),
+    ]),
+    {
+      ok: true,
+      lineas: [
+        {
+          seccion: "CONSUMO",
+          nombre: "CUERO",
+          cantidad: null,
+          comentario: null,
+        },
+        {
+          seccion: "CONSUMO",
+          nombre: "CUERO",
+          cantidad: "0.25",
+          comentario: null,
+        },
+        {
+          seccion: "CONSUMO",
+          nombre: "CUERO",
+          cantidad: "0.5",
+          comentario: "dos tapas",
+        },
+      ],
+    },
+  );
+  const mala = armarLineas([fila("1.234,5")]);
+  assert.equal(mala.ok, false);
+  assert.match(
+    mala.ok ? "" : mala.message,
+    /CUERO: la cantidad no es un número válido/,
+  );
+  const sinNombre = armarLineas([fila("1", { nombre: "   " })]);
+  assert.equal(sinNombre.ok, false);
+});
+
+test("the API quantities come back to the editor as a person types them", () => {
+  const [fila] = filasDeHoja([
+    {
+      seccion: "HERRAJE",
+      orden: 1,
+      nombre: "CIERRE N5",
+      cantidad: "2.000000",
+      comentario: null,
+    },
+  ]);
+  assert.deepEqual(fila, {
+    seccion: "HERRAJE",
+    nombre: "CIERRE N5",
+    cantidad: "2",
+    comentario: "",
+  });
+  assert.equal(
+    filasDeHoja([
+      {
+        seccion: "CONSUMO",
+        orden: 1,
+        nombre: "CUERO",
+        cantidad: "0.250000",
+        comentario: "x",
+      },
+    ])[0].cantidad,
+    "0,25",
+  );
 });
