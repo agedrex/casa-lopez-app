@@ -72,7 +72,7 @@ export default async function ModelosDelTallerPage({
             Cuando el taller complete una hoja aparece acá.
           </Notice>
         ) : (
-          <Lista hojas={result.data} userId={user.id} />
+          <Lista hojas={result.data} />
         )
       ) : (
         <ErrorNotice message={result.message} />
@@ -116,13 +116,7 @@ function EstadoBadge({ hoja }: { hoja: FormularioResumen }) {
   );
 }
 
-function Lista({
-  hojas,
-  userId,
-}: {
-  hojas: FormularioResumen[];
-  userId: string;
-}) {
+function Lista({ hojas }: { hojas: FormularioResumen[] }) {
   const href = (hoja: FormularioResumen) =>
     `/taller/modelos/${encodeURIComponent(hoja.codigo)}`;
   return (
@@ -138,9 +132,6 @@ function Lista({
                 <p className="mt-0.5 text-base">{hoja.articulo}</p>
                 <p className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted">
                   <EstadoBadge hoja={hoja} />
-                  {hoja.creado_por === userId ? (
-                    <Badge>Creado por vos</Badge>
-                  ) : null}
                   <span>{formatDate(hoja.created_at)}</span>
                 </p>
               </Link>
@@ -173,11 +164,6 @@ function Lista({
                     >
                       {hoja.articulo}
                     </Link>
-                    {hoja.creado_por === userId ? (
-                      <span className="ml-2">
-                        <Badge>Creado por vos</Badge>
-                      </span>
-                    ) : null}
                   </td>
                   <td className={`${tdClass} tabular-nums`}>{hoja.codigo}</td>
                   <td className={tdClass}>

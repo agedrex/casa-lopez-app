@@ -52,7 +52,14 @@ export async function setImpuestoAlicuota(
 }
 
 /** What the grid sends for a saved row: the new percentage, as typed. */
-export type CambioImpuestoLote = { codigo: string; porcentaje: string };
+export type CambioImpuestoLote = {
+  codigo: string;
+  porcentaje: string;
+  /** Whether the percentage was edited; when it was not, it is not sent again. */
+  cambiaPorcentaje: boolean;
+  /** Present only when the state was edited: true = active. */
+  activo?: boolean;
+};
 
 function formWith(values: Record<string, string>): FormData {
   const formData = new FormData();
@@ -85,7 +92,10 @@ export async function guardarImpuestosLote(
     if (!codigo) {
       return error("Falta el código de un impuesto. Recargue la página.");
     }
-    if (percentToFraction(String(cambio.porcentaje ?? "")) === null) {
+    if (
+      cambio.cambiaPorcentaje &&
+      percentToFraction(String(cambio.porcentaje ?? "")) === null
+    ) {
       return error(`${codigo}: ${PERCENT_HELP}`);
     }
   }
@@ -100,13 +110,30 @@ export async function guardarImpuestosLote(
   }
 
   for (const cambio of cambios) {
-    const result = await setImpuestoAlicuota(
-      cambio.codigo.trim(),
-      IDLE,
-      formWith({ porcentaje: cambio.porcentaje }),
-    );
-    if (result.status === "error") {
-      return error(`${cambio.codigo}: ${result.message}`, result.avisos);
+    const results = [];
+    if (cambio.cambiaPorcentaje) {
+      results.push(
+        await setImpuestoAlicuota(
+          cambio.codigo.trim(),
+          IDLE,
+          formWith({ porcentaje: cambio.porcentaje }),
+        ),
+      );
+    }
+    if (typeof cambio.activo === "boolean") {
+      results.push(
+        await setImpuestoActivo(
+          cambio.codigo.trim(),
+          cambio.activo,
+          IDLE,
+          formWith({}),
+        ),
+      );
+    }
+    for (const result of results) {
+      if (result.status === "error") {
+        return error(`${cambio.codigo}: ${result.message}`, result.avisos);
+      }
     }
   }
   for (const [index, fila] of nuevos.entries()) {
@@ -119,6 +146,19 @@ export async function guardarImpuestosLote(
         `Impuesto nuevo ${index + 1}: ${result.message}`,
         result.avisos,
       );
+    }
+    if (fila.estado === "inactivo") {
+      // A new tax starts active; createImpuesto only reports its code in the message.
+      const codigo = /\b(IMP-\d+)\b/.exec(result.message ?? "")?.[1];
+      if (!codigo) {
+        return error(
+          `Impuesto nuevo ${index + 1}: se cargó, pero no se pudo dejar inactivo. Cámbielo en la grilla.`,
+        );
+      }
+      const off = await setImpuestoActivo(codigo, false, IDLE, formWith({}));
+      if (off.status === "error") {
+        return error(`${codigo}: ${off.message}`, off.avisos);
+      }
     }
   }
 

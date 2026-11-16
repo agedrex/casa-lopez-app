@@ -95,7 +95,7 @@ export function OrdersTable({ ordenes }: { ordenes: OrdenResumen[] }) {
             <thead>
               <tr>
                 <th className={thClass}>Lote</th>
-                <th className={thClass}>Dónde</th>
+                <th className={thClass}>Fabricación</th>
                 <th className={thClass}>Envío</th>
                 <th className={thClass}>Entrega</th>
                 <th className={thClass}>Estado</th>

@@ -132,6 +132,7 @@ export function ReventaGrid({
       autoSave
       compact
       fitContent
+      fitFrame
       addLabel="Agregar producto"
       newRowLabel="Producto nuevo"
       onSave={onSave}

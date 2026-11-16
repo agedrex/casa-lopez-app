@@ -129,6 +129,7 @@ export function ModelosGrid({ modelos }: { modelos: ModeloLista[] }) {
       noun={{ one: "modelo", many: "modelos" }}
       compact
       fitContent
+      fitFrame
       onSave={readOnly}
     />
   );
