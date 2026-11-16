@@ -29,10 +29,6 @@ export const NAV_ITEMS: NavGroup[] = [
     ],
   },
   {
-    title: "Resumen",
-    items: [{ href: "/escenarios", label: "Escenarios", adminOnly: true }],
-  },
-  {
     title: "1 · Datos de base",
     items: [
       {
@@ -66,6 +62,10 @@ export const NAV_ITEMS: NavGroup[] = [
   {
     title: "Herramientas",
     items: [{ href: "/voz", label: "Voz" }],
+  },
+  {
+    title: "Resumen",
+    items: [{ href: "/escenarios", label: "Escenarios", adminOnly: true }],
   },
 ];
 
@@ -147,16 +147,16 @@ const DESKTOP_NAV: NavGroup[] = [
     ],
   },
   {
-    title: "Simulador",
-    items: [{ href: "/escenarios", label: "Escenarios", adminOnly: true }],
-  },
-  {
     title: "Costos variables",
     items: [
       { href: "/unidades", label: "Unidades producidas" },
       { href: "/materiales", label: "Materiales y precios" },
       { href: "/reventa", label: "Mercadería", adminOnly: true },
     ],
+  },
+  {
+    title: "Simulador",
+    items: [{ href: "/escenarios", label: "Escenarios", adminOnly: true }],
   },
 ];
 
