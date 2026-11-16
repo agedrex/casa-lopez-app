@@ -1,118 +1,86 @@
 "use client";
 
-import { fractionToPercentInput } from "@/app/(app)/admin/impuestos/percent";
+import { useMemo } from "react";
 import {
-  Field,
-  FormFeedback,
-  inputClass,
-  PrimaryButton,
-  SecondaryButton,
-} from "@/components/form";
-import { useActionForm } from "@/lib/use-action-form";
+  fractionToPercentInput,
+  percentToFraction,
+} from "@/app/(app)/admin/impuestos/percent";
 import {
-  createImpuesto,
-  setImpuestoActivo,
-  setImpuestoAlicuota,
-} from "./actions";
+  EditableGrid,
+  type GridColumn,
+  type GridRow,
+  type GridSave,
+} from "@/components/editable-grid";
+import type { Impuesto } from "@/lib/types";
+import { guardarImpuestosLote } from "./actions";
 
-export function ImpuestoForm() {
-  const { state, pending, formKey, onSubmit } = useActionForm(createImpuesto);
-  return (
-    <form key={formKey} onSubmit={onSubmit} className="space-y-5">
-      <div className="grid gap-5 sm:grid-cols-2">
-        <Field id="impuesto-nombre" label="Nombre">
-          <input
-            id="impuesto-nombre"
-            name="nombre"
-            required
-            maxLength={120}
-            autoComplete="off"
-            className={inputClass}
-          />
-        </Field>
-        <Field
-          id="impuesto-porcentaje"
-          label="Porcentaje (%)"
-          hint="Se calcula sobre el precio de venta. Por ejemplo 21 o 3,5."
-        >
-          <input
-            id="impuesto-porcentaje"
-            name="porcentaje"
-            required
-            inputMode="decimal"
-            autoComplete="off"
-            aria-describedby="impuesto-porcentaje-hint"
-            className={inputClass}
-          />
-        </Field>
-      </div>
-      <FormFeedback state={state} />
-      <PrimaryButton pending={pending}>
-        {pending ? "Cargando…" : "Agregar impuesto"}
-      </PrimaryButton>
-    </form>
-  );
-}
+const COLUMNS: GridColumn[] = [
+  {
+    key: "nombre",
+    header: "Impuesto",
+    kind: "text",
+    newOnly: true,
+    required: true,
+    width: "min-w-64",
+    placeholder: "IVA",
+  },
+  {
+    key: "porcentaje",
+    header: "Porcentaje (%)",
+    kind: "decimal",
+    required: true,
+    width: "min-w-40",
+    placeholder: "21",
+    validate: (value) =>
+      percentToFraction(value) === null
+        ? "Entre 0 y 100, con hasta un decimal. Ejemplo: 21 o 3,5."
+        : null,
+  },
+];
 
-export function AlicuotaForm({
-  codigo,
-  nombre,
-  alicuota,
-}: {
-  codigo: string;
-  nombre: string;
-  alicuota: string | null;
-}) {
-  const { state, pending, onSubmit } = useActionForm(
-    setImpuestoAlicuota.bind(null, codigo),
-  );
-  const id = `porcentaje-${codigo}`;
-  return (
-    <form onSubmit={onSubmit} className="space-y-2">
-      <div className="flex items-center gap-2">
-        <label htmlFor={id} className="sr-only">
-          Porcentaje de {nombre}
-        </label>
-        <input
-          id={id}
-          name="porcentaje"
-          required
-          inputMode="decimal"
-          autoComplete="off"
-          defaultValue={fractionToPercentInput(alicuota)}
-          placeholder="A confirmar"
-          className={`${inputClass} w-28`}
-        />
-        <span aria-hidden="true">%</span>
-        <SecondaryButton pending={pending}>
-          {pending ? "Guardando…" : "Guardar"}
-          <span className="sr-only"> el porcentaje de {nombre}</span>
-        </SecondaryButton>
-      </div>
-      <FormFeedback state={state} />
-    </form>
-  );
-}
+const NOUN = { one: "impuesto", many: "impuestos" };
 
-export function ImpuestoActivoForm({
-  codigo,
-  nombre,
-  activo,
-}: {
-  codigo: string;
-  nombre: string;
-  activo: boolean;
-}) {
-  const { state, pending, onSubmit } = useActionForm(
-    setImpuestoActivo.bind(null, codigo, !activo),
+/** The taxes as a sheet: the percentage is edited in place and new taxes are added at the end. */
+export function ImpuestosGrid({ impuestos }: { impuestos: Impuesto[] }) {
+  const rows = useMemo<GridRow[]>(
+    () =>
+      impuestos.map((impuesto) => ({
+        id: impuesto.codigo,
+        name: impuesto.nombre,
+        label: <span className="text-sm text-muted">{impuesto.codigo}</span>,
+        cells: {
+          nombre: impuesto.nombre,
+          porcentaje: fractionToPercentInput(impuesto.alicuota),
+        },
+      })),
+    [impuestos],
   );
+
+  function onSave(save: GridSave) {
+    return guardarImpuestosLote(
+      save.changes.map((change) => ({
+        codigo: change.id,
+        porcentaje: change.cells.porcentaje ?? "",
+      })),
+      save.added,
+    );
+  }
+
   return (
-    <form onSubmit={onSubmit} className="space-y-2">
-      <FormFeedback state={state} />
-      <SecondaryButton pending={pending}>
-        {pending ? "Guardando…" : activo ? "Desactivar" : "Activar"}
-        <span className="sr-only"> {nombre}</span>
-      </SecondaryButton>
-    </form>
+    <EditableGrid
+      label="Impuestos"
+      rowHeader="ID"
+      columns={COLUMNS}
+      rows={rows}
+      noun={NOUN}
+      allowNew
+      startWithDraft={false}
+      addLabel="Agregar impuesto"
+      newRowLabel="Impuesto nuevo"
+      autoSave
+      compact
+      fitContent
+      onSave={onSave}
+    />
   );
 }
