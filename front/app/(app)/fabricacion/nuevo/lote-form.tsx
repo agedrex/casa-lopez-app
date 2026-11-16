@@ -17,26 +17,18 @@ import { useActionForm } from "@/lib/use-action-form";
 import { cargarUltimoLote, createOrden } from "../actions";
 import { CueroPanel } from "./cuero-panel";
 import { BuscadorDeProductos } from "./lote-buscador";
-import {
-  type Fila,
-  FilasDeProductos,
-  PreciosPorFila,
-} from "./lote-product-rows";
+import { type Fila, FilasDeProductos } from "./lote-product-rows";
 import { type PanelState, UltimoLotePanel } from "./ultimo-lote-panel";
 
 export type Option = { codigo: string; label: string };
 
 export function LoteForm({
   talleres,
-  personas,
   nombresCuero,
-  today,
 }: {
   talleres: Option[];
-  personas: Option[];
   /** Material code -> name, to label the alternative leathers of the availability panel. */
   nombresCuero: Record<string, string>;
-  today: string;
 }) {
   const { state, pending, onSubmit } = useActionForm(createOrden);
   // One choice: the factory (a lot made at home) or one workshop. The API takes it as place + workshop.
@@ -83,7 +75,7 @@ export function LoteForm({
       {/* The place and the workshop travel as hidden fields derived from the single choice below. */}
       <input type="hidden" name="donde_se_hace" value={donde} />
       <input type="hidden" name="taller" value={taller} />
-      <div className="grid gap-5 sm:grid-cols-2">
+      <div className="max-w-md">
         <Field
           id="lote-responsable"
           label="Quién lo hace"
@@ -111,15 +103,6 @@ export function LoteForm({
               </optgroup>
             ) : null}
           </select>
-        </Field>
-        <Field id="lote-envio" label="Fecha de envío">
-          <input
-            id="lote-envio"
-            name="fecha_de_envio"
-            type="date"
-            defaultValue={today}
-            className={inputClass}
-          />
         </Field>
       </div>
       <UltimoLotePanel state={panel} filas={filas} />
@@ -150,52 +133,6 @@ export function LoteForm({
         />
       </fieldset>
       <CueroPanel filas={filas} nombres={nombresCuero} />
-      {/* Closed fields still travel with the form: without opening it the lot goes as chosen above, with no person. */}
-      <details className="rounded-card border border-line px-4">
-        <summary className="min-h-11 cursor-pointer py-3 text-base text-muted">
-          Más opciones
-        </summary>
-        <div className="space-y-6 pb-4">
-          <div className="grid gap-5 sm:grid-cols-2">
-            {donde === "INTERNA" ? (
-              <Field id="lote-persona" label="Persona (opcional)">
-                <select
-                  id="lote-persona"
-                  name="persona"
-                  defaultValue=""
-                  className={inputClass}
-                >
-                  <option value="">Sin indicar</option>
-                  {personas.map((persona) => (
-                    <option key={persona.codigo} value={persona.codigo}>
-                      {persona.label}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            ) : null}
-          </div>
-          <div className="space-y-2">
-            <p className="text-xs uppercase tracking-caps-sm text-muted">
-              Precios por producto (opcional)
-            </p>
-            <p className="text-sm text-muted">
-              El taller pone el precio recién al retirar la mercadería: si
-              todavía no lo tenés, dejá el precio pagado vacío y cargalo después
-              desde el lote.
-            </p>
-            <PreciosPorFila filas={filas} />
-          </div>
-          <Field id="lote-nota" label="Nota (opcional)">
-            <input
-              id="lote-nota"
-              name="nota"
-              autoComplete="off"
-              className={inputClass}
-            />
-          </Field>
-        </div>
-      </details>
       <FormFeedback state={state} />
       <PrimaryButton pending={pending}>
         {pending ? "Creando…" : "Crear lote"}

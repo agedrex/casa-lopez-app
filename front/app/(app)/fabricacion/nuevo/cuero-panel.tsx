@@ -44,8 +44,7 @@ export function CueroPanel({
         <h2 className="text-xs uppercase tracking-caps-sm text-muted">Cuero</h2>
         <p className="text-sm text-muted">
           Es solo informativo: no impide crear el lote. Cada producto se calcula
-          por separado; si dos usan el mismo cuero, sumá los m². ¿Falta cuero?
-          Cargalo abajo, en «Cargar cuero nuevo».
+          por separado; si dos usan el mismo cuero, sumá los m².
         </p>
       </div>
       <ul className="space-y-4">

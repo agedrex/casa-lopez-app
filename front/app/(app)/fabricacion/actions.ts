@@ -4,7 +4,12 @@ import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { error, type FormState, ok } from "@/lib/action-state";
 import { apiGet, apiPost } from "@/lib/api";
-import { LOT_STATES, lotStateLabel, parseDecimalInput } from "@/lib/format";
+import {
+  LOT_STATES,
+  lotStateLabel,
+  parseDecimalInput,
+  todayIso,
+} from "@/lib/format";
 import {
   consultaDeBusqueda,
   type ResultadoDeBusqueda,
@@ -48,11 +53,11 @@ export async function createOrden(
 
   const result = await apiPost<{ codigo: string }>("/ordenes", {
     donde_se_hace: donde,
-    // Only the field that matches the place travels: a workshop for EXTERNA, a person for INTERNA.
     taller,
-    persona: donde === "INTERNA" ? optional(formData, "persona") : null,
-    fecha_de_envio: optional(formData, "fecha_de_envio"),
-    nota: optional(formData, "nota"),
+    persona: null,
+    // The date is automatic: today in Buenos Aires. It is also what names the lot ("LOT-0012 · 2026-11-16").
+    fecha_de_envio: todayIso(),
+    nota: null,
     items,
   });
   if (!result.ok) return fromFailure(result);

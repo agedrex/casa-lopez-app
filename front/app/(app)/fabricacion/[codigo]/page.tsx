@@ -24,6 +24,7 @@ import {
   lotStateLabel,
   todayIso,
 } from "@/lib/format";
+import { nombreDeLote } from "@/lib/lotes";
 import { canWrite, isTallerOnly } from "@/lib/permissions";
 import { collapseSpaces } from "@/lib/productos";
 import { requireSession } from "@/lib/session";
@@ -101,7 +102,7 @@ export default async function LotePage({
     <>
       <BackLink />
       <PageHeader
-        eyebrow={`Lote ${orden.codigo}`}
+        eyebrow={`Lote ${nombreDeLote(orden.codigo, orden.fecha_de_envio)}`}
         title={whereText(orden)}
         actions={<LotStateBadge estado={orden.estado} />}
       />
@@ -401,7 +402,7 @@ function TallerLote({ orden }: { orden: OrdenDetalle }) {
     <>
       <BackLink />
       <PageHeader
-        eyebrow={`Lote ${orden.codigo}`}
+        eyebrow={`Lote ${nombreDeLote(orden.codigo, orden.fecha_de_envio)}`}
         title={whereText(orden)}
         actions={<LotStateBadge estado={orden.estado} />}
       />

@@ -14,6 +14,16 @@ export type UltimoLote = {
   productos: Record<string, ProductoDelUltimoLote>;
 };
 
+/**
+ * Name of a lot: its code with the date it was created ("LOT-0012 · 2026-11-16"). The shipping date is set
+ * automatically (today, Buenos Aires) when the lot is created and never edited, so it is the creation date.
+ * Lots without a date (loaded before that rule) are just the code.
+ */
+export function nombreDeLote(codigo: string, fecha: string | null): string {
+  const dia = fecha?.slice(0, 10) ?? "";
+  return dia ? `${codigo} · ${dia}` : codigo;
+}
+
 /** Newest first by the date the lot counts on (undated last), then by the highest code. */
 export function ordenarLotes(lotes: LoteDeTaller[]): LoteDeTaller[] {
   return [...lotes].sort((a, b) => {

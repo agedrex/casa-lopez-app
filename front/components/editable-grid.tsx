@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import {
   type ClipboardEvent,
   type FocusEvent,
@@ -60,6 +61,8 @@ export type GridRow = {
   group?: string;
   /** Every cell of a saved row is plain text (for example, a blocked item). */
   readOnly?: boolean;
+  /** Where a click on the row (outside its own links, buttons and fields) goes, for example the sheet of the item. */
+  href?: string;
 };
 
 export type GridChange = {
@@ -172,8 +175,27 @@ const RowView = memo(function RowView({
       : row.warn
         ? "bg-blush/25"
         : "";
+  const router = useRouter();
+  const href = draft ? undefined : row.href;
   return (
-    <tr className={rowTone}>
+    <tr
+      className={`${rowTone} ${href ? "cursor-pointer hover:bg-paper-mid/50" : ""}`}
+      onClick={
+        href
+          ? (event) => {
+              // Links, buttons and fields inside the row keep their own behavior.
+              if (
+                (event.target as HTMLElement).closest(
+                  "a, button, input, select, textarea, label",
+                )
+              ) {
+                return;
+              }
+              router.push(href);
+            }
+          : undefined
+      }
+    >
       <th
         scope="row"
         className={`sticky left-0 z-10 border-b border-line/70 bg-surface px-3 py-2 text-left align-top font-normal sm:px-4 ${dirty ? "border-l-4 border-l-gold" : row.warn ? "border-l-4 border-l-blush-deep" : "border-l-4 border-l-transparent"}`}

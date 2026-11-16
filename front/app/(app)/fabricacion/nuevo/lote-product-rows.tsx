@@ -7,9 +7,9 @@ export type Fila = FilaDeLote;
 
 /**
  * Products picked for a new lot, one row each, with its quantity. The values live in the parent so the
- * comparison panel can read them. The fields keep a shared name per column (`producto`, `cantidad`) and
- * `PreciosPorFila` renders `pagado` / `cotizado` once per row, so the server action reads parallel lists
- * of the same length. The product code travels in a hidden field: it is picked in the finder, not typed.
+ * comparison panel can read them. The fields keep a shared name per column (`producto`, `cantidad`), so
+ * the server action reads parallel lists of the same length. The product code travels in a hidden field:
+ * it is picked in the finder, not typed.
  */
 export function FilasDeProductos({
   filas,
@@ -62,51 +62,6 @@ export function FilasDeProductos({
           >
             Quitar
           </button>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-/** The optional prices of each row, kept apart from the main rows (inside "Más opciones"). */
-export function PreciosPorFila({ filas }: { filas: Fila[] }) {
-  if (filas.length === 0) {
-    return (
-      <p className="text-sm text-muted">
-        Los precios aparecen cuando agregue productos al lote.
-      </p>
-    );
-  }
-  return (
-    <ul className="space-y-4">
-      {filas.map((fila) => (
-        <li key={fila.id} className="grid gap-4 sm:grid-cols-2">
-          <Field
-            id={`lote-cotizado-${fila.id}`}
-            label={`${fila.producto}: precio cotizado por unidad`}
-          >
-            <input
-              id={`lote-cotizado-${fila.id}`}
-              name="cotizado"
-              inputMode="decimal"
-              autoComplete="off"
-              placeholder="Lo que pidió el taller"
-              className={inputClass}
-            />
-          </Field>
-          <Field
-            id={`lote-pagado-${fila.id}`}
-            label={`${fila.producto}: precio pagado por unidad`}
-          >
-            <input
-              id={`lote-pagado-${fila.id}`}
-              name="pagado"
-              inputMode="decimal"
-              autoComplete="off"
-              placeholder="Se carga al retirar"
-              className={inputClass}
-            />
-          </Field>
         </li>
       ))}
     </ul>

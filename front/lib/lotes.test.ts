@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ordenarLotes, sumarDecimales, ultimoLote } from "./lotes";
+import {
+  nombreDeLote,
+  ordenarLotes,
+  sumarDecimales,
+  ultimoLote,
+} from "./lotes";
 import type {
   HistorialDeTaller,
   LoteDeTaller,
@@ -123,4 +128,20 @@ test("sumarDecimales is exact", () => {
   assert.equal(sumarDecimales("10", "5"), "15");
   assert.equal(sumarDecimales("0.5", "0.5"), "1.0");
   assert.equal(sumarDecimales("999.9", "0.1"), "1000.0");
+});
+
+test("nombreDeLote joins the code with the creation date", () => {
+  assert.equal(nombreDeLote("LOT-0012", "2026-11-16"), "LOT-0012 · 2026-11-16");
+});
+
+test("nombreDeLote keeps only the date part of a timestamp", () => {
+  assert.equal(
+    nombreDeLote("LOT-0012", "2026-11-16T03:00:00Z"),
+    "LOT-0012 · 2026-11-16",
+  );
+});
+
+test("nombreDeLote is just the code when the lot has no date", () => {
+  assert.equal(nombreDeLote("LOT-0012", null), "LOT-0012");
+  assert.equal(nombreDeLote("LOT-0012", ""), "LOT-0012");
 });
