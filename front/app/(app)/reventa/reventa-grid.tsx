@@ -9,23 +9,16 @@ import {
   type GridSave,
 } from "@/components/editable-grid";
 import { Badge } from "@/components/ui";
-import { error } from "@/lib/action-state";
-import {
-  decimalInputText,
-  formatArs,
-  formatDate,
-  parseDecimalInput,
-} from "@/lib/format";
+import { decimalInputText, parseDecimalInput } from "@/lib/format";
 import type { ProductoReventa } from "@/lib/types";
 import { guardarReventaLote } from "./actions";
-import { formatMargenPct } from "./margen";
 
 const NOUN = { one: "producto", many: "productos" };
 
-function amountColumn(key: string, header: string): GridColumn {
+function costColumn(): GridColumn {
   return {
-    key,
-    header,
+    key: "costo",
+    header: "Costo unitario",
     kind: "decimal",
     width: "min-w-40",
     placeholder: "Pendiente",
@@ -40,12 +33,9 @@ function amountColumn(key: string, header: string): GridColumn {
   };
 }
 
-const MISSING_COST =
-  "cargue el costo de compra para poder guardar el precio de venta o las unidades.";
-
 /**
- * The merchandise as a sheet. Name, category, supplier, cost and sale price are edited in place;
- * a changed cost or price becomes a price update in the history. Margins are the API's.
+ * The merchandise as a sheet. Name, category, unit cost and supplier are edited in place and saved
+ * on leaving the cell; a changed cost becomes a price update in the history (nothing is overwritten).
  */
 export function ReventaGrid({
   productos,
@@ -75,21 +65,12 @@ export function ReventaGrid({
           label: categoria,
         })),
       },
+      costColumn(),
       {
         key: "proveedor",
         header: "Proveedor",
         kind: "text",
         width: "min-w-44",
-      },
-      amountColumn("costo", "Costo (ARS)"),
-      amountColumn("precio_venta", "Precio de venta (ARS)"),
-      {
-        key: "unidades",
-        header: "Unidades compradas",
-        kind: "decimal",
-        newOnly: true,
-        width: "min-w-36",
-        placeholder: "Opcional",
       },
     ],
     [categorias],
@@ -121,43 +102,13 @@ export function ReventaGrid({
               categoria: producto.categoria ?? "",
               proveedor: producto.proveedor ?? "",
               costo: decimalInputText(producto.costo_unitario_ars),
-              precio_venta: decimalInputText(
-                producto.precio_venta_unitario_ars,
-              ),
             },
-            extras: [
-              <span key="margen">
-                {formatArs(producto.margen_unitario_ars)}
-                <span className="block text-xs text-muted">
-                  {formatMargenPct(producto.margen_pct)}
-                </span>
-              </span>,
-              formatDate(producto.ultima_compra),
-            ],
           };
         }),
     [productos],
   );
 
   function onSave(save: GridSave) {
-    for (const change of save.changes) {
-      const name = rows.find((row) => row.id === change.id)?.name ?? change.id;
-      if (change.changed.includes("precio_venta") && !change.cells.costo) {
-        return Promise.resolve(
-          error(`${name}: cargue primero el costo de compra.`),
-        );
-      }
-    }
-    for (const [index, fila] of save.added.entries()) {
-      if (
-        !fila.costo?.trim() &&
-        (fila.precio_venta?.trim() || fila.unidades?.trim())
-      ) {
-        return Promise.resolve(
-          error(`Producto nuevo ${index + 1}: ${MISSING_COST}`),
-        );
-      }
-    }
     return guardarReventaLote(
       save.changes.map((change) => ({
         codigo: change.id,
@@ -172,13 +123,15 @@ export function ReventaGrid({
   return (
     <EditableGrid
       label="Productos de mercadería"
-      rowHeader="Código"
+      rowHeader="ID"
       columns={columns}
-      extraHeaders={["Margen", "Última compra"]}
       rows={rows}
       noun={NOUN}
       allowNew
       startWithDraft={false}
+      autoSave
+      compact
+      fitContent
       addLabel="Agregar producto"
       newRowLabel="Producto nuevo"
       onSave={onSave}
