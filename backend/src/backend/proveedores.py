@@ -538,6 +538,45 @@ def list_orders(session: Session, code: str) -> list[dict]:
     return [_order_to_dict(order, supplier.codigo, lines.get(order.id, [])) for order in orders]
 
 
+def material_receipts(session: Session) -> dict[str, Decimal]:
+    """Units received per material code (sum of every order line, in the consumption unit of the material).
+
+    SUPUESTO: validar. This is what arrived, not what is left: consumption is not discounted (no material movements).
+    """
+    rows = session.execute(
+        select(Material.codigo, func.sum(PedidoLinea.cantidad_presentaciones * PedidoLinea.contenido_por_presentacion))
+        .join(Material, Material.id == PedidoLinea.material_id).group_by(Material.codigo)
+    ).all()
+    return {code: total for code, total in rows}
+
+
+def material_order_history(session: Session, code: str) -> dict:
+    """Every order line of one material, newest reception first: what arrived, from whom and at what unit price."""
+    material = session.scalar(select(Material).where(Material.codigo == code))
+    if material is None:
+        raise NoEncontrado(f"No existe el material {code}.")
+    rows = session.execute(
+        select(PedidoLinea, PedidoProveedor, Proveedor, PrecioMaterial)
+        .join(PedidoProveedor, PedidoProveedor.id == PedidoLinea.pedido_id)
+        .join(Proveedor, Proveedor.id == PedidoProveedor.proveedor_id)
+        .join(PrecioMaterial, PrecioMaterial.id == PedidoLinea.precio_material_id)
+        .where(PedidoLinea.material_id == material.id)
+        .order_by(PedidoProveedor.fecha_de_recepcion.desc(), PedidoProveedor.id.desc(), PedidoLinea.orden)
+    ).all()
+    pedidos = [{
+        "pedido": order.codigo, "fecha_de_recepcion": order.fecha_de_recepcion, "proveedor": supplier.codigo,
+        "proveedor_nombre": supplier.nombre, "cantidad_presentaciones": line.cantidad_presentaciones,
+        "presentacion": line.presentacion, "contenido_por_presentacion": line.contenido_por_presentacion,
+        "cantidad_recibida": line.cantidad_presentaciones * line.contenido_por_presentacion,
+        "precio_por_presentacion": line.precio_por_presentacion, "moneda": line.moneda,
+        "iva_incluido": line.iva_incluido, "precio_unitario": price.precio,
+    } for line, order, supplier, price in rows]
+    return {
+        "codigo": material.codigo, "nombre": material.nombre, "unidad_de_consumo": material.unidad_de_consumo,
+        "recibido": sum((p["cantidad_recibida"] for p in pedidos), Decimal("0")), "pedidos": pedidos,
+    }
+
+
 def _line_error(error: Exception, position: int, material: str) -> Exception:
     """The same kind of error with the line it came from, so the person knows what to fix."""
     return type(error)(f"Línea {position} ({material}): {error}")

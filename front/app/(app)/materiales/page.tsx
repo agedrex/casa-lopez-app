@@ -12,31 +12,36 @@ import {
   thClass,
 } from "@/components/ui";
 import { apiGet } from "@/lib/api";
-import { formatDate, formatMoney, STAGE_ORDER, stageLabel } from "@/lib/format";
-import { agruparMateriales, type GrupoDeMateriales } from "@/lib/materiales";
+import { formatDate, formatMoney, stageLabel } from "@/lib/format";
+import {
+  agruparMateriales,
+  type GrupoDeMateriales,
+  materialStages,
+} from "@/lib/materiales";
 import { canWrite } from "@/lib/permissions";
 import { requireSession } from "@/lib/session";
 import type { EtapaCatalogo, Material, Precio } from "@/lib/types";
 import { MaterialesGrid } from "./materiales-grid";
 
-export const metadata: Metadata = { title: "Materiales y precios" };
+export const metadata: Metadata = { title: "Materiales" };
 
 export default async function MaterialesPage() {
   const { user } = await requireSession();
   const writer = canWrite(user.role);
 
-  const [materiales, precios, etapas] = await Promise.all([
+  const [materiales, precios, etapas, recibido] = await Promise.all([
     apiGet<Material[]>("/materiales"),
     apiGet<Precio[]>("/precios"),
     writer ? apiGet<EtapaCatalogo[]>("/catalogo/etapas") : null,
+    writer ? apiGet<Record<string, string>>("/materiales/recibido") : null,
   ]);
 
   return (
     <>
       <PageHeader
         eyebrow="Costos"
-        title="Materiales y precios"
-        description="Los materiales que se compran, por etapa. Cambiar un precio agrega uno nuevo con la fecha de hoy: el anterior queda en la historia. Un material nuevo se agrega al final de la grilla."
+        title="Materiales"
+        description="Los materiales que se compran, por etapa. Los precios no se cargan acá: llegan con cada pedido de un proveedor. Entrá a un material para ver en qué pedido llegó y a qué precio. Un material nuevo se agrega al final de la grilla."
       />
       {!materiales.ok ? (
         <ErrorNotice message={materiales.message} />
@@ -48,6 +53,7 @@ export default async function MaterialesPage() {
         <MaterialesGrid
           grupos={agruparMateriales(materiales.data, precios.data)}
           etapas={materialStages(etapas?.ok ? etapas.data : null)}
+          recibido={recibido?.ok ? recibido.data : {}}
         />
       ) : (
         <ReadOnlyMateriales
@@ -56,15 +62,6 @@ export default async function MaterialesPage() {
       )}
     </>
   );
-}
-
-/** Stages that hold materials (the others are tasks); the quote order if the catalog cannot be read. */
-function materialStages(catalogo: EtapaCatalogo[] | null): string[] {
-  if (!catalogo) return STAGE_ORDER.slice(0, 6);
-  return [...catalogo]
-    .filter((etapa) => etapa.tipo === "MATERIAL")
-    .sort((a, b) => a.orden - b.orden)
-    .map((etapa) => etapa.codigo);
 }
 
 /** The same grouping as the grid for roles that read but do not write (taller). */

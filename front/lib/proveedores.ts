@@ -202,7 +202,7 @@ export function materialOptions(materiales: Material[]): MaterialOption[] {
     .filter((m) => m.cotizable)
     .map((m) => ({
       codigo: m.codigo,
-      label: `${m.codigo} · ${m.nombre} (${m.unidad_de_consumo})`,
+      label: m.nombre,
       unidad: m.unidad_de_consumo,
       group: stageLabel(m.etapa),
     }));

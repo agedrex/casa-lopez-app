@@ -341,3 +341,26 @@ def test_pg_the_database_checks_the_line_rules(api):
                 api.session.execute(insert(PedidoLinea).values(**{**base, **changes}))
     with api.session.begin_nested():  # and the valid row goes in
         api.session.execute(insert(PedidoLinea).values(**base))
+
+
+def test_pg_a_material_shows_what_arrived_in_each_order_with_its_price_and_the_total_received(api):
+    como("admin")
+    code = make_supplier(api)
+    api.post(f"/proveedores/{code}/pedidos", json=order([line()]))
+    api.post(f"/proveedores/{code}/pedidos", json={**order([line(precio_por_presentacion="15000")]),
+                                                  "fecha_de_recepcion": "2026-11-12"})
+    history = api.get(f"/materiales/{TELA}/pedidos")
+    assert history.status_code == 200, history.text
+    body = history.json()
+    assert body["recibido"] == "200.000000" and body["unidad_de_consumo"] == "m2"
+    assert [p["pedido"] for p in body["pedidos"]] == ["PED-0002", "PED-0001"]  # newest first
+    assert [p["precio_unitario"] for p in body["pedidos"]] == ["300.0000", "240.0000"]
+    assert body["pedidos"][0]["cantidad_recibida"] == "100.000000"
+    assert api.get("/materiales/recibido").json()[TELA] == "200.000000"
+    assert api.get("/materiales/MAT-NOPE/pedidos").status_code == 404
+
+
+def test_pg_only_admin_reads_the_received_stock_and_the_order_history(api):
+    como("gerente")
+    assert api.get("/materiales/recibido").status_code == 403
+    assert api.get(f"/materiales/{TELA}/pedidos").status_code == 403

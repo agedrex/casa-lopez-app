@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo } from "react";
 import {
   EditableGrid,
@@ -8,11 +9,10 @@ import {
   type GridSave,
 } from "@/components/editable-grid";
 import { Badge } from "@/components/ui";
-import { error } from "@/lib/action-state";
 import {
-  decimalInputText,
   formatDate,
-  parseDecimalInput,
+  formatMoney,
+  formatQuantity,
   stageLabel,
 } from "@/lib/format";
 import type { GrupoDeMateriales } from "@/lib/materiales";
@@ -30,25 +30,19 @@ const UNIDADES = [
   { value: "USD", label: "USD" },
 ];
 
-// Module level: the grid compares it by reference.
-const NEW_ROW_DEFAULTS = { moneda: "ARS" };
-
-const MONEDAS = [
-  { value: "ARS", label: "ARS" },
-  { value: "USD", label: "USD" },
-];
-
 /**
- * The materials as a sheet, grouped by stage. The price, currency and supplier are edited in place:
- * a change is a new dated price in the history (nothing is overwritten). A new row is a new material
- * (name, stage and consumption unit are chosen once, here); a blocked material is read only.
+ * The materials as a sheet, grouped by stage. Prices are NOT edited here: they arrive with each supplier
+ * order (Proveedores). A new row is a new material (name, stage and consumption unit are chosen once).
+ * The code of each row opens the sheet of the material: its orders, prices and what was received.
  */
 export function MaterialesGrid({
   grupos,
   etapas,
+  recibido,
 }: {
   grupos: GrupoDeMateriales[];
   etapas: string[];
+  recibido: Record<string, string>;
 }) {
   const columns = useMemo<GridColumn[]>(
     () => [
@@ -82,35 +76,6 @@ export function MaterialesGrid({
         width: "min-w-32",
         options: UNIDADES,
       },
-      {
-        key: "precio",
-        header: "Precio",
-        kind: "decimal",
-        width: "min-w-36",
-        placeholder: "Sin precio",
-        validate: (value, { original, isNew }) => {
-          if (!isNew && original !== "" && value === "") {
-            return "Un precio cargado no se puede vaciar.";
-          }
-          return value !== "" && !/[1-9]/.test(parseDecimalInput(value) ?? "")
-            ? "Tiene que ser mayor que cero."
-            : null;
-        },
-      },
-      {
-        key: "moneda",
-        header: "Moneda",
-        kind: "select",
-        emptyLabel: "—",
-        width: "min-w-24",
-        options: MONEDAS,
-      },
-      {
-        key: "proveedor",
-        header: "Proveedor",
-        kind: "text",
-        width: "min-w-44",
-      },
     ],
     [etapas],
   );
@@ -128,7 +93,12 @@ export function MaterialesGrid({
             warn: sinPrecio,
             label: (
               <span className="flex flex-wrap items-center gap-1.5">
-                <span className="text-sm">{material.codigo}</span>
+                <Link
+                  href={`/materiales/${encodeURIComponent(material.codigo)}`}
+                  className="text-sm underline decoration-gold underline-offset-4"
+                >
+                  {material.codigo}
+                </Link>
                 {!material.cotizable ? (
                   <Badge tone="alert">No cotizable</Badge>
                 ) : sinPrecio ? (
@@ -140,12 +110,13 @@ export function MaterialesGrid({
               nombre: material.nombre,
               etapa: material.etapa,
               unidad_de_consumo: material.unidad_de_consumo,
-              precio: decimalInputText(precio?.precio),
-              moneda: precio?.moneda ?? "",
-              proveedor: precio?.proveedor ?? "",
             },
             extras: [
+              precio ? formatMoney(precio.precio, precio.moneda) : "—",
               precio ? formatDate(precio.vigente_desde) : "—",
+              recibido[material.codigo]
+                ? `${formatQuantity(recibido[material.codigo])} ${material.unidad_de_consumo}`
+                : "—",
               preciosPorColor > 0
                 ? `${preciosPorColor} ${preciosPorColor === 1 ? "precio" : "precios"} por color`
                 : "—",
@@ -153,39 +124,19 @@ export function MaterialesGrid({
           };
         }),
       ),
-    [grupos],
+    [grupos, recibido],
   );
 
   function onSave(save: GridSave) {
-    for (const change of save.changes) {
-      const name = rows.find((row) => row.id === change.id)?.name ?? change.id;
-      const current = rows.find((row) => row.id === change.id)?.cells;
-      if (!change.cells.precio?.trim()) {
-        return Promise.resolve(error(`${name}: cargue el precio.`));
-      }
-      if (!change.cells.moneda && current?.precio === "") {
-        return Promise.resolve(
-          error(`${name}: elija la moneda del primer precio.`),
-        );
-      }
-    }
-    return guardarMaterialesLote(
-      save.changes.map((change) => ({
-        codigo: change.id,
-        valores: Object.fromEntries(
-          change.changed.map((key) => [key, change.cells[key] ?? ""]),
-        ),
-      })),
-      save.added,
-    );
+    return guardarMaterialesLote([], save.added);
   }
 
   return (
     <EditableGrid
-      label="Materiales y precios"
+      label="Materiales"
       rowHeader="Código"
       columns={columns}
-      extraHeaders={["Precio desde", "Precios por color"]}
+      extraHeaders={["Último precio", "Desde", "Recibido", "Precios por color"]}
       rows={rows}
       noun={NOUN}
       allowNew
@@ -193,7 +144,6 @@ export function MaterialesGrid({
       addLabel="Agregar material"
       newRowLabel="Material nuevo"
       draftGroup="Materiales nuevos"
-      newRowDefaults={NEW_ROW_DEFAULTS}
       onSave={onSave}
     />
   );

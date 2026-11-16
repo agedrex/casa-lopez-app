@@ -1228,3 +1228,27 @@ export type FormularioDetalle = FormularioResumen & {
 };
 
 /** What `POST /productos/nuevo` answers: the codes of the new model and of its sheet. */
+
+// Mirror MaterialHistorialOut: every supplier order that brought a material and the unit price it arrived at.
+export type MaterialPedido = {
+  pedido: string;
+  fecha_de_recepcion: string;
+  proveedor: string;
+  proveedor_nombre: string;
+  cantidad_presentaciones: string;
+  presentacion: string;
+  contenido_por_presentacion: string;
+  cantidad_recibida: string;
+  precio_por_presentacion: string;
+  moneda: string;
+  iva_incluido: boolean;
+  precio_unitario: string;
+};
+
+export type MaterialHistorial = {
+  codigo: string;
+  nombre: string;
+  unidad_de_consumo: string;
+  recibido: string;
+  pedidos: MaterialPedido[];
+};

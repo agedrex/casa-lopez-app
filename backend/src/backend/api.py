@@ -1486,6 +1486,41 @@ def materiales(session: Sesion):
     return servicios.listar_materiales(session)
 
 
+class MaterialPedidoOut(Salida):
+    pedido: str
+    fecha_de_recepcion: date
+    proveedor: str
+    proveedor_nombre: str
+    cantidad_presentaciones: Decimal
+    presentacion: str
+    contenido_por_presentacion: Decimal
+    cantidad_recibida: Decimal
+    precio_por_presentacion: Decimal
+    moneda: str
+    iva_incluido: bool
+    precio_unitario: Decimal
+
+
+class MaterialHistorialOut(Salida):
+    codigo: str
+    nombre: str
+    unidad_de_consumo: str
+    recibido: Decimal
+    pedidos: list[MaterialPedidoOut]
+
+
+@router.get("/materiales/recibido", dependencies=LECTURA_ADMIN, response_model=dict[str, Decimal])
+def materiales_recibido(session: Sesion):
+    """Units received per material code, from the supplier orders (consumption is not discounted)."""
+    return proveedores.material_receipts(session)
+
+
+@router.get("/materiales/{codigo}/pedidos", dependencies=LECTURA_ADMIN, response_model=MaterialHistorialOut)
+def historial_de_material(codigo: str, session: Sesion):
+    """Each order that brought this material, with the unit price it arrived at (newest first)."""
+    return proveedores.material_order_history(session, codigo)
+
+
 @router.get("/cueros", dependencies=LECTURA_CORTE, response_model=list[GrupoCueroOut])
 def listar_cueros(session: Sesion, material: str | None = None, color: str | None = None):
     return cueros.listar_cueros(session, material, color)

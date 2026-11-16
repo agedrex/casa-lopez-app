@@ -12,11 +12,13 @@ import {
 } from "@/components/ui";
 import { apiGet } from "@/lib/api";
 import { todayIso } from "@/lib/format";
+import { materialStages } from "@/lib/materiales";
 import { canWrite, hasRole } from "@/lib/permissions";
 import { materialOptions } from "@/lib/proveedores";
 import { requireRole } from "@/lib/session";
 import type {
   DocumentoProveedor,
+  EtapaCatalogo,
   Material,
   MaterialesDeProveedor,
   PedidoProveedor,
@@ -24,6 +26,7 @@ import type {
 } from "@/lib/types";
 import { MaterialesQueProveeForm } from "../materiales-que-provee";
 import { DocumentoCard } from "./documento-card";
+import { MaterialNuevoForm } from "./material-nuevo-form";
 import { MaterialesDelProveedor } from "./materiales-del-proveedor";
 import { PedidoForm } from "./pedido-form";
 import { PedidosRecibidos } from "./pedidos-recibidos";
@@ -78,7 +81,7 @@ export default async function ProveedorPage({
   // Orders are read by admin and gerente; the taller never sees them (the API refuses them too).
   const readsPedidos =
     hasRole(user.role, "admin") || hasRole(user.role, "gerente");
-  const [proveedor, documentos, historia, materiales, pedidos, provee] =
+  const [proveedor, documentos, historia, materiales, pedidos, provee, etapas] =
     await Promise.all([
       apiGet<Proveedor>(path),
       apiGet<DocumentoProveedor[]>(
@@ -89,6 +92,7 @@ export default async function ProveedorPage({
       writer ? apiGet<Material[]>("/materiales") : null,
       readsPedidos ? apiGet<PedidoProveedor[]>(`${path}/pedidos`) : null,
       apiGet<string[]>(`${path}/provee`),
+      writer ? apiGet<EtapaCatalogo[]>("/catalogo/etapas") : null,
     ]);
 
   if (!proveedor.ok) {
@@ -177,29 +181,22 @@ export default async function ProveedorPage({
                 material desde la fecha de recepción. Un pedido no se edita ni
                 se borra: si hay un error, se registra otro.
               </p>
-              {writer && materiales?.ok && provee.ok ? (
-                provee.data.length === 0 ? (
-                  <Notice
-                    tone="info"
-                    title="Primero marque qué productos provee este proveedor."
-                  >
-                    El pedido solo permite elegir entre los productos de su
-                    lista.
-                  </Notice>
-                ) : (
+              {writer && materiales?.ok ? (
+                <div className="space-y-4">
                   <Card>
                     <h3 className="mb-4 font-bold">
                       Registrar pedido recibido
                     </h3>
                     <PedidoForm
                       codigo={data.codigo}
-                      materials={materialOptions(materiales.data).filter((m) =>
-                        provee.data.includes(m.codigo),
-                      )}
+                      materials={materialOptions(materiales.data)}
                       today={todayIso()}
                     />
                   </Card>
-                )
+                  <MaterialNuevoForm
+                    etapas={materialStages(etapas?.ok ? etapas.data : null)}
+                  />
+                </div>
               ) : null}
               {pedidos?.ok ? (
                 pedidos.data.length === 0 ? (
