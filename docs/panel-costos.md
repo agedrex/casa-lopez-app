@@ -5,7 +5,7 @@ Pantalla `/admin/panel` (solo `admin`). Tiene tres vistas, en el parámetro `?vi
 | Vista | Qué muestra |
 |---|---|
 | **Costos** (por defecto) | Dashboard: costo-volumen del mes, dólar del día y alertas. |
-| **Fábrica** (`?vista=fabrica`) | Total de costos de la fábrica del mes, su grilla de costos (donde se agregan) y su punto de equilibrio. |
+| **Fábrica** (`?vista=fabrica`) | Total de costos de la fábrica del mes, su grilla de costos (donde se agregan), los retazos de cuero del mes y su punto de equilibrio. |
 | **Tienda** (`?vista=tienda`) | Lo mismo para la tienda, más la Mercadería comprada en el mes. |
 
 Un `?vista=` desconocido (por ejemplo el viejo `gastos`) cae en **Costos**.
@@ -24,6 +24,15 @@ Un `?vista=` desconocido (por ejemplo el viejo `gastos`) cae en **Costos**.
 - Suma `unidades × costo_unitario_ars` de cada compra de Mercadería (`compra_reventa`) con fecha dentro del mes. Una fila sin unidades es un cambio de precio de la grilla de Mercadería, no una compra, y no cuenta.
 - Devuelve `total_mercaderia`, `total_gastos_tienda` (costos fijos de la tienda del mes) y `total_tienda` (la suma, calculada por el backend). Los totales de `/costos-fijos` **no cambian**: la mercadería no se escribe en `gasto_periodo`.
 - SUPUESTO: validar con Robert que la compra se imputa al mes de su fecha.
+
+## Retazos en la Fábrica
+
+`GET /costos-fijos/retazos?periodo=AAAA-MM` (solo `admin`, solo lectura):
+
+- Lista cada retazo de cuero dado de baja en el mes (movimiento `DESPERDICIO` de una `pieza_cuero`, fecha dentro del mes): pieza, cuero y color, fecha, m², precio por m² y total (m² × precio pagado por m² de esa pieza).
+- Una pieza sin precio ni dólar viene con `precio_por_m2_ars` y `total_ars` en `null`: la pantalla muestra "sin precio" (nunca 0) y avisa cuántos retazos quedan fuera del total (`sin_precio`).
+- Devuelve `total_retazos`, `total_gastos_fabrica` (costos fijos de la fábrica del mes) y `total_fabrica` (la suma, calculada por el backend; la pantalla no suma nada). Los totales de `/costos-fijos` **no cambian**.
+- **No escribe nada en `gasto_periodo`:** el costo de retazos se calcula cada vez que se mira el mes, así que corregir un precio o un dólar lo cambia solo.
 
 ## Lo que ya no está
 

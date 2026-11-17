@@ -28,3 +28,5 @@ Objective: conectar los pedidos de proveedor con el stock de cuero, sacar el 10 
 - L3: Hallazgo: `UMBRAL_RETAZO_M2` está sin valor en `seed_v3.json` (fuente "Pendiente: Mariano o Alderete").
 - L4 (2026-11-16): "que el umbral lo vaya poniendo el usuario una vez que registra que uso un cuero se ve que procentake uso y se ve si podra usar mas o no"
 - L5 (2026-11-16): "y si cada uno cada que se hace un pedido llega con su cantidad y todo. Ahí lo ideal sería que igual modificáramos un poco cómo el usuario carga los pedidos que llegan de los proveedores. Que ponga, por ejemplo, de una forma que le llegaron X m² de este cuero, pero como le llegaron divididos, porque pensé que habían llegado 1 m², 2 m². Es demasiada la cantidad de iguales. Vea cuántas unidades hay de eso. Sí luego poner una idea cada una y empezar a usarlas de referencia."
+
+- Estado (2026-11-17): T0-T4 hechas en 6 commits sobre feat/inventario-cuero-retazos. Pasado el corte de ~400 líneas (≈ 1000 líneas en total): el corte natural para PR es T1+T2 (cueros sin 10 %, pedido con pieles) y T3+T4 (corte con % usado y Retazos en el Panel). T5-T7 pendientes.

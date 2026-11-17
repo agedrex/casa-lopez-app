@@ -18,9 +18,11 @@ import type {
   Persona,
   ProductoResumen,
   ProductoReventa,
+  RetazosDelMes,
 } from "@/lib/types";
 import { EscenarioDeVentas, type ProductOption } from "../../cvu/escenario";
 import { type AreaDelNegocio, CostosAreaGrid } from "./costos-area-grid";
+import { RetazosDelMesTabla } from "./retazos-del-mes";
 
 const PERIODO = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -127,7 +129,8 @@ function MercaderiaDelMesTabla({ datos }: { datos: MercaderiaDelMes }) {
 
 /**
  * One area of the business (the factory or the store): the month's costs as a grid where they are
- * added, the total of the month, and (store only) the Mercadería bought in the month. Below it, the
+ * added, the total of the month, the Mercadería bought in the month (store only) and the leather
+ * remainders written off in the month (factory only). Below it, the
  * break-even scenario of the area. Every amount comes calculated by the API.
  */
 export async function NegocioVistas({
@@ -167,6 +170,13 @@ export async function NegocioVistas({
           apiGet<ProductoReventa[]>("/reventa"),
         ])
       : [null, null];
+  // Retazos live in the factory, read with the same month as well.
+  const retazos =
+    area === "FABRICA"
+      ? await apiGet<RetazosDelMes>(
+          `/costos-fijos/retazos?periodo=${encodeURIComponent(mesDeCostos)}`,
+        )
+      : null;
 
   const gastos = costos.data.gastos
     .filter((gasto) => gasto.fabrica_o_tienda === area)
@@ -208,6 +218,12 @@ export async function NegocioVistas({
             value={mercaderia.data.total_tienda}
             detail={`Costos cargados ${formatArs(mercaderia.data.total_gastos_tienda)} más Mercadería ${formatArs(mercaderia.data.total_mercaderia)}.`}
           />
+        ) : area === "FABRICA" && retazos?.ok ? (
+          <Total
+            label={`Costos de la fábrica de ${formatPeriod(mesDeCostos)}`}
+            value={retazos.data.total_fabrica}
+            detail={`Costos cargados ${formatArs(retazos.data.total_gastos_fabrica)} más Retazos ${formatArs(retazos.data.total_retazos)}.`}
+          />
         ) : (
           <Total
             label={`Costos de ${area === "FABRICA" ? "la fábrica" : "la tienda"} de ${formatPeriod(mesDeCostos)}`}
@@ -224,6 +240,12 @@ export async function NegocioVistas({
       {area === "TIENDA" && mercaderia && !mercaderia.ok ? (
         <Notice tone="info" title="No pudimos cargar la Mercadería">
           {mercaderia.message}
+        </Notice>
+      ) : null}
+
+      {area === "FABRICA" && retazos && !retazos.ok ? (
+        <Notice tone="info" title="No pudimos cargar los Retazos">
+          {retazos.message}
         </Notice>
       ) : null}
 
@@ -248,6 +270,10 @@ export async function NegocioVistas({
 
       {area === "TIENDA" && mercaderia?.ok ? (
         <MercaderiaDelMesTabla datos={mercaderia.data} />
+      ) : null}
+
+      {area === "FABRICA" && retazos?.ok ? (
+        <RetazosDelMesTabla datos={retazos.data} />
       ) : null}
 
       <section aria-label="Punto de equilibrio" className="space-y-3">
