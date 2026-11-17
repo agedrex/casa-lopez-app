@@ -179,3 +179,16 @@ def test_scraps_of_the_month_are_admin_only(api):
     for rol in ("gerente", "taller"):
         role["value"] = rol
         assert client.get("/costos-fijos/retazos").status_code == 403
+
+
+def test_a_scrap_bought_in_dollars_is_valued_with_the_dollar_of_the_purchase(api):
+    client, _ = api
+    for fecha, valor in (("2026-10-01", "1000"), ("2026-11-10", "2000")):
+        assert client.post("/dolar", json={"fecha": fecha, "ars_por_usd": valor}).status_code == 201
+    pieza = comprar(client, m2_iniciales="4", precio_pagado_por_m2="10", moneda="USD", fecha_de_compra="2026-10-01")
+    assert client.post(f"/cueros/{pieza['codigo']}/sobrante",
+                       json={"decision": "IRRECUPERABLE", "fecha": "2026-11-15"}).status_code == 200
+    noviembre = client.get("/costos-fijos/retazos", params={"periodo": "2026-11"}).json()
+    # 4 m2 x USD 10 x the dollar of the purchase (1000), not the one of the discard (2000).
+    assert noviembre["retazos"][0]["precio_por_m2_ars"] is not None
+    assert D(noviembre["retazos"][0]["precio_por_m2_ars"]) == 10000 and D(noviembre["total_retazos"]) == 40000

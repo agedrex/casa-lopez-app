@@ -281,8 +281,8 @@ def alcanza(session: Session, producto: str, cantidad: Decimal) -> dict:
 def retazos_del_mes(session: Session, periodo: str | None = None) -> dict:
     """Leather remainders written off in the month, as a cost of the business (the factory).
 
-    Each `DESPERDICIO` movement of the month is valued at the price paid per m2 of its piece (or the current price of
-    the material when the piece has none), in ARS with the dollar of the movement's date. A movement that cannot be
+    Each `DESPERDICIO` movement of the month is valued at the price paid per m2 of its piece (or the price of the material
+    on the purchase date when the piece has none), in ARS with the dollar of the purchase date. A movement that cannot be
     valued counts in `sin_precio` and is never turned into 0. Nothing is written to `gasto_periodo`: this is
     calculated, so the number can never disagree with the stock movements. SUPUESTO: validar con Robert (the loss
     belongs to the month in which the remainder was written off).
@@ -298,9 +298,12 @@ def retazos_del_mes(session: Session, periodo: str | None = None) -> dict:
         .order_by(MovimientoCuero.fecha.desc(), MovimientoCuero.id.desc())).all()
     retazos = []
     for movimiento, pieza, material, color in filas:
-        dolar = session.scalar(select(TipoCambio.ars_por_usd).where(TipoCambio.fecha <= movimiento.fecha)
+        # What was paid is sunk at the purchase: a price in USD is valued with the dollar of that day, not of the
+        # write-off. A piece that was not bought (existing remainder) falls back to the write-off date.
+        fecha_de_precio = pieza.fecha_de_compra or movimiento.fecha
+        dolar = session.scalar(select(TipoCambio.ars_por_usd).where(TipoCambio.fecha <= fecha_de_precio)
                                .order_by(TipoCambio.fecha.desc(), TipoCambio.id.desc()))
-        precio = _precio_ars(session, pieza, dolar, movimiento.fecha)
+        precio = _precio_ars(session, pieza, dolar, fecha_de_precio)
         m2 = -movimiento.m2
         retazos.append({
             "pieza": pieza.codigo, "material": material, "color": color, "fecha": movimiento.fecha, "m2": m2,
