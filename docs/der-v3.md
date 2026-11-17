@@ -33,8 +33,8 @@ Conventions: schema `costos`; `id` (identity) and `created_at` everywhere; `codi
 | `orden_estado` | Lote_Estados | State history of a lot. |
 | `registro_tarea` | Registro_Tareas | Cutting or sewing work by person (units, hours). |
 | `gasto_periodo` | Costos_Fijos | Monthly fixed cost (factory or store), flagged `ficticio` while the amount is invented. `reemplaza_a_id` (nullable, self-reference) marks a correction: see the note below. `anulado` (boolean, default false) marks a deleted row: see the note below. |
-| `pieza_cuero` | Pieles | Each hide bought: material, color, m², price, state. |
-| `movimiento_cuero` | Movimientos_Cuero | Cuts, waste, adjustments and entries of a hide; a CORTE must point to the lot item. |
+| `pieza_cuero` | Pieles | Each hide bought: material, color, m², price, state. Created by a supplier order line of skins (one piece per skin); there is no automatic 10 % waste. |
+| `movimiento_cuero` | Movimientos_Cuero | Cuts, waste, adjustments and entries of a hide; a CORTE must point to the lot item. A `DESPERDICIO` is a remainder a person decided is no longer useful: it is the month's scrap cost (`GET /costos-fijos/retazos`, calculated, never stored in `gasto_periodo`). |
 | `conteo_inventario` | Conteo_Inventario | Monthly leather count (start / close) by material and color. |
 | `cotizacion` | Cotizaciones | Calculated snapshot per product, type (INICIAL / RECOTIZACION / FINAL) and date: dollar, one amount per stage, subtotal, kit components, purchase VAT, repairs, totals in ARS and USD. |
 | `formulario_consumo` | (no sheet) | The digital "consumos y herrajes" sheet of one new article (revision 0016): see the section below. |
