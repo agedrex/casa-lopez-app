@@ -290,7 +290,7 @@ def test_pg_invalid_orders_are_422_and_save_nothing(api, changes):
 def test_pg_a_free_price_of_zero_is_allowed_and_an_unknown_supplier_is_404(api):
     como("admin")
     code = make_supplier(api)
-    assert api.post(f"/proveedores/{code}/pedidos", json=order([line(precio_por_presentacion="0")])).status_code == 201
+    assert api.post(f"/proveedores/{code}/pedidos", json=order([{**line(), "precio_por_presentacion": "0"}])).status_code == 201
     assert api.post("/proveedores/PRV-9999/pedidos", json=order()).status_code == 404
     assert api.get("/proveedores/PRV-9999/pedidos").status_code == 404
 
@@ -478,3 +478,20 @@ def test_pg_an_order_needs_a_line_or_skins_and_the_same_leather_twice_is_409(api
     twice = {"fecha_de_recepcion": DAY, "lineas": [], "pieles": [pieles(), pieles(tamanos=["3"])]}
     assert api.post(f"/proveedores/{code}/pedidos", json=twice).status_code == 409
     assert counts(api) == before and pieces(api) == []
+
+
+# --- Leather never takes a price of 0 -------------------------------------------------------------------------------
+
+def test_pg_a_leather_price_of_zero_is_rejected_in_every_form_and_a_zero_price_elsewhere_is_still_allowed(api):
+    como("admin")
+    code = make_supplier(api)
+    before = counts(api)
+    free_skins = {"fecha_de_recepcion": DAY, "lineas": [], "pieles": [pieles(precio_por_m2="0")]}
+    simple = order([{**line(CUERO), "precio_por_presentacion": "0"}])
+    for body in (free_skins, simple, order([{**piel(), "precio_por_presentacion": "0"}])):
+        response = api.post(f"/proveedores/{code}/pedidos", json=body)
+        assert response.status_code == 422, response.text
+    assert "precio" in response.json()["detail"].lower() and counts(api) == before and pieces(api) == []
+    # A free price stays valid for a non-leather material (the existing rule).
+    assert api.post(f"/proveedores/{code}/pedidos",
+                    json=order([{**line(), "precio_por_presentacion": "0"}])).status_code == 201

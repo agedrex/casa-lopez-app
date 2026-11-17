@@ -251,7 +251,7 @@ test("a leather row without color sends no color", () => {
     {
       material: "MAT-0002",
       tamanos: "2.5",
-      precioPorM2: "0",
+      precioPorM2: "24",
       color: " ",
       moneda: "USD",
       iva: false,
@@ -308,4 +308,20 @@ test("what arrived reads as skins for a leather line", () => {
   });
   assert.equal(llegoTexto(line("3.000000")), "3 pieles × 2 m²");
   assert.equal(llegoTexto(line("1.000000")), "1 piel × 2 m²");
+});
+
+test("a leather row with a price of 0 is rejected", () => {
+  const result = leerPielesDePedido(
+    {
+      material: "MAT-CU01",
+      tamanos: "1, 2",
+      precioPorM2: "0",
+      moneda: "ARS",
+      iva: false,
+      color: "",
+    },
+    1,
+  );
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.match(result.message, /mayor que 0/);
 });
