@@ -72,8 +72,9 @@ def _resumen_pieza(pieza: PiezaCuero, material: str, color: str | None, movimien
 def crear_pieza(
     session: Session, *, origen: str, material: str, color: str | None, m2_iniciales: Decimal,
     fecha_de_compra: date | None, precio_pagado_por_m2: Decimal | None, moneda: str | None,
-    proveedor: str | None,
+    proveedor: str | None, commit: bool = True,
 ) -> dict:
+    """Create a piece. `commit=False` lets a caller (a supplier order) keep it inside its own transaction."""
     if (origen == "COMPRA") != (fecha_de_compra is not None):
         raise DatosInvalidos("COMPRA requiere fecha_de_compra; SOBRANTE_EXISTENTE debe dejarla vacía.")
     if (precio_pagado_por_m2 is None) != (moneda is None):
@@ -96,7 +97,8 @@ def crear_pieza(
         estado="ENTERA" if origen == "COMPRA" else "RETAZO",
     )
     _insertar(session, pieza, "No se pudo asignar el código de la pieza; intentá de nuevo.")
-    session.commit()
+    if commit:
+        session.commit()
     return detalle_pieza(session, pieza.codigo)
 
 

@@ -21,7 +21,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, undefer
 
 from backend.models import (
-    DOCUMENT_TYPES, Color, DocumentoProveedor, Material, PedidoLinea, PedidoProveedor, PrecioMaterial, Proveedor,
+    DOCUMENT_TYPES, Color, DocumentoProveedor, Etapa, Material, PedidoLinea, PedidoProveedor, PrecioMaterial, Proveedor,
     ProveedorMaterial, ProveedorProducto,
 )
 from backend.ocr_llm import OcrError, OcrLLM, OcrResult, OcrSuggestion
@@ -641,6 +641,33 @@ def _add_order_line(session: Session, supplier: Proveedor, order: PedidoProveedo
         precio_por_presentacion=line["precio_por_presentacion"], moneda=line["moneda"],
         iva_incluido=line["iva_incluido"], precio_material_id=price_id,
     ), f"Línea {position} ({material.codigo}): no se pudo guardar la línea.")
+    if line["presentacion"].upper() == SKIN_PRESENTATION:
+        _add_skins(session, supplier, order, position, material, line, price)
+
+
+SKIN_PRESENTATION = "PIEL"
+MAX_SKINS_PER_LINE = 500
+
+
+def _add_skins(session: Session, supplier: Proveedor, order: PedidoProveedor, position: int, material: Material,
+               line: dict, price_per_m2: Decimal) -> None:
+    """A leather line of skins (`PIEL`): `cantidad_presentaciones` skins of `contenido_por_presentacion` m2 each become
+    that many stock pieces, each with its own code, priced per m2. Skins of other sizes go in another line."""
+    from backend import cueros  # local import: `cueros` imports `servicios`, like this module
+
+    fail = lambda text: DatosInvalidos(f"Línea {position} ({material.codigo}): {text}")  # noqa: E731
+    stage = session.scalar(select(Etapa.codigo).where(Etapa.id == material.etapa_id))
+    if stage != "CUERO" or material.unidad_de_consumo != "m2":
+        raise fail("las pieles solo se cargan para un cuero en m².")
+    count = line["cantidad_presentaciones"]
+    if count != count.to_integral_value() or not 1 <= count <= MAX_SKINS_PER_LINE:
+        raise fail(f"la cantidad de pieles debe ser un número entero entre 1 y {MAX_SKINS_PER_LINE}.")
+    for _ in range(int(count)):
+        cueros.crear_pieza(
+            session, origen="COMPRA", material=material.codigo, color=line.get("color"),
+            m2_iniciales=line["contenido_por_presentacion"], fecha_de_compra=order.fecha_de_recepcion,
+            precio_pagado_por_m2=price_per_m2, moneda=line["moneda"], proveedor=supplier.codigo, commit=False,
+        )
 
 
 # --- Products a supplier sells: unit, quantity of one presentation and a reference price --------------------------

@@ -2349,6 +2349,7 @@ class PedidoLineaIn(Entrada):
     precio_por_presentacion: Annotated[Decimal, Field(ge=0, max_digits=14, decimal_places=4)]
     moneda: Literal[*ARS_USD]
     iva_incluido: bool = False
+    color: Annotated[str, Field(min_length=1, max_length=100)] | None = None  # only for a leather line of skins
 
 
 class PedidoProveedorIn(Entrada):
