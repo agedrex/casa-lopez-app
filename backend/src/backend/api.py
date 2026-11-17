@@ -1157,6 +1157,25 @@ class MercaderiaDelMesOut(Salida):
     compras: list[CompraDelMesOut]
 
 
+class RetazoDelMesOut(Salida):
+    pieza: str
+    material: str
+    color: str | None
+    fecha: date
+    m2: Decimal
+    precio_por_m2_ars: Decimal | None
+    total_ars: Decimal | None
+
+
+class RetazosDelMesOut(Salida):
+    periodo: str
+    total_retazos: Decimal
+    sin_precio: int
+    total_gastos_fabrica: Decimal
+    total_fabrica: Decimal
+    retazos: list[RetazoDelMesOut]
+
+
 class TendenciaMesOut(Salida):
     periodo: str
     unidades: Decimal
@@ -1821,6 +1840,12 @@ def stock_derivado(session: Sesion):
 def margen_real(session: Sesion, periodo: Annotated[str | None, Query(pattern=PERIODO)] = None):
     """Real margin of the factory, the store and both together for the month (default: this month), from frozen costs."""
     return servicios.margen_real(session, periodo)
+
+
+@router.get("/costos-fijos/retazos", dependencies=LECTURA_ADMIN, response_model=RetazosDelMesOut)
+def retazos_del_mes(session: Sesion, periodo: Annotated[str, Query(pattern=PERIODO)] | None = None):
+    """Leather remainders written off in the month, valued at the price paid; added to the factory total."""
+    return cueros.retazos_del_mes(session, periodo)
 
 
 @router.get("/costos-fijos/mercaderia", dependencies=LECTURA_ADMIN, response_model=MercaderiaDelMesOut)

@@ -11,7 +11,9 @@ from backend.models import (
     Color, Etapa, Material, Modelo, MovimientoCuero, OrdenItem, Parametro,
     Persona, PiezaCuero, PrecioMaterial, Producto, TipoCambio,
 )
-from backend.servicios import Conflicto, DatosInvalidos, NoEncontrado, _insertar, _siguiente_numero
+from backend.servicios import (
+    Conflicto, DatosInvalidos, NoEncontrado, _insertar, _rango_del_mes, _siguiente_numero, costos_fijos, mes_de,
+)
 
 
 ZERO = Decimal("0")
@@ -274,3 +276,39 @@ def alcanza(session: Session, producto: str, cantidad: Decimal) -> dict:
     material_codigo = session.scalar(select(Material.codigo).where(Material.id == fila.cuero_id))
     base["alternativas"].sort(key=lambda p: (p["material"] != material_codigo, p["material"], p["color"] or ""))
     return base
+
+
+def retazos_del_mes(session: Session, periodo: str | None = None) -> dict:
+    """Leather remainders written off in the month, as a cost of the business (the factory).
+
+    Each `DESPERDICIO` movement of the month is valued at the price paid per m2 of its piece (or the current price of
+    the material when the piece has none), in ARS with the dollar of the movement's date. A movement that cannot be
+    valued counts in `sin_precio` and is never turned into 0. Nothing is written to `gasto_periodo`: this is
+    calculated, so the number can never disagree with the stock movements. SUPUESTO: validar con Robert (the loss
+    belongs to the month in which the remainder was written off).
+    """
+    periodo = periodo or mes_de(date.today())
+    desde, hasta = _rango_del_mes(periodo)
+    filas = session.execute(
+        select(MovimientoCuero, PiezaCuero, Material.codigo, Color.nombre)
+        .join(PiezaCuero, PiezaCuero.id == MovimientoCuero.pieza_cuero_id)
+        .join(Material, Material.id == PiezaCuero.material_id)
+        .outerjoin(Color, Color.id == PiezaCuero.color_id)
+        .where(MovimientoCuero.tipo == "DESPERDICIO", MovimientoCuero.fecha >= desde, MovimientoCuero.fecha < hasta)
+        .order_by(MovimientoCuero.fecha.desc(), MovimientoCuero.id.desc())).all()
+    retazos = []
+    for movimiento, pieza, material, color in filas:
+        dolar = session.scalar(select(TipoCambio.ars_por_usd).where(TipoCambio.fecha <= movimiento.fecha)
+                               .order_by(TipoCambio.fecha.desc(), TipoCambio.id.desc()))
+        precio = _precio_ars(session, pieza, dolar, movimiento.fecha)
+        m2 = -movimiento.m2
+        retazos.append({
+            "pieza": pieza.codigo, "material": material, "color": color, "fecha": movimiento.fecha, "m2": m2,
+            "precio_por_m2_ars": precio, "total_ars": m2 * precio if precio is not None else None,
+        })
+    total = sum((r["total_ars"] for r in retazos if r["total_ars"] is not None), ZERO)
+    gastos = costos_fijos(session, periodo)["total_fabrica"]
+    return {
+        "periodo": periodo, "total_retazos": total, "sin_precio": sum(r["total_ars"] is None for r in retazos),
+        "total_gastos_fabrica": gastos, "total_fabrica": gastos + total, "retazos": retazos,
+    }

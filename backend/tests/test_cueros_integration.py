@@ -150,3 +150,32 @@ def test_availability_suggests_same_leather_other_color_before_other_leather(api
     assert kit.status_code == 201, kit.text
     falta = client.get("/cueros/alcanza", params={"producto": kit.json()["codigo"], "cantidad": "1"})
     assert falta.status_code == 200 and "no tiene modelo o consumo" in falta.json()["mensaje"]
+
+
+def test_scraps_of_the_month_are_the_discarded_remainders_at_the_paid_price(api):
+    client, _ = api
+    assert client.get("/costos-fijos/retazos", params={"periodo": "2026-10"}).json()["total_retazos"] == "0"
+    descartada = comprar(client)  # 10 m2 at 20 ARS/m2
+    sin_precio = comprar(client, material="MAT-CU03", precio_pagado_por_m2=None, moneda=None, fecha_de_compra="2026-10-05")
+    producto, item = lote_para(client)
+    assert client.post(f"/cueros/{descartada['codigo']}/cortes",
+                       json={"m2": "7", "orden_item": item, "fecha": "2026-10-02"}).status_code == 201
+    for codigo, fecha in ((descartada["codigo"], "2026-10-03"), (sin_precio["codigo"], "2026-11-01")):
+        assert client.post(f"/cueros/{codigo}/sobrante",
+                           json={"decision": "IRRECUPERABLE", "fecha": fecha}).status_code == 200
+    octubre = client.get("/costos-fijos/retazos", params={"periodo": "2026-10"}).json()
+    assert D(octubre["total_retazos"]) == 60  # 3 m2 x 20 ARS
+    assert [(r["pieza"], D(r["m2"]), D(r["total_ars"])) for r in octubre["retazos"]] == [
+        (descartada["codigo"], D("3"), D("60"))]
+    assert octubre["sin_precio"] == 0
+    noviembre = client.get("/costos-fijos/retazos", params={"periodo": "2026-11"}).json()
+    assert D(noviembre["total_retazos"]) == 0 and noviembre["sin_precio"] == 1
+    assert noviembre["retazos"][0]["total_ars"] is None
+    assert D(noviembre["total_fabrica"]) == D(noviembre["total_gastos_fabrica"]) + D(noviembre["total_retazos"])
+
+
+def test_scraps_of_the_month_are_admin_only(api):
+    client, role = api
+    for rol in ("gerente", "taller"):
+        role["value"] = rol
+        assert client.get("/costos-fijos/retazos").status_code == 403
