@@ -117,29 +117,130 @@ export function leerLineaSimpleDePedido(
   };
 }
 
-/** A line of leather skins of the order form, as typed: how many skins, the m² of each and the price of one skin. */
+/** Presentation of an old single-size leather line (`PIEL`): the API still stores and lists it, the form no longer sends it. */
+export const PRESENTACION_PIEL = "PIEL";
+
+/** Most skins one leather row can have (the API refuses more). */
+export const MAX_PIELES = 500;
+
+const SIZE = /^\d+(?:\.\d+)?$/;
+const REPEATED_SIZE = /^(\d+)x(\d+(?:\.\d+)?)$/;
+
+type TamanosResult =
+  | { ok: true; tamanos: string[] }
+  | { ok: false; message: string };
+
+/**
+ * Reads the sizes text of a leather row into one m² text per skin. Sizes are separated by commas, spaces
+ * or semicolons; `3x2` or `3 x 2` means three skins of 2 m². Decimals use a POINT (`2.5`): a comma is the
+ * separator. Text handling only: nothing is converted to a number.
+ */
+export function leerTamanosDePieles(raw: string): TamanosResult {
+  const tokens = raw
+    .toLowerCase()
+    .replace(/\s*[x×]\s*/g, "x")
+    .split(/[\s,;]+/)
+    .filter(Boolean);
+  if (tokens.length === 0) {
+    return {
+      ok: false,
+      message: "cargá el tamaño de cada piel en m², por ejemplo 1, 2, 2, 5.",
+    };
+  }
+  const tooMany = {
+    ok: false as const,
+    message: `no puede haber más de ${MAX_PIELES} pieles por pedido.`,
+  };
+  const tamanos: string[] = [];
+  for (const token of tokens) {
+    const repeated = REPEATED_SIZE.exec(token);
+    const count = repeated ? repeated[1] : "1";
+    const size = repeated ? repeated[2] : token;
+    if (!SIZE.test(size) || !/^\d+$/.test(count)) {
+      return {
+        ok: false,
+        message: `"${token}" no es un tamaño válido: usá números, con punto para los decimales (2.5).`,
+      };
+    }
+    if (!POSITIVE.test(size)) {
+      return {
+        ok: false,
+        message: `los tamaños deben ser mayores que 0 (revisá "${token}").`,
+      };
+    }
+    if (!POSITIVE.test(count)) {
+      return {
+        ok: false,
+        message: `la cantidad de pieles de "${token}" debe ser 1 o más.`,
+      };
+    }
+    // A count with more than 6 digits is far past the limit: do not expand it.
+    if (count.length > 6 || tamanos.length + Number(count) > MAX_PIELES) {
+      return tooMany;
+    }
+    for (let i = 0; i < Number(count); i++) tamanos.push(size);
+  }
+  return { ok: true, tamanos };
+}
+
+/** Sum of m² texts in exact decimal text (BigInt), without trailing zeros: `["2.5", "1.5"]` -> `"4"`. */
+function sumarM2(tamanos: string[]): string {
+  const parsed = tamanos.map((t) => parseScaled(t));
+  const scale = Math.max(...parsed.map((p) => p?.scale ?? 0));
+  let total = ZERO;
+  for (const p of parsed) {
+    if (p) total += p.digits * pow10(scale - p.scale);
+  }
+  const text = total.toString().padStart(scale + 1, "0");
+  const whole = text.slice(0, text.length - scale);
+  const fraction = text.slice(text.length - scale).replace(/0+$/, "");
+  return fraction ? `${whole}.${fraction}` : whole;
+}
+
+/**
+ * Live hint under the sizes input: how many skins and how many m² in total, from the text only.
+ * Not money: the API stores one piece per skin.
+ */
+export function resumenDePieles(
+  raw: string,
+): { ok: true; pieles: number; m2: string } | { ok: false; message: string } {
+  const result = leerTamanosDePieles(raw);
+  if (!result.ok) return result;
+  return {
+    ok: true,
+    pieles: result.tamanos.length,
+    m2: sumarM2(result.tamanos),
+  };
+}
+
+/** A leather row of the order form, as typed: the sizes text, the price of one m² and the colour. */
 export type LineaDePieles = {
   material: string;
-  pieles: string;
-  m2PorPiel: string;
-  precioPorPiel: string;
+  tamanos: string;
+  precioPorM2: string;
   color: string;
   moneda: string;
   iva: boolean;
 };
 
-/** Presentation of a leather line: each "package" is one skin. The API turns every skin into a stock piece. */
-export const PRESENTACION_PIEL = "PIEL";
+/** What the API takes under `pieles`: one m² text per skin and ONE price per m² for all of them. */
+export type PielesDePedidoBody = {
+  material: string;
+  tamanos: string[];
+  precio_por_m2: string;
+  moneda: string;
+  iva_incluido: boolean;
+  color?: string;
+};
 
 /**
- * Turns a line of skins (how many, m² of each, price of one skin) into the line the API stores:
- * `PIEL` presentations of `m2PorPiel` m² each, priced per skin. Text handling only: the price per m²
- * is the API's. The number of skins must be a whole number of at least 1.
+ * Turns a leather row (sizes text, price per m²) into the `pieles` item the API stores. Text handling
+ * only: the price is sent as typed and the API prices every skin.
  */
-export function leerLineaDePielesDePedido(
+export function leerPielesDePedido(
   linea: LineaDePieles,
   position: number,
-): { ok: true; linea: LineaDePedidoBody } | { ok: false; message: string } {
+): { ok: true; pieles: PielesDePedidoBody } | { ok: false; message: string } {
   const label = `Línea ${position}`;
   const fail = (message: string) => ({
     ok: false as const,
@@ -147,28 +248,20 @@ export function leerLineaDePielesDePedido(
   });
   const material = linea.material.trim();
   if (!material) return fail("elija el material.");
-  const pieles = parseDecimalInput(linea.pieles)?.replace(/\.0+$/, "") ?? null;
-  if (pieles === null || !/^\d+$/.test(pieles) || !POSITIVE.test(pieles)) {
-    return fail("la cantidad de pieles debe ser un número entero, 1 o más.");
-  }
-  const m2 = parseDecimalInput(linea.m2PorPiel);
-  if (m2 === null || !POSITIVE.test(m2)) {
-    return fail("los m² por piel deben ser un número mayor que 0.");
-  }
-  const precio = parseDecimalInput(linea.precioPorPiel);
+  const sizes = leerTamanosDePieles(linea.tamanos);
+  if (!sizes.ok) return fail(sizes.message);
+  const precio = parseDecimalInput(linea.precioPorM2);
   if (precio === null) {
-    return fail("ingrese el precio por piel, por ejemplo 90000 o 85500,50.");
+    return fail("ingrese el precio por m², por ejemplo 20000 o 18500,50.");
   }
   if (!["ARS", "USD"].includes(linea.moneda)) return fail("elija la moneda.");
   const color = linea.color.trim();
   return {
     ok: true,
-    linea: {
+    pieles: {
       material,
-      cantidad_presentaciones: pieles,
-      presentacion: PRESENTACION_PIEL,
-      contenido_por_presentacion: m2,
-      precio_por_presentacion: precio,
+      tamanos: sizes.tamanos,
+      precio_por_m2: precio,
       moneda: linea.moneda,
       iva_incluido: linea.iva,
       ...(color ? { color } : {}),

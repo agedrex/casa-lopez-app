@@ -7,6 +7,8 @@ import {
   inputClass,
   PrimaryButton,
 } from "@/components/form";
+import { formatQuantity } from "@/lib/format";
+import { resumenDePieles } from "@/lib/pedidos";
 import type { MaterialOption } from "@/lib/proveedores";
 import { useActionForm } from "@/lib/use-action-form";
 import { createPedidoDeProveedor } from "./pedido-actions";
@@ -117,6 +119,7 @@ function LineFields({
   materials: MaterialOption[];
 }) {
   const [material, setMaterial] = useState("");
+  const [tamanos, setTamanos] = useState("");
   const selected = materials.find((m) => m.codigo === material);
   const unidad = selected?.unidad ?? "";
   const esCuero = selected?.esCuero ?? false;
@@ -172,35 +175,28 @@ function LineFields({
   );
 
   if (esCuero) {
-    // Leather arrives in skins: each one becomes its own piece of stock, priced per skin.
+    // Leather arrives in skins of different sizes: one text with every size, one price per m².
     return (
       <div className="space-y-2">
-        <div className="grid gap-3 sm:grid-cols-[2fr_1fr_1fr_1fr_1fr_auto_auto]">
+        <div className="grid gap-3 sm:grid-cols-[2fr_2fr_1fr_1fr_auto_auto]">
           {materialField}
-          <Field id={fieldId("pieles")} label="Cantidad de pieles">
+          <Field id={fieldId("tamanos")} label="Tamaño de cada piel en m²">
             <input
-              id={fieldId("pieles")}
-              name={name("pieles")}
-              inputMode="numeric"
+              id={fieldId("tamanos")}
+              name={name("tamanos")}
+              value={tamanos}
+              onChange={(event) => setTamanos(event.target.value)}
               autoComplete="off"
               required
+              placeholder="1, 2, 2, 5"
+              aria-describedby={fieldId("tamanos-ayuda")}
               className={inputClass}
             />
           </Field>
-          <Field id={fieldId("m2_por_piel")} label="m² por piel">
+          <Field id={fieldId("precio_por_m2")} label="Precio por m²">
             <input
-              id={fieldId("m2_por_piel")}
-              name={name("m2_por_piel")}
-              inputMode="decimal"
-              autoComplete="off"
-              required
-              className={inputClass}
-            />
-          </Field>
-          <Field id={fieldId("precio_por_piel")} label="Precio por piel">
-            <input
-              id={fieldId("precio_por_piel")}
-              name={name("precio_por_piel")}
+              id={fieldId("precio_por_m2")}
+              name={name("precio_por_m2")}
               inputMode="decimal"
               autoComplete="off"
               required
@@ -218,10 +214,12 @@ function LineFields({
           {monedaField}
           {ivaField}
         </div>
-        <p className="text-sm text-muted">
-          Si llegaron pieles de distinto tamaño, cargalas en pedidos separados o
-          cargá el promedio.
+        <p id={fieldId("tamanos-ayuda")} className="text-sm text-muted">
+          Escribí el tamaño de cada piel separado por comas o espacios (1, 2, 2,
+          5). Para varias iguales usá 3x2 (tres pieles de 2 m²). Usá punto para
+          los decimales: 2.5.
         </p>
+        <PielesResumen text={tamanos} />
       </div>
     );
   }
@@ -258,5 +256,20 @@ function LineFields({
       {monedaField}
       {ivaField}
     </div>
+  );
+}
+
+/** Live hint from the sizes text only (count and m²); the API creates the pieces and prices them. */
+function PielesResumen({ text }: { text: string }) {
+  if (!text.trim()) return null;
+  const summary = resumenDePieles(text);
+  if (!summary.ok) {
+    return <p className="text-sm text-muted">Revisá: {summary.message}</p>;
+  }
+  const unit = summary.pieles === 1 ? "piel" : "pieles";
+  return (
+    <p className="text-sm font-medium" aria-live="polite">
+      {summary.pieles} {unit} · {formatQuantity(summary.m2)} m² en total
+    </p>
   );
 }
