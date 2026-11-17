@@ -2383,7 +2383,7 @@ class PedidoPielesIn(Entrada):
     material: str
     tamanos: Annotated[list[Annotated[Decimal, Field(gt=0, max_digits=12, decimal_places=6)]],
                        Field(min_length=1, max_length=proveedores.MAX_SKINS_PER_LINE)]
-    precio_por_m2: Annotated[Decimal, Field(ge=0, max_digits=14, decimal_places=4)]
+    precio_por_m2: Annotated[Decimal, Field(gt=0, max_digits=14, decimal_places=4)]
     moneda: Literal[*ARS_USD]
     iva_incluido: bool = False
     color: Annotated[str, Field(min_length=1, max_length=100)] | None = None

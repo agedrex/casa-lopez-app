@@ -284,8 +284,8 @@ def retazos_del_mes(session: Session, periodo: str | None = None) -> dict:
     Each `DESPERDICIO` movement of the month is valued at the price paid per m2 of its piece (or the price of the material
     on the purchase date when the piece has none), in ARS with the dollar of the purchase date. A movement that cannot be
     valued counts in `sin_precio` and is never turned into 0. Nothing is written to `gasto_periodo`: this is
-    calculated, so the number can never disagree with the stock movements. SUPUESTO: validar con Robert (the loss
-    belongs to the month in which the remainder was written off).
+    calculated, so the number can never disagree with the stock movements. Confirmed by the user (2026-11-17): the loss
+    belongs to the month in which the remainder was written off.
     """
     periodo = periodo or mes_de(date.today())
     desde, hasta = _rango_del_mes(periodo)

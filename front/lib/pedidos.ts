@@ -254,6 +254,9 @@ export function leerPielesDePedido(
   if (precio === null) {
     return fail("ingrese el precio por m², por ejemplo 20000 o 18500,50.");
   }
+  if (!POSITIVE.test(precio)) {
+    return fail("el cuero necesita un precio por m² mayor que 0.");
+  }
   if (!["ARS", "USD"].includes(linea.moneda)) return fail("elija la moneda.");
   const color = linea.color.trim();
   return {

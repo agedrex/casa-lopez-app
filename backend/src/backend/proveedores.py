@@ -624,7 +624,13 @@ def _add_order_line(session: Session, supplier: Proveedor, order: PedidoProveedo
     material = session.scalar(select(Material).where(Material.codigo == line["material"]))
     if material is None:
         raise DatosInvalidos(f"Línea {position} ({line['material']}): no existe el material {line['material']}.")
-    price = line.get("precio_unitario") or unit_price(line["precio_por_presentacion"], line["contenido_por_presentacion"])
+    price = line.get("precio_unitario")
+    if price is None:
+        price = unit_price(line["precio_por_presentacion"], line["contenido_por_presentacion"])
+    stage = session.scalar(select(Etapa.codigo).where(Etapa.id == material.etapa_id))
+    if stage == "CUERO" and price <= 0:
+        # A free leather would be valued at 0 in the scrap cost of the month without any warning.
+        raise DatosInvalidos(f"Línea {position} ({material.codigo}): el cuero necesita un precio mayor que 0.")
     if line.get("reutiliza_precio"):
         # Another size of the same skins in this order: the price per m2 is already stored, use that one.
         price_id = session.scalar(select(PedidoLinea.precio_material_id).where(
