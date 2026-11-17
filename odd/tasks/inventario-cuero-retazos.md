@@ -16,7 +16,7 @@ Objective: conectar los pedidos de proveedor con el stock de cuero, sacar el 10 
 - T0 (S5): resuelta por el usuario (L4): sin umbral fijo, decide la persona al cortar. Commit: n/a
 - T1 (S4, S7): sacar el 10 % fijo de `cueros.py` y `calcular_pieza`; inspeccionar piezas existentes en staging; tests actualizados. Route: inline. Commit: ver git log (feat/inventario-cuero-retazos)
 - T2 (S1, ver L5): cada línea de pedido de cuero con `cantidad_presentaciones` = N y `contenido_por_presentacion` = m² por piel crea N `pieza_cuero`, cada una con su código `PZC-` y su precio por m² (= precio por presentación ÷ contenido). Pieles de tamaños distintos = líneas distintas. Atómico con el pedido (`proveedores.py`). Route: inline. Commit: pending
-- T3 (S5): al registrar el corte, devolver % usado y m² restantes, y aceptar la decisión de la persona (reutilizable o ya no sirve) en el mismo paso; reutiliza `decidir_sobrante`. Depende de T1. Route: inline. Commit: pending
+- T3 (S5): al registrar el corte, devolver % usado y m² restantes, y aceptar la decisión de la persona (reutilizable o ya no sirve) en el mismo paso; reutiliza `decidir_sobrante`. Depende de T1. Route: inline. Commit: ver git log (el paso de decisión ya existía en la pantalla Corte; se agregó % usado y la referencia medida)
 - T4 (S6): línea "Retazos" calculada en el Panel (Fábrica) con aviso "sin precio". Depende de T3. Route: inline. Commit: pending
 - T5 (S3): carga manual visible en Cueros, con marca "sin costo". Route: inline. Commit: pending
 - T6 (S2): faltante/disponible en el alta de lote. Route: inline. Commit: pending

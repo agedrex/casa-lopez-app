@@ -21,7 +21,7 @@ def movimiento(tipo: str, m2: str):
 def test_purchase_has_no_automatic_waste_and_remainder_is_the_only_loss():
     piel = pieza("10")
     compra = cueros.calcular_pieza(piel, [])
-    assert compra == {"disponible": D("10"), "irrecuperable": D("0"), "cortado": D("0")}
+    assert compra == {"disponible": D("10"), "irrecuperable": D("0"), "cortado": D("0"), "porcentaje_usado": D("0")}
 
     corte = movimiento("CORTE", "-7.65")
     assert cueros.calcular_pieza(piel, [corte])["disponible"] == D("2.35")
@@ -30,6 +30,15 @@ def test_purchase_has_no_automatic_waste_and_remainder_is_the_only_loss():
     assert final["disponible"] == 0
     assert final["irrecuperable"] == D("2.35")
     assert final["irrecuperable"] / piel.m2_iniciales * D("100") == D("23.5")
+
+
+def test_percentage_used_is_what_was_cut_over_the_whole_piece():
+    piel = pieza("10")
+    assert cueros.calcular_pieza(piel, [])["porcentaje_usado"] == D("0")
+    assert cueros.calcular_pieza(piel, [movimiento("CORTE", "-7.65")])["porcentaje_usado"] == D("76.5")
+    two_cuts = [movimiento("CORTE", "-2.5"), movimiento("CORTE", "-2.5")]
+    assert cueros.calcular_pieza(piel, two_cuts)["porcentaje_usado"] == D("50")
+    assert cueros.calcular_pieza(pieza("0"), [])["porcentaje_usado"] == D("0")
 
 
 def test_existing_remainder_has_no_waste():

@@ -120,6 +120,7 @@ class PiezaCueroOut(Salida):
     disponible: Decimal
     irrecuperable: Decimal
     cortado: Decimal
+    porcentaje_usado: Decimal
 
 
 class PiezaCueroDetalleOut(PiezaCueroOut):

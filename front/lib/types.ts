@@ -566,6 +566,7 @@ export type PiezaCuero = {
   disponible: string;
   irrecuperable: string;
   cortado: string;
+  porcentaje_usado: string;
 };
 
 export type MovimientoCuero = {

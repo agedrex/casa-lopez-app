@@ -21,10 +21,12 @@ ORDEN_ESTADOS = {"RETAZO": 0, "EN_USO": 1, "ENTERA": 2}
 
 def calcular_pieza(pieza: PiezaCuero, movimientos: list[MovimientoCuero]) -> dict:
     """Stock formula: the whole piece is what was bought; only a decided remainder is a loss."""
+    cortado = abs(sum((m.m2 for m in movimientos if m.tipo == "CORTE"), ZERO))
     return {
         "disponible": pieza.m2_iniciales + sum((m.m2 for m in movimientos), ZERO),
         "irrecuperable": abs(sum((m.m2 for m in movimientos if m.tipo == "DESPERDICIO"), ZERO)),
-        "cortado": abs(sum((m.m2 for m in movimientos if m.tipo == "CORTE"), ZERO)),
+        "cortado": cortado,
+        "porcentaje_usado": cortado / pieza.m2_iniciales * CIEN if pieza.m2_iniciales > ZERO else ZERO,
     }
 
 
