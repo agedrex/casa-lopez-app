@@ -18,7 +18,7 @@ Objective: conectar los pedidos de proveedor con el stock de cuero, sacar el 10 
 - T2 (S1, ver L5): cada línea de pedido de cuero con `cantidad_presentaciones` = N y `contenido_por_presentacion` = m² por piel crea N `pieza_cuero`, cada una con su código `PZC-` y su precio por m² (= precio por presentación ÷ contenido). Pieles de tamaños distintos = líneas distintas. Atómico con el pedido (`proveedores.py`). Route: inline. Commit: pending
 - T3 (S5): al registrar el corte, devolver % usado y m² restantes, y aceptar la decisión de la persona (reutilizable o ya no sirve) en el mismo paso; reutiliza `decidir_sobrante`. Depende de T1. Route: inline. Commit: ver git log (el paso de decisión ya existía en la pantalla Corte; se agregó % usado y la referencia medida)
 - T4 (S6): línea "Retazos" calculada en el Panel (Fábrica) con aviso "sin precio". Depende de T3. Route: inline. Commit: pending
-- T5 (S3): carga manual visible en Cueros, con marca "sin costo". Route: inline. Commit: pending
+- T5 (S3, ver L6): el cuero entra solo por pedidos de proveedor; se quita el formulario suelto huérfano (`cargar-cuero-form.tsx`, `actions.ts`). El endpoint `POST /cueros` queda en la API. Commit: ver git log
 - T6 (S2): faltante/disponible en el alta de lote. Route: inline. Commit: pending
 - T7: actualizar `AGENTS.md`, `docs/der-v3.md` y docs de cueros. Route: inline. Commit: pending
 
@@ -30,3 +30,4 @@ Objective: conectar los pedidos de proveedor con el stock de cuero, sacar el 10 
 - L5 (2026-11-16): "y si cada uno cada que se hace un pedido llega con su cantidad y todo. Ahí lo ideal sería que igual modificáramos un poco cómo el usuario carga los pedidos que llegan de los proveedores. Que ponga, por ejemplo, de una forma que le llegaron X m² de este cuero, pero como le llegaron divididos, porque pensé que habían llegado 1 m², 2 m². Es demasiada la cantidad de iguales. Vea cuántas unidades hay de eso. Sí luego poner una idea cada una y empezar a usarlas de referencia."
 
 - Estado (2026-11-17): T0-T4 hechas en 6 commits sobre feat/inventario-cuero-retazos. Pasado el corte de ~400 líneas (≈ 1000 líneas en total): el corte natural para PR es T1+T2 (cueros sin 10 %, pedido con pieles) y T3+T4 (corte con % usado y Retazos en el Panel). T5-T7 pendientes.
+- L6 (2026-11-17): "no hay pero quisiera que lo carguemos. vamos por ese lado de cargar como dijimos por medio del proovedor" — decisión: sin formulario manual de cuero; todo el cuero entra por pedidos de proveedor (S3 se cumple tipeando el costo en el pedido).
