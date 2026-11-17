@@ -3,7 +3,11 @@
 import { refresh } from "next/cache";
 import { error, type FormState, ok } from "@/lib/action-state";
 import { apiPost } from "@/lib/api";
-import { type LineaDePedidoBody, leerLineaSimpleDePedido } from "@/lib/pedidos";
+import {
+  type LineaDePedidoBody,
+  leerLineaDePielesDePedido,
+  leerLineaSimpleDePedido,
+} from "@/lib/pedidos";
 import type { PedidoProveedor } from "@/lib/types";
 import {
   denyUnlessWriter,
@@ -17,16 +21,31 @@ function readLines(formData: FormData): LineaDePedidoBody[] | string {
   const lines: LineaDePedidoBody[] = [];
   for (let i = 0; formData.has(`lineas.${i}.material`); i++) {
     const field = (name: string) => text(formData, `lineas.${i}.${name}`);
-    const result = leerLineaSimpleDePedido(
-      {
-        material: field("material"),
-        cantidad: field("cantidad"),
-        precio: field("precio"),
-        moneda: field("moneda"),
-        iva: formData.get(`lineas.${i}.iva`) === "on",
-      },
-      i + 1,
-    );
+    const iva = formData.get(`lineas.${i}.iva`) === "on";
+    // Only a leather row renders the `pieles` field.
+    const result = formData.has(`lineas.${i}.pieles`)
+      ? leerLineaDePielesDePedido(
+          {
+            material: field("material"),
+            pieles: field("pieles"),
+            m2PorPiel: field("m2_por_piel"),
+            precioPorPiel: field("precio_por_piel"),
+            color: field("color"),
+            moneda: field("moneda"),
+            iva,
+          },
+          i + 1,
+        )
+      : leerLineaSimpleDePedido(
+          {
+            material: field("material"),
+            cantidad: field("cantidad"),
+            precio: field("precio"),
+            moneda: field("moneda"),
+            iva,
+          },
+          i + 1,
+        );
     if (!result.ok) return result.message;
     lines.push(result.linea);
   }

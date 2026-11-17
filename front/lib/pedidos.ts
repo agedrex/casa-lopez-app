@@ -72,6 +72,8 @@ export type LineaDePedidoBody = {
   precio_por_presentacion: string;
   moneda: string;
   iva_incluido: boolean;
+  // Only for a leather line of skins: the colour name the pieces are stored under.
+  color?: string;
 };
 
 /** Presentation used by the simple form: the quantity is already in the unit of the material, so each "package" is one unit. */
@@ -115,7 +117,66 @@ export function leerLineaSimpleDePedido(
   };
 }
 
-/** What arrived, for the list of received orders: `5,5 m2` for a simple line, `3 × ROLLO` for a real presentation. */
+/** A line of leather skins of the order form, as typed: how many skins, the m² of each and the price of one skin. */
+export type LineaDePieles = {
+  material: string;
+  pieles: string;
+  m2PorPiel: string;
+  precioPorPiel: string;
+  color: string;
+  moneda: string;
+  iva: boolean;
+};
+
+/** Presentation of a leather line: each "package" is one skin. The API turns every skin into a stock piece. */
+export const PRESENTACION_PIEL = "PIEL";
+
+/**
+ * Turns a line of skins (how many, m² of each, price of one skin) into the line the API stores:
+ * `PIEL` presentations of `m2PorPiel` m² each, priced per skin. Text handling only: the price per m²
+ * is the API's. The number of skins must be a whole number of at least 1.
+ */
+export function leerLineaDePielesDePedido(
+  linea: LineaDePieles,
+  position: number,
+): { ok: true; linea: LineaDePedidoBody } | { ok: false; message: string } {
+  const label = `Línea ${position}`;
+  const fail = (message: string) => ({
+    ok: false as const,
+    message: `${label}: ${message}`,
+  });
+  const material = linea.material.trim();
+  if (!material) return fail("elija el material.");
+  const pieles = parseDecimalInput(linea.pieles)?.replace(/\.0+$/, "") ?? null;
+  if (pieles === null || !/^\d+$/.test(pieles) || !POSITIVE.test(pieles)) {
+    return fail("la cantidad de pieles debe ser un número entero, 1 o más.");
+  }
+  const m2 = parseDecimalInput(linea.m2PorPiel);
+  if (m2 === null || !POSITIVE.test(m2)) {
+    return fail("los m² por piel deben ser un número mayor que 0.");
+  }
+  const precio = parseDecimalInput(linea.precioPorPiel);
+  if (precio === null) {
+    return fail("ingrese el precio por piel, por ejemplo 90000 o 85500,50.");
+  }
+  if (!["ARS", "USD"].includes(linea.moneda)) return fail("elija la moneda.");
+  const color = linea.color.trim();
+  return {
+    ok: true,
+    linea: {
+      material,
+      cantidad_presentaciones: pieles,
+      presentacion: PRESENTACION_PIEL,
+      contenido_por_presentacion: m2,
+      precio_por_presentacion: precio,
+      moneda: linea.moneda,
+      iva_incluido: linea.iva,
+      ...(color ? { color } : {}),
+    },
+  };
+}
+
+/** What arrived, for the list of received orders: `5,5 m2` for a simple line, `3 × ROLLO` for a real presentation, `3 pieles × 2 m²` for leather skins. */
 export function llegoTexto(linea: {
   cantidad_presentaciones: string;
   presentacion: string;
@@ -123,6 +184,11 @@ export function llegoTexto(linea: {
   unidad_de_consumo: string;
 }): string {
   const cantidad = formatQuantity(linea.cantidad_presentaciones);
+  if (linea.presentacion === PRESENTACION_PIEL) {
+    const unit =
+      Number(linea.cantidad_presentaciones) === 1 ? "piel" : "pieles";
+    return `${cantidad} ${unit} × ${formatQuantity(linea.contenido_por_presentacion)} m²`;
+  }
   const isSimple =
     linea.presentacion === PRESENTACION_SIMPLE &&
     Number(linea.contenido_por_presentacion) === 1;

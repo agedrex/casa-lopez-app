@@ -117,37 +117,118 @@ function LineFields({
   materials: MaterialOption[];
 }) {
   const [material, setMaterial] = useState("");
-  const unidad = materials.find((m) => m.codigo === material)?.unidad ?? "";
+  const selected = materials.find((m) => m.codigo === material);
+  const unidad = selected?.unidad ?? "";
+  const esCuero = selected?.esCuero ?? false;
   const groups = [...new Set(materials.map((m) => m.group))];
 
   const name = (field: string) => `lineas.${index}.${field}`;
   const fieldId = (field: string) => `pedido-${id}-${field}`;
 
+  const materialField = (
+    <Field id={fieldId("material")} label="Material">
+      <select
+        id={fieldId("material")}
+        name={name("material")}
+        required
+        value={material}
+        onChange={(event) => setMaterial(event.target.value)}
+        className={inputClass}
+      >
+        <option value="">Elegir…</option>
+        {groups.map((group) => (
+          <optgroup key={group} label={group}>
+            {materials
+              .filter((m) => m.group === group)
+              .map((m) => (
+                <option key={m.codigo} value={m.codigo}>
+                  {m.label}
+                </option>
+              ))}
+          </optgroup>
+        ))}
+      </select>
+    </Field>
+  );
+  const monedaField = (
+    <Field id={fieldId("moneda")} label="Moneda">
+      <select
+        id={fieldId("moneda")}
+        name={name("moneda")}
+        required
+        defaultValue="ARS"
+        className={inputClass}
+      >
+        <option value="ARS">ARS</option>
+        <option value="USD">USD</option>
+      </select>
+    </Field>
+  );
+  const ivaField = (
+    <label className="flex min-h-12 items-center gap-2 text-sm sm:min-h-0 sm:pb-2">
+      <input type="checkbox" name={name("iva")} className="size-4" />
+      Con IVA
+    </label>
+  );
+
+  if (esCuero) {
+    // Leather arrives in skins: each one becomes its own piece of stock, priced per skin.
+    return (
+      <div className="space-y-2">
+        <div className="grid gap-3 sm:grid-cols-[2fr_1fr_1fr_1fr_1fr_auto_auto]">
+          {materialField}
+          <Field id={fieldId("pieles")} label="Cantidad de pieles">
+            <input
+              id={fieldId("pieles")}
+              name={name("pieles")}
+              inputMode="numeric"
+              autoComplete="off"
+              required
+              className={inputClass}
+            />
+          </Field>
+          <Field id={fieldId("m2_por_piel")} label="m² por piel">
+            <input
+              id={fieldId("m2_por_piel")}
+              name={name("m2_por_piel")}
+              inputMode="decimal"
+              autoComplete="off"
+              required
+              className={inputClass}
+            />
+          </Field>
+          <Field id={fieldId("precio_por_piel")} label="Precio por piel">
+            <input
+              id={fieldId("precio_por_piel")}
+              name={name("precio_por_piel")}
+              inputMode="decimal"
+              autoComplete="off"
+              required
+              className={inputClass}
+            />
+          </Field>
+          <Field id={fieldId("color")} label="Color (opcional)">
+            <input
+              id={fieldId("color")}
+              name={name("color")}
+              autoComplete="off"
+              className={inputClass}
+            />
+          </Field>
+          {monedaField}
+          {ivaField}
+        </div>
+        <p className="text-sm text-muted">
+          Si llegaron pieles de distinto tamaño, cargalas en pedidos separados o
+          cargá el promedio.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="grid gap-3 sm:grid-cols-[2fr_1fr_1fr_auto_auto]">
-      <Field id={fieldId("material")} label="Material">
-        <select
-          id={fieldId("material")}
-          name={name("material")}
-          required
-          value={material}
-          onChange={(event) => setMaterial(event.target.value)}
-          className={inputClass}
-        >
-          <option value="">Elegir…</option>
-          {groups.map((group) => (
-            <optgroup key={group} label={group}>
-              {materials
-                .filter((m) => m.group === group)
-                .map((m) => (
-                  <option key={m.codigo} value={m.codigo}>
-                    {m.label}
-                  </option>
-                ))}
-            </optgroup>
-          ))}
-        </select>
-      </Field>
+      {materialField}
       <Field
         id={fieldId("cantidad")}
         label={unidad ? `Cantidad (${unidad})` : "Cantidad"}
@@ -174,22 +255,8 @@ function LineFields({
           className={inputClass}
         />
       </Field>
-      <Field id={fieldId("moneda")} label="Moneda">
-        <select
-          id={fieldId("moneda")}
-          name={name("moneda")}
-          required
-          defaultValue="ARS"
-          className={inputClass}
-        >
-          <option value="ARS">ARS</option>
-          <option value="USD">USD</option>
-        </select>
-      </Field>
-      <label className="flex min-h-12 items-center gap-2 text-sm sm:min-h-0 sm:pb-2">
-        <input type="checkbox" name={name("iva")} className="size-4" />
-        Con IVA
-      </label>
+      {monedaField}
+      {ivaField}
     </div>
   );
 }

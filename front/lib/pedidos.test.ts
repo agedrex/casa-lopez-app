@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  leerLineaDePielesDePedido,
   leerLineaSimpleDePedido,
   llegoTexto,
   PRESENTACIONES,
@@ -132,4 +133,124 @@ test("what arrived reads as a plain quantity when there is no real presentation"
     }),
     "3 × ROLLO",
   );
+});
+
+test("a leather line is stored as skins of N m2 each, priced per skin", () => {
+  const result = leerLineaDePielesDePedido(
+    {
+      material: "MAT-0002",
+      pieles: "3",
+      m2PorPiel: "2,5",
+      precioPorPiel: "90000",
+      color: "  Negro ",
+      moneda: "ARS",
+      iva: true,
+    },
+    1,
+  );
+  assert.deepEqual(result, {
+    ok: true,
+    linea: {
+      material: "MAT-0002",
+      cantidad_presentaciones: "3",
+      presentacion: "PIEL",
+      contenido_por_presentacion: "2.5",
+      precio_por_presentacion: "90000",
+      moneda: "ARS",
+      iva_incluido: true,
+      color: "Negro",
+    },
+  });
+});
+
+test("a leather line without color sends no color", () => {
+  const result = leerLineaDePielesDePedido(
+    {
+      material: "MAT-0002",
+      pieles: "1",
+      m2PorPiel: "2",
+      precioPorPiel: "0",
+      color: " ",
+      moneda: "USD",
+      iva: false,
+    },
+    1,
+  );
+  assert.equal(result.ok, true);
+  assert.equal("color" in (result as { linea: object }).linea, false);
+});
+
+test("a leather line names the first thing that is wrong", () => {
+  const base = {
+    material: "MAT-0002",
+    pieles: "2",
+    m2PorPiel: "3",
+    precioPorPiel: "100",
+    color: "",
+    moneda: "ARS",
+    iva: false,
+  };
+  const fail = (patch: Partial<typeof base>) =>
+    leerLineaDePielesDePedido({ ...base, ...patch }, 2);
+  const wholeSkins = {
+    ok: false,
+    message:
+      "Línea 2: la cantidad de pieles debe ser un número entero, 1 o más.",
+  };
+  assert.deepEqual(fail({ material: "" }), {
+    ok: false,
+    message: "Línea 2: elija el material.",
+  });
+  assert.deepEqual(fail({ pieles: "2,5" }), wholeSkins);
+  assert.deepEqual(fail({ pieles: "0" }), wholeSkins);
+  assert.deepEqual(fail({ pieles: "" }), wholeSkins);
+  assert.deepEqual(fail({ m2PorPiel: "0" }), {
+    ok: false,
+    message: "Línea 2: los m² por piel deben ser un número mayor que 0.",
+  });
+  assert.deepEqual(fail({ m2PorPiel: "abc" }), {
+    ok: false,
+    message: "Línea 2: los m² por piel deben ser un número mayor que 0.",
+  });
+  assert.deepEqual(fail({ precioPorPiel: "" }), {
+    ok: false,
+    message:
+      "Línea 2: ingrese el precio por piel, por ejemplo 90000 o 85500,50.",
+  });
+  assert.deepEqual(fail({ moneda: "EUR" }), {
+    ok: false,
+    message: "Línea 2: elija la moneda.",
+  });
+  assert.equal((fail({}) as { ok: true }).ok, true);
+});
+
+test("a whole number of skins written with decimals of zero is accepted", () => {
+  const result = leerLineaDePielesDePedido(
+    {
+      material: "MAT-0002",
+      pieles: "4,0",
+      m2PorPiel: "2",
+      precioPorPiel: "10",
+      color: "",
+      moneda: "ARS",
+      iva: false,
+    },
+    1,
+  );
+  assert.equal(
+    (result as { linea: { cantidad_presentaciones: string } }).linea
+      .cantidad_presentaciones,
+    "4",
+  );
+});
+
+test("what arrived reads as skins for a leather line", () => {
+  const line = (cantidad: string) => ({
+    cantidad_presentaciones: cantidad,
+    presentacion: "PIEL",
+    contenido_por_presentacion: "2.000000",
+    unidad_de_consumo: "m2",
+  });
+  assert.equal(llegoTexto(line("3.000000")), "3 pieles × 2 m²");
+  assert.equal(llegoTexto(line("1.000000")), "1 piel × 2 m²");
 });

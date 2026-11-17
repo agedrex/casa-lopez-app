@@ -6,6 +6,8 @@ export type MaterialOption = {
   label: string;
   unidad: string;
   group: string;
+  // Leather (stage CUERO): the order form asks for skins instead of a plain quantity.
+  esCuero: boolean;
 };
 
 // Client-side hint only: the API checks the real size and the file's magic bytes.
@@ -222,5 +224,6 @@ export function materialOptions(materiales: Material[]): MaterialOption[] {
       label: m.nombre,
       unidad: m.unidad_de_consumo,
       group: stageLabel(m.etapa),
+      esCuero: m.etapa === "CUERO",
     }));
 }
