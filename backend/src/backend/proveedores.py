@@ -584,11 +584,11 @@ def _line_error(error: Exception, position: int, material: str) -> Exception:
 
 def create_order(
     session: Session, code: str, *, fecha_de_recepcion: date, remito: str | None, documento_id: int | None,
-    nota: str | None, lineas: list[dict], creado_por: str,
+    nota: str | None, lineas: list[dict], creado_por: str, pieles: list[dict] | None = None,
 ) -> dict:
     """Store an order and, for each line, the price it implies. All or nothing."""
     supplier = _supplier(session, code)
-    if not lineas:
+    if not lineas and not pieles:
         raise DatosInvalidos("El pedido necesita al menos una línea.")
     if documento_id is not None and session.scalar(select(DocumentoProveedor.id).where(
             DocumentoProveedor.id == documento_id, DocumentoProveedor.proveedor_id == supplier.id)) is None:
@@ -599,6 +599,8 @@ def create_order(
         if not presentation:
             raise DatosInvalidos(f"Línea {position} ({line['material']}): falta la presentación.")
         clean_lines.append({**line, "presentacion": presentation})
+    for item in pieles or []:
+        clean_lines.extend(_skin_lines(item))
     # One savepoint around the whole order: any failure below undoes the order and every price already flushed.
     with session.begin_nested():
         order = PedidoProveedor(
@@ -622,18 +624,23 @@ def _add_order_line(session: Session, supplier: Proveedor, order: PedidoProveedo
     material = session.scalar(select(Material).where(Material.codigo == line["material"]))
     if material is None:
         raise DatosInvalidos(f"Línea {position} ({line['material']}): no existe el material {line['material']}.")
-    price = unit_price(line["precio_por_presentacion"], line["contenido_por_presentacion"])
-    try:
-        # SUPUESTO: validar. The price applies to every colour of the material (colour NULL), like a supplier price.
-        created = crear_precio(
-            session, material=material.codigo, color=None, proveedor=supplier.codigo, proveedor_id=supplier.id,
-            precio=price, moneda=line["moneda"], unidad_del_precio=material.unidad_de_consumo,
-            iva_incluido=line["iva_incluido"], vigente_desde=order.fecha_de_recepcion,
-            nota_fuente=f"Pedido {order.codigo}", commit=False,
-        )
-    except (DatosInvalidos, Conflicto) as error:
-        raise _line_error(error, position, material.codigo) from None
-    price_id = session.scalar(select(PrecioMaterial.id).where(PrecioMaterial.codigo == created["codigo"]))
+    price = line.get("precio_unitario") or unit_price(line["precio_por_presentacion"], line["contenido_por_presentacion"])
+    if line.get("reutiliza_precio"):
+        # Another size of the same skins in this order: the price per m2 is already stored, use that one.
+        price_id = session.scalar(select(PedidoLinea.precio_material_id).where(
+            PedidoLinea.pedido_id == order.id, PedidoLinea.material_id == material.id).order_by(PedidoLinea.orden))
+    else:
+        try:
+            # SUPUESTO: validar. The price applies to every colour of the material (colour NULL), like a supplier price.
+            created = crear_precio(
+                session, material=material.codigo, color=None, proveedor=supplier.codigo, proveedor_id=supplier.id,
+                precio=price, moneda=line["moneda"], unidad_del_precio=material.unidad_de_consumo,
+                iva_incluido=line["iva_incluido"], vigente_desde=order.fecha_de_recepcion,
+                nota_fuente=f"Pedido {order.codigo}", commit=False,
+            )
+        except (DatosInvalidos, Conflicto) as error:
+            raise _line_error(error, position, material.codigo) from None
+        price_id = session.scalar(select(PrecioMaterial.id).where(PrecioMaterial.codigo == created["codigo"]))
     _insertar(session, PedidoLinea(
         pedido_id=order.id, orden=position, material_id=material.id,
         cantidad_presentaciones=line["cantidad_presentaciones"], presentacion=line["presentacion"],
@@ -647,6 +654,23 @@ def _add_order_line(session: Session, supplier: Proveedor, order: PedidoProveedo
 
 SKIN_PRESENTATION = "PIEL"
 MAX_SKINS_PER_LINE = 500
+
+
+def _skin_lines(item: dict) -> list[dict]:
+    """Skins typed one by one at one price per m2 -> one order line per size (`PIEL`, count x size).
+
+    The money stays here: the price of a skin is the price per m2 times its size, and every line of the material keeps
+    that exact price per m2, so the first line stores it and the others reuse it.
+    """
+    sizes: dict[Decimal, int] = {}
+    for size in item["tamanos"]:
+        sizes[size] = sizes.get(size, 0) + 1
+    return [{
+        "material": item["material"], "cantidad_presentaciones": Decimal(count), "presentacion": SKIN_PRESENTATION,
+        "contenido_por_presentacion": size, "precio_por_presentacion": item["precio_por_m2"] * size,
+        "precio_unitario": item["precio_por_m2"], "moneda": item["moneda"], "iva_incluido": item["iva_incluido"],
+        "color": item.get("color"), "reutiliza_precio": index > 0,
+    } for index, (size, count) in enumerate(sorted(sizes.items()))]
 
 
 def _add_skins(session: Session, supplier: Proveedor, order: PedidoProveedor, position: int, material: Material,

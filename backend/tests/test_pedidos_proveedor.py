@@ -428,3 +428,53 @@ def test_pg_skins_must_be_a_whole_number_and_a_failure_leaves_no_piece_no_order(
     failing = order([piel(), piel("MAT-NO-EXISTE")])
     assert api.post(f"/proveedores/{code}/pedidos", json=failing).status_code == 422
     assert counts(api) == before and pieces(api) == []
+
+
+# --- Leather of mixed sizes in one purchase: sizes typed one by one, one price per m2 -----------------------------
+
+def pieles(material=CUERO, tamanos=("1", "2", "2", "5"), **extra):
+    return {"material": material, "tamanos": list(tamanos), "precio_por_m2": "20", "moneda": "ARS", **extra}
+
+
+def prices_of_the_order(api):
+    return api.session.scalars(select(PrecioMaterial).where(PrecioMaterial.nota_fuente.like("Pedido%"))).all()
+
+
+def test_pg_mixed_sizes_become_one_piece_each_grouped_by_size_with_a_single_price_per_m2(api):
+    como("admin")
+    code = make_supplier(api)
+    response = api.post(f"/proveedores/{code}/pedidos", json={"fecha_de_recepcion": DAY, "lineas": [],
+                                                              "pieles": [pieles()]})
+    assert response.status_code == 201, response.text
+    assert sorted(p.m2_iniciales for p in pieces(api)) == [D("1"), D("2"), D("2"), D("5")]
+    assert {p.precio_pagado_por_m2 for p in pieces(api)} == {D("20")}
+    assert len(prices_of_the_order(api)) == 1 and prices_of_the_order(api)[0].precio == D("20")
+    lines = response.json()["lineas"]
+    assert [(D(l["cantidad_presentaciones"]), D(l["contenido_por_presentacion"]), D(l["precio_por_presentacion"]))
+            for l in lines] == [(1, 1, 20), (2, 2, 40), (1, 5, 100)]
+    assert {l["precio_codigo"] for l in lines} == {prices_of_the_order(api)[0].codigo}
+
+
+@pytest.mark.parametrize("item, status", [
+    (pieles(tamanos=[]), 422), (pieles(tamanos=["0"]), 422), (pieles(tamanos=["2"] * 501), 422),
+    (pieles(TELA), 422), (pieles(color="NoExiste"), 422),
+])
+def test_pg_invalid_mixed_sizes_save_nothing(api, item, status):
+    como("admin")
+    code = make_supplier(api)
+    before = counts(api)
+    response = api.post(f"/proveedores/{code}/pedidos", json={"fecha_de_recepcion": DAY, "lineas": [],
+                                                              "pieles": [item]})
+    assert response.status_code == status, response.text
+    assert counts(api) == before and pieces(api) == []
+
+
+def test_pg_an_order_needs_a_line_or_skins_and_the_same_leather_twice_is_409(api):
+    como("admin")
+    code = make_supplier(api)
+    before = counts(api)
+    assert api.post(f"/proveedores/{code}/pedidos",
+                    json={"fecha_de_recepcion": DAY, "lineas": [], "pieles": []}).status_code == 422
+    twice = {"fecha_de_recepcion": DAY, "lineas": [], "pieles": [pieles(), pieles(tamanos=["3"])]}
+    assert api.post(f"/proveedores/{code}/pedidos", json=twice).status_code == 409
+    assert counts(api) == before and pieces(api) == []

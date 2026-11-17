@@ -2378,13 +2378,25 @@ class PedidoLineaIn(Entrada):
     color: Annotated[str, Field(min_length=1, max_length=100)] | None = None  # only for a leather line of skins
 
 
+class PedidoPielesIn(Entrada):
+    """Skins of one leather typed one by one (m2 of each) at a single price per m2; each becomes a stock piece."""
+    material: str
+    tamanos: Annotated[list[Annotated[Decimal, Field(gt=0, max_digits=12, decimal_places=6)]],
+                       Field(min_length=1, max_length=proveedores.MAX_SKINS_PER_LINE)]
+    precio_por_m2: Annotated[Decimal, Field(ge=0, max_digits=14, decimal_places=4)]
+    moneda: Literal[*ARS_USD]
+    iva_incluido: bool = False
+    color: Annotated[str, Field(min_length=1, max_length=100)] | None = None
+
+
 class PedidoProveedorIn(Entrada):
     """An order from this supplier. The supplier comes from the URL, never from the body."""
     fecha_de_recepcion: date
     remito: Annotated[str, Field(max_length=proveedores.MAX_ORDER_TEXT)] | None = None
     documento_id: Annotated[int, Field(ge=1, le=2**63 - 1)] | None = None
     nota: Annotated[str, Field(max_length=2000)] | None = None
-    lineas: Annotated[list[PedidoLineaIn], Field(min_length=1, max_length=200)]
+    lineas: Annotated[list[PedidoLineaIn], Field(max_length=200)]
+    pieles: Annotated[list[PedidoPielesIn], Field(max_length=50)] = []
 
 
 class PedidoLineaOut(Salida):
