@@ -64,8 +64,8 @@ export function CargarCueroForm({
       </fieldset>
       <p id="cuero-form-help" className="text-sm text-muted">
         {comprado
-          ? "Al cargar un cuero comprado se descuenta solo el 10 % de desperdicio natural."
-          : "Indicá los m² que quedan hoy: no se descuenta desperdicio natural."}
+          ? "Cargá los m² completos de la piel: no se descuenta desperdicio. Lo que sobre al cortar se decide pieza por pieza."
+          : "Indicá los m² que quedan hoy."}
       </p>
       <div className="grid gap-5 sm:grid-cols-2">
         <Field id="cuero-material" label="Cuero">

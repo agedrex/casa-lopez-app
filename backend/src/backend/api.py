@@ -118,7 +118,6 @@ class PiezaCueroOut(Salida):
     moneda: Literal[*ARS_USD] | None
     estado: Literal["ENTERA", "EN_USO", "RETAZO", "CERRADA"]
     disponible: Decimal
-    natural: Decimal
     irrecuperable: Decimal
     cortado: Decimal
 
@@ -137,8 +136,6 @@ class GrupoCueroOut(Salida):
     material: str
     color: str | None
     comprado: Decimal
-    natural: Decimal
-    cuero_total_real: Decimal
     cortado: Decimal
     irrecuperable: Decimal
     disponible: Decimal

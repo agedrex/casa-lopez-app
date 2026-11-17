@@ -564,7 +564,6 @@ export type PiezaCuero = {
   moneda: "ARS" | "USD" | null;
   estado: EstadoPiel;
   disponible: string;
-  natural: string;
   irrecuperable: string;
   cortado: string;
 };
@@ -593,8 +592,6 @@ export type GrupoCuero = {
   material: string;
   color: string | null;
   comprado: string;
-  natural: string;
-  cuero_total_real: string;
   cortado: string;
   irrecuperable: string;
   disponible: string;

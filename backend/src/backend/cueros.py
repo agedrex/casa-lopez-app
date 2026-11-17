@@ -2,7 +2,7 @@
 
 from collections import defaultdict
 from datetime import date
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -14,23 +14,16 @@ from backend.models import (
 from backend.servicios import Conflicto, DatosInvalidos, NoEncontrado, _insertar, _siguiente_numero
 
 
-# SUPUESTO: regla de Robert; TODO pasar a parametro
-DESPERDICIO_NATURAL = Decimal("0.10")
 ZERO = Decimal("0")
 CIEN = Decimal("100")
-PRECISION_M2 = Decimal("0.000001")
 ORDEN_ESTADOS = {"RETAZO": 0, "EN_USO": 1, "ENTERA": 2}
 
 
 def calcular_pieza(pieza: PiezaCuero, movimientos: list[MovimientoCuero]) -> dict:
-    """The DER stock formula, with natural and later waste kept separate."""
-    inicial = pieza.m2_iniciales
-    natural = (inicial * DESPERDICIO_NATURAL).quantize(PRECISION_M2, ROUND_HALF_UP) if pieza.fecha_de_compra else ZERO
-    desperdicio = abs(sum((m.m2 for m in movimientos if m.tipo == "DESPERDICIO"), ZERO))
+    """Stock formula: the whole piece is what was bought; only a decided remainder is a loss."""
     return {
-        "disponible": inicial + sum((m.m2 for m in movimientos), ZERO),
-        "natural": natural,
-        "irrecuperable": max(desperdicio - natural, ZERO),
+        "disponible": pieza.m2_iniciales + sum((m.m2 for m in movimientos), ZERO),
+        "irrecuperable": abs(sum((m.m2 for m in movimientos if m.tipo == "DESPERDICIO"), ZERO)),
         "cortado": abs(sum((m.m2 for m in movimientos if m.tipo == "CORTE"), ZERO)),
     }
 
@@ -103,11 +96,6 @@ def crear_pieza(
         estado="ENTERA" if origen == "COMPRA" else "RETAZO",
     )
     _insertar(session, pieza, "No se pudo asignar el código de la pieza; intentá de nuevo.")
-    if origen == "COMPRA":
-        _insertar(session, MovimientoCuero(
-            fecha=fecha_de_compra, pieza_cuero_id=pieza.id, tipo="DESPERDICIO",
-            m2=-(m2_iniciales * DESPERDICIO_NATURAL).quantize(PRECISION_M2, ROUND_HALF_UP),
-        ), "No se pudo registrar el desperdicio natural.")
     session.commit()
     return detalle_pieza(session, pieza.codigo)
 
@@ -201,8 +189,7 @@ def listar_cueros(session: Session, material: str | None = None, color: str | No
     for pieza, mat, nombre_color in filas:
         clave = (pieza.material_id, pieza.color_id)
         grupo = grupos.setdefault(clave, {
-            "material": mat.codigo, "color": nombre_color, "comprado": ZERO, "natural": ZERO,
-            "cuero_total_real": ZERO, "cortado": ZERO, "irrecuperable": ZERO, "disponible": ZERO,
+            "material": mat.codigo, "color": nombre_color, "comprado": ZERO, "cortado": ZERO, "irrecuperable": ZERO, "disponible": ZERO,
             "costo_desperdicio_ars": ZERO, "porcentaje_desperdicio_neto": None,
             "piezas": [], "umbral_medido": None, "umbral_retazo_m2": umbral, "avisos": [],
         })
@@ -210,13 +197,11 @@ def listar_cueros(session: Session, material: str | None = None, color: str | No
         grupo["piezas"].append(_resumen_pieza(pieza, mat.codigo, nombre_color, movimientos.get(pieza.id, [])))
         if pieza.fecha_de_compra:
             grupo["comprado"] += pieza.m2_iniciales
-        grupo["natural"] += calculo["natural"]
-        grupo["cuero_total_real"] += pieza.m2_iniciales - calculo["natural"]
         grupo["cortado"] += calculo["cortado"]
         grupo["irrecuperable"] += calculo["irrecuperable"]
         if pieza.estado != "CERRADA":
             grupo["disponible"] += calculo["disponible"]
-        desperdiciado = calculo["natural"] + calculo["irrecuperable"]
+        desperdiciado = calculo["irrecuperable"]
         if desperdiciado:
             precio = _precio_ars(session, pieza, dolar, hoy)
             if precio is None:
@@ -229,7 +214,7 @@ def listar_cueros(session: Session, material: str | None = None, color: str | No
             casos[clave].append((calculo["irrecuperable"], porcentaje))
     for clave, grupo in grupos.items():
         if grupo["comprado"] > ZERO:
-            grupo["porcentaje_desperdicio_neto"] = (grupo["natural"] + grupo["irrecuperable"]) / grupo["comprado"] * CIEN
+            grupo["porcentaje_desperdicio_neto"] = grupo["irrecuperable"] / grupo["comprado"] * CIEN
         medidos = casos[clave]
         if medidos:
             porcentajes = [pct for _, pct in medidos if pct is not None]
