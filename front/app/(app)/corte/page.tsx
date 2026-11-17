@@ -622,22 +622,23 @@ async function SobranteScreen({
   const query = new URLSearchParams({ material: data.material });
   if (data.color) query.set("color", data.color);
   const grupos = await apiGet<GrupoCuero[]>(`/cueros?${query}`);
-  const umbral = grupos.ok
+  // Reference only: what was discarded from other skins of this leather. The person decides.
+  const medido = grupos.ok
     ? (grupos.data.find((grupo) =>
         grupo.piezas.some((candidate) => candidate.codigo === data.codigo),
-      )?.umbral_retazo_m2 ?? null)
+      )?.umbral_medido ?? null)
     : null;
-  const sugerirDescarte =
-    umbral !== null && compareDecimals(data.disponible, umbral) === -1;
 
   return (
     <Paso
       titulo="¿Lo que sobró sirve para otro producto?"
-      detalle={`Piel ${data.codigo} · quedan ${formatQuantity(data.disponible)} m²`}
+      detalle={`Piel ${data.codigo} · usaste ${formatQuantity(data.porcentaje_usado)} % · quedan ${formatQuantity(data.disponible)} m² de ${formatQuantity(data.m2_iniciales)} m²`}
     >
-      {sugerirDescarte ? (
-        <Notice tone="info" title="Sugerido: se descarta.">
-          Es menos de {formatQuantity(umbral)} m². Igual lo decidís vos.
+      {medido ? (
+        <Notice tone="info" title="Como referencia.">
+          En {medido.casos} {medido.casos === 1 ? "piel" : "pieles"} de este
+          cuero descartaron en promedio {formatQuantity(medido.promedio_m2)} m².
+          Lo decidís vos.
         </Notice>
       ) : null}
       <SobranteForm pieza={data.codigo} lote={lote} seguirHref={seguir} />

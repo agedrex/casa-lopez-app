@@ -118,9 +118,9 @@ class PiezaCueroOut(Salida):
     moneda: Literal[*ARS_USD] | None
     estado: Literal["ENTERA", "EN_USO", "RETAZO", "CERRADA"]
     disponible: Decimal
-    natural: Decimal
     irrecuperable: Decimal
     cortado: Decimal
+    porcentaje_usado: Decimal
 
 
 class PiezaCueroDetalleOut(PiezaCueroOut):
@@ -137,8 +137,6 @@ class GrupoCueroOut(Salida):
     material: str
     color: str | None
     comprado: Decimal
-    natural: Decimal
-    cuero_total_real: Decimal
     cortado: Decimal
     irrecuperable: Decimal
     disponible: Decimal
@@ -1159,6 +1157,25 @@ class MercaderiaDelMesOut(Salida):
     compras: list[CompraDelMesOut]
 
 
+class RetazoDelMesOut(Salida):
+    pieza: str
+    material: str
+    color: str | None
+    fecha: date
+    m2: Decimal
+    precio_por_m2_ars: Decimal | None
+    total_ars: Decimal | None
+
+
+class RetazosDelMesOut(Salida):
+    periodo: str
+    total_retazos: Decimal
+    sin_precio: int
+    total_gastos_fabrica: Decimal
+    total_fabrica: Decimal
+    retazos: list[RetazoDelMesOut]
+
+
 class TendenciaMesOut(Salida):
     periodo: str
     unidades: Decimal
@@ -1825,6 +1842,12 @@ def margen_real(session: Sesion, periodo: Annotated[str | None, Query(pattern=PE
     return servicios.margen_real(session, periodo)
 
 
+@router.get("/costos-fijos/retazos", dependencies=LECTURA_ADMIN, response_model=RetazosDelMesOut)
+def retazos_del_mes(session: Sesion, periodo: Annotated[str, Query(pattern=PERIODO)] | None = None):
+    """Leather remainders written off in the month, valued at the price paid; added to the factory total."""
+    return cueros.retazos_del_mes(session, periodo)
+
+
 @router.get("/costos-fijos/mercaderia", dependencies=LECTURA_ADMIN, response_model=MercaderiaDelMesOut)
 def mercaderia_del_mes(session: Sesion, periodo: Annotated[str, Query(pattern=PERIODO)] | None = None):
     """Mercadería comprada en el mes (default: este mes), imputada a la tienda, y el total de costos de la tienda."""
@@ -2352,6 +2375,18 @@ class PedidoLineaIn(Entrada):
     precio_por_presentacion: Annotated[Decimal, Field(ge=0, max_digits=14, decimal_places=4)]
     moneda: Literal[*ARS_USD]
     iva_incluido: bool = False
+    color: Annotated[str, Field(min_length=1, max_length=100)] | None = None  # only for a leather line of skins
+
+
+class PedidoPielesIn(Entrada):
+    """Skins of one leather typed one by one (m2 of each) at a single price per m2; each becomes a stock piece."""
+    material: str
+    tamanos: Annotated[list[Annotated[Decimal, Field(gt=0, max_digits=12, decimal_places=6)]],
+                       Field(min_length=1, max_length=proveedores.MAX_SKINS_PER_LINE)]
+    precio_por_m2: Annotated[Decimal, Field(ge=0, max_digits=14, decimal_places=4)]
+    moneda: Literal[*ARS_USD]
+    iva_incluido: bool = False
+    color: Annotated[str, Field(min_length=1, max_length=100)] | None = None
 
 
 class PedidoProveedorIn(Entrada):
@@ -2360,7 +2395,8 @@ class PedidoProveedorIn(Entrada):
     remito: Annotated[str, Field(max_length=proveedores.MAX_ORDER_TEXT)] | None = None
     documento_id: Annotated[int, Field(ge=1, le=2**63 - 1)] | None = None
     nota: Annotated[str, Field(max_length=2000)] | None = None
-    lineas: Annotated[list[PedidoLineaIn], Field(min_length=1, max_length=200)]
+    lineas: Annotated[list[PedidoLineaIn], Field(max_length=200)]
+    pieles: Annotated[list[PedidoPielesIn], Field(max_length=50)] = []
 
 
 class PedidoLineaOut(Salida):

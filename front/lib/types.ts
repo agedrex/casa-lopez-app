@@ -451,6 +451,27 @@ export type MercaderiaDelMes = {
   compras: CompraDelMes[];
 };
 
+// GET /costos-fijos/retazos (RetazosDelMesOut): leather remainders written off in the month, imputed to the factory.
+// Calculated by the API; null price/total = the piece has no price (never 0).
+export type RetazoDelMes = {
+  pieza: string;
+  material: string;
+  color: string | null;
+  fecha: string;
+  m2: string;
+  precio_por_m2_ars: string | null;
+  total_ars: string | null;
+};
+
+export type RetazosDelMes = {
+  periodo: string;
+  total_retazos: string;
+  sin_precio: number;
+  total_gastos_fabrica: string;
+  total_fabrica: string;
+  retazos: RetazoDelMes[];
+};
+
 export type PeriodosCostosFijos = {
   vigente: string | null;
   periodos: string[];
@@ -564,9 +585,9 @@ export type PiezaCuero = {
   moneda: "ARS" | "USD" | null;
   estado: EstadoPiel;
   disponible: string;
-  natural: string;
   irrecuperable: string;
   cortado: string;
+  porcentaje_usado: string;
 };
 
 export type MovimientoCuero = {
@@ -593,8 +614,6 @@ export type GrupoCuero = {
   material: string;
   color: string | null;
   comprado: string;
-  natural: string;
-  cuero_total_real: string;
   cortado: string;
   irrecuperable: string;
   disponible: string;

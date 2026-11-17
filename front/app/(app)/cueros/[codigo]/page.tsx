@@ -95,7 +95,6 @@ export default async function PielPage({
               {m2(data.disponible)}
             </Metric>
             <Metric label="Inicial">{m2(data.m2_iniciales)}</Metric>
-            <Metric label="Desperdicio natural">{m2(data.natural)}</Metric>
             <Metric label="Cortado">{m2(data.cortado)}</Metric>
             <Metric label="Irrecuperable">{m2(data.irrecuperable)}</Metric>
             {showMoney && data.precio_pagado_por_m2 && data.moneda ? (

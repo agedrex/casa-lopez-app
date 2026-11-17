@@ -18,31 +18,32 @@ def movimiento(tipo: str, m2: str):
     return SimpleNamespace(tipo=tipo, m2=D(m2))
 
 
-def test_purchase_cut_and_irrecoverable_remainder_follow_the_der_formula():
+def test_purchase_has_no_automatic_waste_and_remainder_is_the_only_loss():
     piel = pieza("10")
-    natural = movimiento("DESPERDICIO", "-1")
-    compra = cueros.calcular_pieza(piel, [natural])
-    assert compra == {"disponible": D("9"), "natural": D("1"), "irrecuperable": D("0"), "cortado": D("0")}
+    compra = cueros.calcular_pieza(piel, [])
+    assert compra == {"disponible": D("10"), "irrecuperable": D("0"), "cortado": D("0"), "porcentaje_usado": D("0")}
 
     corte = movimiento("CORTE", "-7.65")
-    antes_de_cerrar = cueros.calcular_pieza(piel, [natural, corte])
-    assert antes_de_cerrar["disponible"] == D("1.35")
+    assert cueros.calcular_pieza(piel, [corte])["disponible"] == D("2.35")
 
-    final = cueros.calcular_pieza(piel, [natural, corte, movimiento("DESPERDICIO", "-1.35")])
+    final = cueros.calcular_pieza(piel, [corte, movimiento("DESPERDICIO", "-2.35")])
     assert final["disponible"] == 0
-    assert final["irrecuperable"] == D("1.35")
-    assert (final["natural"] + final["irrecuperable"]) / piel.m2_iniciales * D("100") == D("23.5")
+    assert final["irrecuperable"] == D("2.35")
+    assert final["irrecuperable"] / piel.m2_iniciales * D("100") == D("23.5")
 
 
-def test_existing_remainder_has_no_natural_waste():
-    assert cueros.calcular_pieza(pieza("2", compra=False), [])["natural"] == 0
+def test_percentage_used_is_what_was_cut_over_the_whole_piece():
+    piel = pieza("10")
+    assert cueros.calcular_pieza(piel, [])["porcentaje_usado"] == D("0")
+    assert cueros.calcular_pieza(piel, [movimiento("CORTE", "-7.65")])["porcentaje_usado"] == D("76.5")
+    two_cuts = [movimiento("CORTE", "-2.5"), movimiento("CORTE", "-2.5")]
+    assert cueros.calcular_pieza(piel, two_cuts)["porcentaje_usado"] == D("50")
+    assert cueros.calcular_pieza(pieza("0"), [])["porcentaje_usado"] == D("0")
+
+
+def test_existing_remainder_has_no_waste():
+    assert cueros.calcular_pieza(pieza("2", compra=False), [])["irrecuperable"] == 0
     assert cueros.calcular_pieza(pieza("2", compra=False), [])["disponible"] == D("2")
-
-
-def test_natural_waste_respects_the_existing_six_decimal_column():
-    result = cueros.calcular_pieza(pieza("1.000005"), [movimiento("DESPERDICIO", "-0.100001")])
-    assert result["natural"] == D("0.100001")
-    assert result["irrecuperable"] == 0
 
 
 def test_paid_price_uses_the_piece_currency_and_dollar():

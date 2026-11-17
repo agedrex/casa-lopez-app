@@ -112,7 +112,7 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
     ("GET", "/categorias"): CORTE, ("GET", "/impuestos"): ADMIN, ("GET", "/dolar"): CORTE, ("GET", "/parametros"): ADMIN,
     ("GET", "/talleres"): ADMIN, ("GET", "/talleres/{codigo}"): ADMIN, ("GET", "/personas"): ADMIN,
     ("GET", "/talleres/{codigo}/historial"): ADMIN,
-    ("GET", "/costos-fijos"): ADMIN, ("GET", "/costos-fijos/periodos"): ADMIN, ("GET", "/costos-fijos/mercaderia"): ADMIN,
+    ("GET", "/costos-fijos"): ADMIN, ("GET", "/costos-fijos/periodos"): ADMIN, ("GET", "/costos-fijos/mercaderia"): ADMIN, ("GET", "/costos-fijos/retazos"): ADMIN,
     ("GET", "/panel/costos"): ADMIN, ("GET", "/panel/tendencia"): ADMIN,
     ("GET", "/fabricacion/casa-vs-taller"): ADMIN, ("GET", "/calidad"): ADMIN,
     ("GET", "/sync/sheets/estado"): ADMIN, ("GET", "/sync/sheets/vista/{pestana}"): ADMIN,

@@ -369,3 +369,112 @@ def test_pg_only_admin_reads_the_received_stock_and_the_order_history(api):
     como("gerente")
     assert api.get("/materiales/recibido").status_code == 403
     assert api.get(f"/materiales/{TELA}/pedidos").status_code == 403
+
+
+# --- Leather lines: one stock piece per skin -----------------------------------------------------------------------
+
+CUERO = "MAT-CU01"  # leather, m2 in the seeds
+
+
+def piel(material=CUERO, n="3", m2="2", **extra):
+    """`n` skins of `m2` m2 each, priced per skin."""
+    return line(material, cantidad_presentaciones=n, presentacion="PIEL", contenido_por_presentacion=m2,
+                precio_por_presentacion="100", **extra)
+
+
+def pieces(api):
+    from backend.models import PiezaCuero
+    return api.session.scalars(select(PiezaCuero).order_by(PiezaCuero.codigo)).all()
+
+
+def test_pg_a_leather_line_of_skins_creates_one_piece_per_skin_priced_per_m2(api):
+    como("admin")
+    code = make_supplier(api)
+    response = api.post(f"/proveedores/{code}/pedidos", json=order([piel()]))
+    assert response.status_code == 201, response.text
+    stored = pieces(api)
+    assert [p.codigo for p in stored] == ["PZC-0001", "PZC-0002", "PZC-0003"]
+    assert {(p.m2_iniciales, p.precio_pagado_por_m2, p.moneda, p.estado, p.fecha_de_compra, p.proveedor)
+            for p in stored} == {(D("2"), D("50"), "ARS", "ENTERA", date.fromisoformat(DAY), code)}
+
+
+def test_pg_skins_of_different_sizes_are_different_lines_and_a_colour_goes_to_its_pieces(api):
+    como("admin")
+    code = make_supplier(api)
+    assert api.post("/colores", json={"nombre": "Negro"}).status_code in (200, 201)
+    body = order([piel(n="1", m2="1", color="Negro"), piel(CUERO, n="2", m2="2")])
+    body["lineas"][1]["material"] = "MAT-CU02"
+    assert api.post(f"/proveedores/{code}/pedidos", json=body).status_code == 201
+    assert sorted(p.m2_iniciales for p in pieces(api)) == [D("1"), D("2"), D("2")]
+    assert sum(p.color_id is not None for p in pieces(api)) == 1
+
+
+def test_pg_a_simple_leather_line_or_a_non_leather_skin_creates_no_pieces(api):
+    como("admin")
+    code = make_supplier(api)
+    assert api.post(f"/proveedores/{code}/pedidos", json=order([line(CUERO, presentacion="UNIDAD")])).status_code == 201
+    assert pieces(api) == []
+    assert api.post(f"/proveedores/{code}/pedidos", json=order([piel(TELA)])).status_code == 422
+    assert pieces(api) == []
+
+
+def test_pg_skins_must_be_a_whole_number_and_a_failure_leaves_no_piece_no_order(api):
+    como("admin")
+    code = make_supplier(api)
+    before = counts(api)
+    response = api.post(f"/proveedores/{code}/pedidos", json=order([piel(n="2.5")]))
+    assert response.status_code == 422 and "Línea 1" in response.json()["detail"]
+    assert counts(api) == before and pieces(api) == []
+    failing = order([piel(), piel("MAT-NO-EXISTE")])
+    assert api.post(f"/proveedores/{code}/pedidos", json=failing).status_code == 422
+    assert counts(api) == before and pieces(api) == []
+
+
+# --- Leather of mixed sizes in one purchase: sizes typed one by one, one price per m2 -----------------------------
+
+def pieles(material=CUERO, tamanos=("1", "2", "2", "5"), **extra):
+    return {"material": material, "tamanos": list(tamanos), "precio_por_m2": "20", "moneda": "ARS", **extra}
+
+
+def prices_of_the_order(api):
+    return api.session.scalars(select(PrecioMaterial).where(PrecioMaterial.nota_fuente.like("Pedido%"))).all()
+
+
+def test_pg_mixed_sizes_become_one_piece_each_grouped_by_size_with_a_single_price_per_m2(api):
+    como("admin")
+    code = make_supplier(api)
+    response = api.post(f"/proveedores/{code}/pedidos", json={"fecha_de_recepcion": DAY, "lineas": [],
+                                                              "pieles": [pieles()]})
+    assert response.status_code == 201, response.text
+    assert sorted(p.m2_iniciales for p in pieces(api)) == [D("1"), D("2"), D("2"), D("5")]
+    assert {p.precio_pagado_por_m2 for p in pieces(api)} == {D("20")}
+    assert len(prices_of_the_order(api)) == 1 and prices_of_the_order(api)[0].precio == D("20")
+    lines = response.json()["lineas"]
+    assert [(D(l["cantidad_presentaciones"]), D(l["contenido_por_presentacion"]), D(l["precio_por_presentacion"]))
+            for l in lines] == [(1, 1, 20), (2, 2, 40), (1, 5, 100)]
+    assert {l["precio_codigo"] for l in lines} == {prices_of_the_order(api)[0].codigo}
+
+
+@pytest.mark.parametrize("item, status", [
+    (pieles(tamanos=[]), 422), (pieles(tamanos=["0"]), 422), (pieles(tamanos=["2"] * 501), 422),
+    (pieles(TELA), 422), (pieles(color="NoExiste"), 422),
+])
+def test_pg_invalid_mixed_sizes_save_nothing(api, item, status):
+    como("admin")
+    code = make_supplier(api)
+    before = counts(api)
+    response = api.post(f"/proveedores/{code}/pedidos", json={"fecha_de_recepcion": DAY, "lineas": [],
+                                                              "pieles": [item]})
+    assert response.status_code == status, response.text
+    assert counts(api) == before and pieces(api) == []
+
+
+def test_pg_an_order_needs_a_line_or_skins_and_the_same_leather_twice_is_409(api):
+    como("admin")
+    code = make_supplier(api)
+    before = counts(api)
+    assert api.post(f"/proveedores/{code}/pedidos",
+                    json={"fecha_de_recepcion": DAY, "lineas": [], "pieles": []}).status_code == 422
+    twice = {"fecha_de_recepcion": DAY, "lineas": [], "pieles": [pieles(), pieles(tamanos=["3"])]}
+    assert api.post(f"/proveedores/{code}/pedidos", json=twice).status_code == 409
+    assert counts(api) == before and pieces(api) == []

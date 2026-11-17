@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   leerLineaSimpleDePedido,
+  leerPielesDePedido,
+  leerTamanosDePieles,
   llegoTexto,
   PRESENTACIONES,
+  resumenDePieles,
   unitPricePreview,
 } from "./pedidos";
 
@@ -132,4 +135,177 @@ test("what arrived reads as a plain quantity when there is no real presentation"
     }),
     "3 × ROLLO",
   );
+});
+
+const sizes = (text: string) => {
+  const result = leerTamanosDePieles(text);
+  return result.ok ? result.tamanos : result.message;
+};
+
+test("sizes separated by commas or spaces give one entry per skin", () => {
+  assert.deepEqual(sizes("1, 2, 2, 5"), ["1", "2", "2", "5"]);
+  assert.deepEqual(sizes("1 2 2 5"), ["1", "2", "2", "5"]);
+  assert.deepEqual(sizes(" 1,2 ,, 3 "), ["1", "2", "3"]);
+});
+
+test("the 3x2 shorthand repeats a size, with or without spaces", () => {
+  assert.deepEqual(sizes("3x2, 1"), ["2", "2", "2", "1"]);
+  assert.deepEqual(sizes("3 x 2, 1, 5"), ["2", "2", "2", "1", "5"]);
+  assert.deepEqual(sizes("2X1.5"), ["1.5", "1.5"]);
+});
+
+test("a size with a decimal point is kept as typed", () => {
+  assert.deepEqual(sizes("2.5"), ["2.5"]);
+});
+
+test("sizes name what is wrong: empty, zero, not a number, too many", () => {
+  assert.equal(
+    sizes(""),
+    "cargá el tamaño de cada piel en m², por ejemplo 1, 2, 2, 5.",
+  );
+  assert.equal(sizes("  "), sizes(""));
+  assert.equal(sizes("0"), 'los tamaños deben ser mayores que 0 (revisá "0").');
+  assert.equal(
+    sizes("1, 0.0"),
+    'los tamaños deben ser mayores que 0 (revisá "0.0").',
+  );
+  assert.equal(
+    sizes("abc"),
+    '"abc" no es un tamaño válido: usá números, con punto para los decimales (2.5).',
+  );
+  assert.equal(
+    sizes("-2"),
+    '"-2" no es un tamaño válido: usá números, con punto para los decimales (2.5).',
+  );
+  assert.equal(
+    sizes("0x2"),
+    'la cantidad de pieles de "0x2" debe ser 1 o más.',
+  );
+});
+
+test("500 skins are accepted and 501 are refused", () => {
+  const ok = leerTamanosDePieles("500x1");
+  assert.equal(ok.ok, true);
+  assert.equal((ok as { tamanos: string[] }).tamanos.length, 500);
+  const tooMany = "no puede haber más de 500 pieles por pedido.";
+  assert.equal(sizes("501x1"), tooMany);
+  assert.equal(sizes("500x1, 1"), tooMany);
+  assert.equal(sizes("99999999999x1"), tooMany);
+  assert.equal(
+    sizes(Array.from({ length: 501 }, () => "1").join(", ")),
+    tooMany,
+  );
+});
+
+test("the live summary counts skins and sums m2 exactly", () => {
+  assert.deepEqual(resumenDePieles("1, 2, 2, 5"), {
+    ok: true,
+    pieles: 4,
+    m2: "10",
+  });
+  assert.deepEqual(resumenDePieles("3x2, 1, 5"), {
+    ok: true,
+    pieles: 5,
+    m2: "12",
+  });
+  assert.deepEqual(resumenDePieles("2.5, 0.1, 0.2"), {
+    ok: true,
+    pieles: 3,
+    m2: "2.8",
+  });
+  assert.deepEqual(resumenDePieles("0.05, 0.05"), {
+    ok: true,
+    pieles: 2,
+    m2: "0.1",
+  });
+  assert.equal(resumenDePieles("abc").ok, false);
+});
+
+test("a leather row is stored under pieles with one price per m2", () => {
+  const result = leerPielesDePedido(
+    {
+      material: "MAT-0002",
+      tamanos: "3x2, 1",
+      precioPorM2: "20000,50",
+      color: "  Negro ",
+      moneda: "ARS",
+      iva: true,
+    },
+    1,
+  );
+  assert.deepEqual(result, {
+    ok: true,
+    pieles: {
+      material: "MAT-0002",
+      tamanos: ["2", "2", "2", "1"],
+      precio_por_m2: "20000.50",
+      moneda: "ARS",
+      iva_incluido: true,
+      color: "Negro",
+    },
+  });
+});
+
+test("a leather row without color sends no color", () => {
+  const result = leerPielesDePedido(
+    {
+      material: "MAT-0002",
+      tamanos: "2.5",
+      precioPorM2: "0",
+      color: " ",
+      moneda: "USD",
+      iva: false,
+    },
+    1,
+  );
+  assert.equal(result.ok, true);
+  assert.equal("color" in (result as { pieles: object }).pieles, false);
+});
+
+test("a leather row names the first thing that is wrong", () => {
+  const base = {
+    material: "MAT-0002",
+    tamanos: "1, 2",
+    precioPorM2: "100",
+    color: "",
+    moneda: "ARS",
+    iva: false,
+  };
+  const fail = (patch: Partial<typeof base>) =>
+    leerPielesDePedido({ ...base, ...patch }, 2);
+  assert.deepEqual(fail({ material: "" }), {
+    ok: false,
+    message: "Línea 2: elija el material.",
+  });
+  assert.deepEqual(fail({ tamanos: "" }), {
+    ok: false,
+    message:
+      "Línea 2: cargá el tamaño de cada piel en m², por ejemplo 1, 2, 2, 5.",
+  });
+  assert.deepEqual(fail({ tamanos: "0" }), {
+    ok: false,
+    message: 'Línea 2: los tamaños deben ser mayores que 0 (revisá "0").',
+  });
+  assert.equal(fail({ tamanos: "abc" }).ok, false);
+  assert.equal(fail({ tamanos: "501x1" }).ok, false);
+  assert.deepEqual(fail({ precioPorM2: "" }), {
+    ok: false,
+    message: "Línea 2: ingrese el precio por m², por ejemplo 20000 o 18500,50.",
+  });
+  assert.deepEqual(fail({ moneda: "EUR" }), {
+    ok: false,
+    message: "Línea 2: elija la moneda.",
+  });
+  assert.equal(fail({}).ok, true);
+});
+
+test("what arrived reads as skins for a leather line", () => {
+  const line = (cantidad: string) => ({
+    cantidad_presentaciones: cantidad,
+    presentacion: "PIEL",
+    contenido_por_presentacion: "2.000000",
+    unidad_de_consumo: "m2",
+  });
+  assert.equal(llegoTexto(line("3.000000")), "3 pieles × 2 m²");
+  assert.equal(llegoTexto(line("1.000000")), "1 piel × 2 m²");
 });

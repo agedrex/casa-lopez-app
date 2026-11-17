@@ -2,7 +2,7 @@
 
 from collections import defaultdict
 from datetime import date
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -11,27 +11,24 @@ from backend.models import (
     Color, Etapa, Material, Modelo, MovimientoCuero, OrdenItem, Parametro,
     Persona, PiezaCuero, PrecioMaterial, Producto, TipoCambio,
 )
-from backend.servicios import Conflicto, DatosInvalidos, NoEncontrado, _insertar, _siguiente_numero
+from backend.servicios import (
+    Conflicto, DatosInvalidos, NoEncontrado, _insertar, _rango_del_mes, _siguiente_numero, costos_fijos, mes_de,
+)
 
 
-# SUPUESTO: regla de Robert; TODO pasar a parametro
-DESPERDICIO_NATURAL = Decimal("0.10")
 ZERO = Decimal("0")
 CIEN = Decimal("100")
-PRECISION_M2 = Decimal("0.000001")
 ORDEN_ESTADOS = {"RETAZO": 0, "EN_USO": 1, "ENTERA": 2}
 
 
 def calcular_pieza(pieza: PiezaCuero, movimientos: list[MovimientoCuero]) -> dict:
-    """The DER stock formula, with natural and later waste kept separate."""
-    inicial = pieza.m2_iniciales
-    natural = (inicial * DESPERDICIO_NATURAL).quantize(PRECISION_M2, ROUND_HALF_UP) if pieza.fecha_de_compra else ZERO
-    desperdicio = abs(sum((m.m2 for m in movimientos if m.tipo == "DESPERDICIO"), ZERO))
+    """Stock formula: the whole piece is what was bought; only a decided remainder is a loss."""
+    cortado = abs(sum((m.m2 for m in movimientos if m.tipo == "CORTE"), ZERO))
     return {
-        "disponible": inicial + sum((m.m2 for m in movimientos), ZERO),
-        "natural": natural,
-        "irrecuperable": max(desperdicio - natural, ZERO),
-        "cortado": abs(sum((m.m2 for m in movimientos if m.tipo == "CORTE"), ZERO)),
+        "disponible": pieza.m2_iniciales + sum((m.m2 for m in movimientos), ZERO),
+        "irrecuperable": abs(sum((m.m2 for m in movimientos if m.tipo == "DESPERDICIO"), ZERO)),
+        "cortado": cortado,
+        "porcentaje_usado": cortado / pieza.m2_iniciales * CIEN if pieza.m2_iniciales > ZERO else ZERO,
     }
 
 
@@ -79,8 +76,9 @@ def _resumen_pieza(pieza: PiezaCuero, material: str, color: str | None, movimien
 def crear_pieza(
     session: Session, *, origen: str, material: str, color: str | None, m2_iniciales: Decimal,
     fecha_de_compra: date | None, precio_pagado_por_m2: Decimal | None, moneda: str | None,
-    proveedor: str | None,
+    proveedor: str | None, commit: bool = True,
 ) -> dict:
+    """Create a piece. `commit=False` lets a caller (a supplier order) keep it inside its own transaction."""
     if (origen == "COMPRA") != (fecha_de_compra is not None):
         raise DatosInvalidos("COMPRA requiere fecha_de_compra; SOBRANTE_EXISTENTE debe dejarla vacía.")
     if (precio_pagado_por_m2 is None) != (moneda is None):
@@ -103,12 +101,8 @@ def crear_pieza(
         estado="ENTERA" if origen == "COMPRA" else "RETAZO",
     )
     _insertar(session, pieza, "No se pudo asignar el código de la pieza; intentá de nuevo.")
-    if origen == "COMPRA":
-        _insertar(session, MovimientoCuero(
-            fecha=fecha_de_compra, pieza_cuero_id=pieza.id, tipo="DESPERDICIO",
-            m2=-(m2_iniciales * DESPERDICIO_NATURAL).quantize(PRECISION_M2, ROUND_HALF_UP),
-        ), "No se pudo registrar el desperdicio natural.")
-    session.commit()
+    if commit:
+        session.commit()
     return detalle_pieza(session, pieza.codigo)
 
 
@@ -201,8 +195,7 @@ def listar_cueros(session: Session, material: str | None = None, color: str | No
     for pieza, mat, nombre_color in filas:
         clave = (pieza.material_id, pieza.color_id)
         grupo = grupos.setdefault(clave, {
-            "material": mat.codigo, "color": nombre_color, "comprado": ZERO, "natural": ZERO,
-            "cuero_total_real": ZERO, "cortado": ZERO, "irrecuperable": ZERO, "disponible": ZERO,
+            "material": mat.codigo, "color": nombre_color, "comprado": ZERO, "cortado": ZERO, "irrecuperable": ZERO, "disponible": ZERO,
             "costo_desperdicio_ars": ZERO, "porcentaje_desperdicio_neto": None,
             "piezas": [], "umbral_medido": None, "umbral_retazo_m2": umbral, "avisos": [],
         })
@@ -210,13 +203,11 @@ def listar_cueros(session: Session, material: str | None = None, color: str | No
         grupo["piezas"].append(_resumen_pieza(pieza, mat.codigo, nombre_color, movimientos.get(pieza.id, [])))
         if pieza.fecha_de_compra:
             grupo["comprado"] += pieza.m2_iniciales
-        grupo["natural"] += calculo["natural"]
-        grupo["cuero_total_real"] += pieza.m2_iniciales - calculo["natural"]
         grupo["cortado"] += calculo["cortado"]
         grupo["irrecuperable"] += calculo["irrecuperable"]
         if pieza.estado != "CERRADA":
             grupo["disponible"] += calculo["disponible"]
-        desperdiciado = calculo["natural"] + calculo["irrecuperable"]
+        desperdiciado = calculo["irrecuperable"]
         if desperdiciado:
             precio = _precio_ars(session, pieza, dolar, hoy)
             if precio is None:
@@ -229,7 +220,7 @@ def listar_cueros(session: Session, material: str | None = None, color: str | No
             casos[clave].append((calculo["irrecuperable"], porcentaje))
     for clave, grupo in grupos.items():
         if grupo["comprado"] > ZERO:
-            grupo["porcentaje_desperdicio_neto"] = (grupo["natural"] + grupo["irrecuperable"]) / grupo["comprado"] * CIEN
+            grupo["porcentaje_desperdicio_neto"] = grupo["irrecuperable"] / grupo["comprado"] * CIEN
         medidos = casos[clave]
         if medidos:
             porcentajes = [pct for _, pct in medidos if pct is not None]
@@ -285,3 +276,42 @@ def alcanza(session: Session, producto: str, cantidad: Decimal) -> dict:
     material_codigo = session.scalar(select(Material.codigo).where(Material.id == fila.cuero_id))
     base["alternativas"].sort(key=lambda p: (p["material"] != material_codigo, p["material"], p["color"] or ""))
     return base
+
+
+def retazos_del_mes(session: Session, periodo: str | None = None) -> dict:
+    """Leather remainders written off in the month, as a cost of the business (the factory).
+
+    Each `DESPERDICIO` movement of the month is valued at the price paid per m2 of its piece (or the price of the material
+    on the purchase date when the piece has none), in ARS with the dollar of the purchase date. A movement that cannot be
+    valued counts in `sin_precio` and is never turned into 0. Nothing is written to `gasto_periodo`: this is
+    calculated, so the number can never disagree with the stock movements. SUPUESTO: validar con Robert (the loss
+    belongs to the month in which the remainder was written off).
+    """
+    periodo = periodo or mes_de(date.today())
+    desde, hasta = _rango_del_mes(periodo)
+    filas = session.execute(
+        select(MovimientoCuero, PiezaCuero, Material.codigo, Color.nombre)
+        .join(PiezaCuero, PiezaCuero.id == MovimientoCuero.pieza_cuero_id)
+        .join(Material, Material.id == PiezaCuero.material_id)
+        .outerjoin(Color, Color.id == PiezaCuero.color_id)
+        .where(MovimientoCuero.tipo == "DESPERDICIO", MovimientoCuero.fecha >= desde, MovimientoCuero.fecha < hasta)
+        .order_by(MovimientoCuero.fecha.desc(), MovimientoCuero.id.desc())).all()
+    retazos = []
+    for movimiento, pieza, material, color in filas:
+        # What was paid is sunk at the purchase: a price in USD is valued with the dollar of that day, not of the
+        # write-off. A piece that was not bought (existing remainder) falls back to the write-off date.
+        fecha_de_precio = pieza.fecha_de_compra or movimiento.fecha
+        dolar = session.scalar(select(TipoCambio.ars_por_usd).where(TipoCambio.fecha <= fecha_de_precio)
+                               .order_by(TipoCambio.fecha.desc(), TipoCambio.id.desc()))
+        precio = _precio_ars(session, pieza, dolar, fecha_de_precio)
+        m2 = -movimiento.m2
+        retazos.append({
+            "pieza": pieza.codigo, "material": material, "color": color, "fecha": movimiento.fecha, "m2": m2,
+            "precio_por_m2_ars": precio, "total_ars": m2 * precio if precio is not None else None,
+        })
+    total = sum((r["total_ars"] for r in retazos if r["total_ars"] is not None), ZERO)
+    gastos = costos_fijos(session, periodo)["total_fabrica"]
+    return {
+        "periodo": periodo, "total_retazos": total, "sin_precio": sum(r["total_ars"] is None for r in retazos),
+        "total_gastos_fabrica": gastos, "total_fabrica": gastos + total, "retazos": retazos,
+    }
