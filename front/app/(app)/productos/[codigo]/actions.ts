@@ -1,9 +1,10 @@
 "use server";
 
 import { refresh } from "next/cache";
+import { redirect } from "next/navigation";
 import { percentToFraction } from "@/app/(app)/admin/impuestos/percent";
 import { error, type FormState, ok } from "@/lib/action-state";
-import { apiPost, apiPut } from "@/lib/api";
+import { apiGet, apiPost, apiPut } from "@/lib/api";
 import { resolveCatalogChoice } from "@/lib/catalogo-actions";
 import {
   formatArs,
@@ -11,7 +12,14 @@ import {
   parseDecimalInput,
   quoteTypeLabel,
 } from "@/lib/format";
-import type { Cotizacion, Ficha, PrecioVenta } from "@/lib/types";
+import { canSetPrice } from "@/lib/permissions";
+import { getSession } from "@/lib/session";
+import type {
+  Cotizacion,
+  Ficha,
+  PrecioDesdeLotes,
+  PrecioVenta,
+} from "@/lib/types";
 import {
   denyUnlessWriter,
   fromFailure,
@@ -148,6 +156,62 @@ export async function savePrecioVenta(
     : "";
   return ok(
     `Precio guardado: ${formatArs(result.data.precio_ars)}.${conImpuestos}`,
+  );
+}
+
+/**
+ * Saves the sale price the person reached by choosing a margin (S4 of flujo-modelos-lotes-precio). The browser sends only the
+ * margin: the price is computed again here by the API (cost of the latest finished lot / (1 - margin)) so no amount comes
+ * from the form. Admin and gerente; the backend checks the role again (403). The result is a new dated row, never an update.
+ */
+export async function savePrecioPorMargen(
+  codigo: string,
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const session = await getSession();
+  if (!session) redirect("/login");
+  if (!canSetPrice(session.user.role)) {
+    return error("No tiene permiso para esta acción.");
+  }
+
+  const typed = parseDecimalInput(text(formData, "margen"));
+  const margen =
+    typed !== null && Number(typed) < 100 ? percentToFraction(typed) : null;
+  if (typed === null || margen === null) {
+    return error(
+      "El margen tiene que ser un porcentaje entre 0 y 99,9 con un solo decimal, por ejemplo 30 o 32,5.",
+    );
+  }
+
+  const path = `/productos/${encodeURIComponent(codigo)}`;
+  const preview = await apiGet<PrecioDesdeLotes>(
+    `${path}/precio-desde-lotes?margen=${encodeURIComponent(typed)}`,
+  );
+  if (!preview.ok) return fromFailure(preview);
+  const { precio_neto: neto, lote_base: lote } = preview.data;
+  if (neto === null) {
+    return error(
+      preview.data.avisos[0] ??
+        "No se puede calcular el precio de este producto.",
+    );
+  }
+
+  const origen = lote
+    ? `el costo del lote ${lote}`
+    : "el costo estimado de hoy (sin lotes terminados)";
+  const result = await apiPost<PrecioVenta>(`${path}/precio-venta`, {
+    precio_ars: neto,
+    margen,
+    nota: `Margen ${typed.replace(".", ",")} % sobre ${origen}`,
+  });
+  if (!result.ok) return fromFailure(result);
+  refresh();
+  const conImpuestos = result.data.impuestos?.length
+    ? ` Con impuestos: ${formatArs(result.data.precio_final)}.`
+    : "";
+  return ok(
+    `Precio guardado: ${formatArs(result.data.precio_ars)} sin impuestos.${conImpuestos}`,
   );
 }
 

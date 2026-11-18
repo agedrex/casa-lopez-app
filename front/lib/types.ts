@@ -881,6 +881,34 @@ export type PrecioVenta = {
   precio_final?: string | null;
 };
 
+// A finished lot that made the product, with its cost per unit; `usado` marks the one the price starts from.
+// Mirrors LoteDelPrecioOut and PrecioDesdeLotesOut in api.py (GET /productos/{codigo}/precio-desde-lotes).
+export type LoteDelPrecio = {
+  codigo: string;
+  estado: string;
+  fecha: string | null;
+  unidades: string;
+  costo_por_unidad: string;
+  usado: boolean;
+};
+
+export type PrecioDesdeLotes = {
+  producto: string;
+  // LOTE: the cost per unit of the newest finished lot; ESTIMADO: today's computed cost (no finished lot yet).
+  fuente_costo: "LOTE" | "ESTIMADO" | null;
+  costo_por_unidad: string | null;
+  lote_base: string | null;
+  lotes: LoteDelPrecio[];
+  // Percentage over the price ("30" = 30 %); null when no margin was asked for.
+  margen_pct: string | null;
+  precio_neto: string | null;
+  impuestos: ImpuestoDelPrecio[];
+  total_impuestos: string | null;
+  precio_final: string | null;
+  sin_impuestos: boolean;
+  avisos: string[];
+};
+
 export type VeredictoCvu = "NO_CUBRE_VARIABLE" | "MC_BAJO" | "SALUDABLE";
 
 // TRANSFERENCIA: the price the factory charges the store (cost + transfer margin); only in /cvu/fabrica and /cvu/tienda.

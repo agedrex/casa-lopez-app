@@ -86,6 +86,15 @@ export function canWrite(value: string | null | undefined): boolean {
   return parseRoles(value).some((role) => WRITE_ROLES.includes(role));
 }
 
+/**
+ * The sale price of a product (S4 of flujo-modelos-lotes-precio): admin and gerente see the price block of the product
+ * sheet and choose the margin; both may save it. The one write the gerente has; the backend checks it again (403).
+ */
+export function canSetPrice(value: string | null | undefined): boolean {
+  const roles = parseRoles(value);
+  return roles.includes("admin") || roles.includes("gerente");
+}
+
 /** Voice: interpreting a request is open to admin and taller (confirming a load stays admin only). */
 export function canUseVoice(value: string | null | undefined): boolean {
   const roles = parseRoles(value);

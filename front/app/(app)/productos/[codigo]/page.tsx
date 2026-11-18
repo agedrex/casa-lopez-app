@@ -16,12 +16,13 @@ import {
 import { apiGet } from "@/lib/api";
 import { fichaSubtitle } from "@/lib/ficha-consumo";
 import { formatQuantity, lifecycleLabel } from "@/lib/format";
-import { canWrite, isTallerOnly } from "@/lib/permissions";
+import { canSetPrice, canWrite, isTallerOnly } from "@/lib/permissions";
 import { collapseSpaces } from "@/lib/productos";
 import { requireSession } from "@/lib/session";
 import type { Catalogos, Ficha } from "@/lib/types";
 import { ColorForm } from "./color-form";
 import { ConsumoBlock } from "./consumo-block";
+import { PrecioBlock } from "./precio-block";
 
 export const metadata: Metadata = { title: "Ficha de producto" };
 
@@ -35,8 +36,10 @@ function decodeCode(raw: string): string | null {
 
 export default async function FichaPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ codigo: string }>;
+  searchParams: Promise<{ margen?: string | string[] }>;
 }) {
   const { user } = await requireSession();
   const code = decodeCode((await params).codigo);
@@ -62,6 +65,9 @@ export default async function FichaPage({
   }
 
   const ficha = result.data;
+  const rawMargen = (await searchParams).margen;
+  const margenTyped =
+    (Array.isArray(rawMargen) ? rawMargen[0] : rawMargen) ?? null;
   // Only the admin writes: the color form (and the list of colors it needs) is not even requested for the rest.
   const colores = canWrite(user.role)
     ? await apiGet<Catalogos>("/catalogos")
@@ -94,6 +100,13 @@ export default async function FichaPage({
           </section>
         ) : null}
         <ConsumoBlock ficha={ficha} soloCantidades={isTallerOnly(user.role)} />
+        {canSetPrice(user.role) ? (
+          <PrecioBlock
+            codigo={ficha.codigo}
+            margenTyped={margenTyped}
+            puedeCargarImpuestos={canWrite(user.role)}
+          />
+        ) : null}
         {ficha.componentes.length > 0 ? <Components ficha={ficha} /> : null}
       </div>
     </>

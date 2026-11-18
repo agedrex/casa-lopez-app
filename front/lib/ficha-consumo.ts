@@ -1,6 +1,7 @@
 // What the "Consumo" block of the product page shows. Display only: no arithmetic, no money is
 // calculated here (the amount of hilo y cemento is the one the engine put in the quote of today).
 import { formatArs, formatQuantity, stageLabel } from "./format";
+import { cubiertoPorInsumos } from "./formulario-insumos";
 import type { Ficha, LineaReceta, ModeloDetalle } from "./types";
 
 export type ConsumoRow = {
@@ -10,6 +11,7 @@ export type ConsumoRow = {
 };
 
 const MISSING = "Falta el dato";
+const BY_INSUMOS = "Según los insumos";
 
 /** The material as a person reads it: its name; the code only when the API has no name for it. */
 function materialName(line: LineaReceta): string {
@@ -62,9 +64,18 @@ export function consumoRows(
       hoursRow(ficha),
     ];
   }
-  const qty = (value: string | null | undefined, unit: string) =>
+  // Validating a sheet saves herrajes / hilo y cemento as supplies (the Material column lists them) and those replace the
+  // single amount in the cost, so an empty amount is not missing data when the model has supplies of that stage.
+  const insumos = modelo.insumos ?? [];
+  const qty = (
+    value: string | null | undefined,
+    unit: string,
+    field?: string,
+  ) =>
     value === null || value === undefined
-      ? MISSING
+      ? field && cubiertoPorInsumos(field, insumos)
+        ? BY_INSUMOS
+        : MISSING
       : `${formatQuantity(value)} ${unit}`;
   // Hilo y cemento is fixed at 1 USD, so its price in pesos is the dollar of today (no arithmetic).
   const hiloArs = ficha.costo_hoy?.dolar;
@@ -91,12 +102,22 @@ export function consumoRows(
     },
     {
       insumo: "Herrajes",
-      porUnidad: qty(modelo.herrajes_usd_por_unidad, "USD"),
+      porUnidad: qty(
+        modelo.herrajes_usd_por_unidad,
+        "USD",
+        "herrajes_usd_por_unidad",
+      ),
       material: materialsOf("HERRAJES", ficha, modelo),
     },
     {
       insumo: "Hilo y cemento",
-      porUnidad: hiloArs ? formatArs(hiloArs) : "—",
+      porUnidad:
+        modelo.hilo_y_cemento == null &&
+        cubiertoPorInsumos("hilo_y_cemento", insumos)
+          ? BY_INSUMOS
+          : hiloArs
+            ? formatArs(hiloArs)
+            : "—",
       material: materialsOf("HILO_CEMENTO", ficha, modelo),
     },
     hoursRow(ficha),
@@ -112,4 +133,16 @@ export function fichaSubtitle(ficha: Ficha): string {
   ]
     .filter(Boolean)
     .join(" · ");
+}
+
+/**
+ * The margin typed in the price block of the product sheet (a percentage over the price, one decimal at most, below 100):
+ * `30`, `30,5` or `30.5` give `"30"` / `"30.5"` for the API; anything else is null. Text only, no arithmetic.
+ */
+export function parseMargenParam(
+  raw: string | null | undefined,
+): string | null {
+  const match = /^(\d{1,2})(?:[.,](\d))?$/.exec((raw ?? "").trim());
+  if (!match) return null;
+  return match[2] === undefined ? match[1] : `${match[1]}.${match[2]}`;
 }

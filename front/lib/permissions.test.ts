@@ -10,6 +10,8 @@ import { desktopNavForRole, mobileTabs, navForRole } from "./nav";
 import {
   canAccessPath,
   canFillFormularios,
+  canSetPrice,
+  canWrite,
   homePath,
   isTallerOnly,
 } from "./permissions";
@@ -435,4 +437,16 @@ test("the mobile menu uses the same groups and order as the desktop sidebar", ()
     tabs.map((tab) => tab.href),
     ["/admin/panel", "/productos", "/fabricacion"],
   );
+});
+
+test("S4: admin and gerente choose the margin and save the sale price, nobody else", () => {
+  assert.equal(canSetPrice("admin"), true);
+  assert.equal(canSetPrice("gerente"), true);
+  assert.equal(canSetPrice("consulta"), true); // legacy name of the gerente
+  assert.equal(canSetPrice("taller"), false);
+  assert.equal(canSetPrice("corte"), false);
+  assert.equal(canSetPrice(null), false);
+  assert.equal(canSetPrice("otro"), false);
+  // The gerente is still read-only for every other write.
+  assert.equal(canWrite("gerente"), false);
 });
