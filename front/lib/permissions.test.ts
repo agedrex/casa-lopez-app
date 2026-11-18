@@ -240,7 +240,7 @@ test("the taller menu is one ungrouped entry, Lotes y modelos, active on both /f
   const tabs = mobileTabs(navForRole(["taller"]), ["taller"]);
   assert.deepEqual(
     tabs.map((tab) => tab.href),
-    ["/fabricacion"],
+    ["/fabricacion", "/voz"],
   );
 });
 

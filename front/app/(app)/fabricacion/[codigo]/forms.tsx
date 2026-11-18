@@ -116,7 +116,7 @@ export function ItemForm({
       <ProductRows productos={productos} idPrefix="agregar" fixedRows />
       <FormFeedback state={state} />
       <SecondaryButton pending={pending}>
-        {pending ? "Agregando…" : "Agregar al lote"}
+        {pending ? "Guardando…" : "Agregar al lote"}
       </SecondaryButton>
     </form>
   );

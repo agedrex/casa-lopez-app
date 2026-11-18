@@ -93,7 +93,7 @@ export default async function FichaPage({
             />
           </section>
         ) : null}
-        <ConsumoBlock ficha={ficha} />
+        <ConsumoBlock ficha={ficha} soloCantidades={isTallerOnly(user.role)} />
         {ficha.componentes.length > 0 ? <Components ficha={ficha} /> : null}
       </div>
     </>

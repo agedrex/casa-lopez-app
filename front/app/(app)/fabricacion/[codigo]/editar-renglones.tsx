@@ -79,8 +79,7 @@ export function RenglonEditor({
           className="space-y-3 rounded-card border border-bordeaux/40 bg-bordeaux/5 p-4"
         >
           <p className="text-sm">
-            ¿Quitar este producto del lote? Deja de contar en las unidades, el
-            cuero y el costo. El renglón queda guardado con su historial: no se
+            ¿Quitar este producto del lote? El renglón queda guardado: no se
             borra.
           </p>
           <div className="flex flex-wrap gap-3">

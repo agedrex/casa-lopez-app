@@ -5,7 +5,11 @@ import {
   lotStateLabel,
   todayIso,
 } from "@/lib/format";
-import { lineaDeTiempo, textoDeDias } from "@/lib/lote-estados";
+import {
+  lineaDeTiempo,
+  textoDeDias,
+  textoDeResponsable,
+} from "@/lib/lote-estados";
 import type { EstadoDeOrden } from "@/lib/types";
 
 /**
@@ -53,12 +57,11 @@ export function LineaDeTiempo({ estados }: { estados: EstadoDeOrden[] }) {
                     ? ` · ${paso.actual ? "lleva" : "duró"} ${textoDeDias(paso.diasEnElEstado)}`
                     : ""}
                 </p>
-                <p className="text-sm text-muted">
-                  {paso.quien ? `Lo pasó ${paso.quien}` : "Sin responsable"}
-                  {paso.registradoEn
-                    ? ` · guardado ${formatDateTime(paso.registradoEn)}`
-                    : ""}
-                </p>
+                {textoDeResponsable(paso, formatDateTime) ? (
+                  <p className="text-sm text-muted">
+                    {textoDeResponsable(paso, formatDateTime)}
+                  </p>
+                ) : null}
               </li>
             ))}
           </ol>

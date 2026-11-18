@@ -18,13 +18,11 @@ import {
 } from "@/components/ui";
 import { apiGet } from "@/lib/api";
 import { formatArs, formatDate, formatQuantity, todayIso } from "@/lib/format";
-import { resumenDeCuero, type TarjetaDeCuero } from "@/lib/lote-cuero";
 import { nombreDeLote } from "@/lib/lotes";
 import { canWrite, isTallerOnly } from "@/lib/permissions";
 import { collapseSpaces } from "@/lib/productos";
 import { requireSession } from "@/lib/session";
 import type {
-  LoteCuero,
   OrdenDetalle,
   Persona,
   PreciosTalleres,
@@ -107,10 +105,10 @@ export default async function LotePage({
         actions={<LotStateBadge estado={orden.estado} />}
       />
       <div className="space-y-10">
-        <CueroDelLote orden={orden} />
         <QueHayQueHacer orden={orden} />
         <ConsumoDelLote
           codigo={orden.codigo}
+          estado={orden.estado}
           vacio={orden.items.length === 0}
           costoTotal={orden.costo_total}
           fecha={orden.fecha_de_envio}
@@ -296,17 +294,15 @@ async function WriterSections({ orden }: { orden: OrdenDetalle }) {
         <SectionTitle>Precios del taller</SectionTitle>
         {orden.donde_se_hace === "INTERNA" ? (
           <Notice tone="info" title="Este lote se hace en casa">
-            En casa la confección vale 0 en el lote: los sueldos son costos
-            fijos.
+            En casa la confección vale 0: los sueldos son costos fijos.
           </Notice>
         ) : orden.items.length === 0 ? (
           <Notice tone="info" title="Agregue productos para cargar precios." />
         ) : (
           <Card className="space-y-6">
             <p className="text-sm text-muted">
-              El taller pone el precio recién al retirar la mercadería. Lo que
-              cargues se guarda sobre el renglón: no queda historial de los
-              valores anteriores.
+              El taller pone el precio al retirar la mercadería. Lo que cargues
+              pisa el valor anterior: no queda historial.
             </p>
             {orden.items.map((item) => {
               const referencia = referencias.get(item.producto);
@@ -398,10 +394,10 @@ function TallerLote({ orden }: { orden: OrdenDetalle }) {
           {orden.nota ? <p className="mt-2 text-sm">{orden.nota}</p> : null}
         </section>
         <AvanzarEstado codigo={orden.codigo} estado={orden.estado} />
-        <CueroDelLote orden={orden} />
         <QueHayQueHacer orden={orden} />
         <ConsumoDelLote
           codigo={orden.codigo}
+          estado={orden.estado}
           vacio={orden.items.length === 0}
         />
         <Timeline orden={orden} />
@@ -410,102 +406,22 @@ function TallerLote({ orden }: { orden: OrdenDetalle }) {
   );
 }
 
-const CUERO_STYLE: Record<TarjetaDeCuero["estado"], string> = {
-  FALTA: "border-bordeaux/40 bg-bordeaux/5",
-  ALCANZA: "border-line bg-surface",
-  YA_CORTADO: "border-line bg-paper-mid",
-};
-
-function CueroCard({ tarjeta }: { tarjeta: TarjetaDeCuero }) {
-  return (
-    <li
-      className={`rounded-card border p-4 shadow-card ${CUERO_STYLE[tarjeta.estado]}`}
-    >
-      <p className="break-words font-bold">{tarjeta.titulo}</p>
-      <p
-        className={`mt-1 font-display text-2xl ${
-          tarjeta.estado === "FALTA" ? "text-bordeaux" : ""
-        }`}
-      >
-        {tarjeta.mensaje}
-      </p>
-      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-        {tarjeta.cifras.map((cifra) => (
-          <div key={cifra.label} className="contents">
-            <dt className="text-muted">{cifra.label}</dt>
-            <dd className="text-right tabular-nums">{cifra.value}</dd>
-          </div>
-        ))}
-      </dl>
-      <p className="mt-3 break-words text-xs text-muted">
-        Para: {tarjeta.productos.join(", ")}
-      </p>
-    </li>
-  );
-}
-
 /**
- * Leather the lot needs against the leather in stock, one card per leather (material and color). Square
- * meters only: the taller reads it, so there is no money here. The API adds up the products that share a
- * leather and takes out what was already cut. A closed lot has nothing left to cut, so it is not shown.
+ * The list of products to make, with how many of each; every row opens the product sheet. Shared by the taller and
+ * the admin. A closed lot has nothing left to make: the title says what was made and the "a hacer" label goes.
  */
-async function CueroDelLote({ orden }: { orden: OrdenDetalle }) {
-  if (orden.estado === "CERRADA" || orden.items.length === 0) return null;
-  const result = await apiGet<LoteCuero>(
-    `/ordenes/${encodeURIComponent(orden.codigo)}/cuero`,
-  );
-  if (!result.ok) {
-    return (
-      <section aria-label="Cuero del lote">
-        <SectionTitle>Cuero del lote</SectionTitle>
-        <ErrorNotice
-          title="No pudimos calcular el cuero del lote."
-          message={result.message}
-        />
-      </section>
-    );
-  }
-  const resumen = resumenDeCuero(result.data);
-  return (
-    <section aria-label="Cuero del lote">
-      <SectionTitle>Cuero del lote</SectionTitle>
-      <p
-        className={`mb-3 text-sm ${resumen.faltan > 0 ? "font-bold text-bordeaux" : "text-muted"}`}
-        role={resumen.faltan > 0 ? "alert" : undefined}
-      >
-        {resumen.titular}
-      </p>
-      {resumen.tarjetas.length > 0 ? (
-        <ul className="grid gap-3 sm:grid-cols-2">
-          {resumen.tarjetas.map((tarjeta) => (
-            <CueroCard key={tarjeta.key} tarjeta={tarjeta} />
-          ))}
-        </ul>
-      ) : null}
-      {resumen.sinConsumo.length > 0 ? (
-        <div className="mt-3">
-          <Notice title="Sin consumo de cuero cargado (no se cuentan arriba)">
-            {resumen.sinConsumo
-              .map((p) => `${p.producto_nombre} (${p.producto})`)
-              .join(", ")}
-          </Notice>
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
-/** The list of products to make, with how many of each; every row opens the product sheet. Shared by the taller and the admin. */
 function QueHayQueHacer({ orden }: { orden: OrdenDetalle }) {
   return (
     <section>
-      <SectionTitle>Qué hay que hacer</SectionTitle>
+      <SectionTitle>
+        {orden.estado === "CERRADA" ? "Qué se hizo" : "Qué hay que hacer"}
+      </SectionTitle>
       {orden.items.length === 0 ? (
         <Notice tone="info" title="Este lote todavía no tiene productos." />
       ) : (
         <>
           <p className="mb-3 text-sm text-muted">
-            Tocá un producto para ver sus materiales y consumos.
+            Tocá un producto para ver sus materiales.
           </p>
           <ul className="divide-y divide-line/70 rounded-card border border-line bg-surface shadow-card">
             {orden.items.map((item) => (
@@ -526,7 +442,9 @@ function QueHayQueHacer({ orden }: { orden: OrdenDetalle }) {
                     <span className="font-display text-3xl tabular-nums">
                       {formatQuantity(item.cantidad)}
                     </span>
-                    <span className="block text-xs text-muted">a hacer</span>
+                    {orden.estado === "CERRADA" ? null : (
+                      <span className="block text-xs text-muted">a hacer</span>
+                    )}
                   </span>
                 </Link>
               </li>

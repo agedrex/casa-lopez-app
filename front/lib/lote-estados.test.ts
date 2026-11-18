@@ -7,6 +7,7 @@ import {
   lineaDeTiempo,
   siguienteEstadoDelTaller,
   textoDeDias,
+  textoDeResponsable,
 } from "./lote-estados";
 import type { EstadoDeOrden, OrdenResumen } from "./types";
 
@@ -169,5 +170,32 @@ test("days a lot has taken: to the delivery date, else to today while open, else
   assert.equal(
     diasDelLote({ ...base, fecha_de_envio: null }, "2026-11-17"),
     "—",
+  );
+});
+
+test("S6: the responsible line only exists when somebody was recorded", () => {
+  const paso = {
+    estado: "EN_CORTE",
+    fecha: "2026-11-02",
+    quien: null,
+    registradoEn: "2026-11-02T10:00:00",
+    diasEnElEstado: 1,
+    diasDesdeElInicio: 1,
+    actual: false,
+  };
+  assert.equal(
+    textoDeResponsable(paso, (v) => `<${v}>`),
+    null,
+  );
+  assert.equal(
+    textoDeResponsable({ ...paso, quien: "Lorena" }, (v) => `<${v}>`),
+    "Lo pasó Lorena · guardado <2026-11-02T10:00:00>",
+  );
+  assert.equal(
+    textoDeResponsable(
+      { ...paso, quien: "Lorena", registradoEn: null },
+      String,
+    ),
+    "Lo pasó Lorena",
   );
 });
