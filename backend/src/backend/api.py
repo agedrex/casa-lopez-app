@@ -182,9 +182,15 @@ class LoteCueroGrupoOut(Salida):
     ya_cortado: Decimal
     por_cortar: Decimal
     disponible: Decimal
+    # m² the OTHER open lots still have to cut of this leather, their codes, and what is left (stock - reserved, never below 0).
+    reservado_por_otros: Decimal
+    reservado_por: list[str]
+    libre: Decimal
     alcanza: bool
     faltante: Decimal
     sobrante: Decimal
+    # A readable shortage message in Spanish; null when the lot fits.
+    mensaje: str | None
     productos: list[str]
 
 

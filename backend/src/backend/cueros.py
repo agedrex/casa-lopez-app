@@ -325,6 +325,51 @@ def retazos_del_mes(session: Session, periodo: str | None = None) -> dict:
     }
 
 
+def _m2_texto(valor: Decimal) -> str:
+    """Square meters for a message: no trailing zeros, decimal comma."""
+    texto = format(valor.normalize(), "f")
+    return (texto.rstrip("0").rstrip(".") if "." in texto else texto).replace(".", ",")
+
+
+def _reservado_por_otros(session: Session, lote_id: int) -> dict[tuple[int, int | None], dict[str, Decimal]]:
+    """Leather still to cut for the OTHER open lots, by (material id, color id) and lot code (a derived reservation).
+
+    Same criteria as the summary of the lot: live lines only, no waste, a line needs `consumption x quantity`. What was already
+    cut against a line has left the stock through its CORTE movements, so it is taken out here (per line, never below 0).
+    Closed lots (CERRADA) reserve nothing. SUPUESTO: validar con Robert: it reserves from the creation of the lot, and it only informs.
+    """
+    filas = session.execute(
+        select(OrdenItem, OrdenFabricacion.codigo, Producto, Modelo.cuero_m2_por_unidad)
+        .join(OrdenFabricacion, OrdenFabricacion.id == OrdenItem.orden_fabricacion_id)
+        .join(Producto, Producto.id == OrdenItem.producto_id)
+        .join(Modelo, Modelo.id == Producto.modelo_id)
+        .where(OrdenFabricacion.id != lote_id, OrdenFabricacion.estado != "CERRADA", ~renglon_quitado(),
+               Producto.cuero_id.is_not(None), Modelo.cuero_m2_por_unidad > ZERO)
+        .order_by(OrdenFabricacion.id, OrdenItem.id)).all()
+    cortado = dict(session.execute(
+        select(MovimientoCuero.orden_item_id, -func.sum(MovimientoCuero.m2))
+        .where(MovimientoCuero.tipo == "CORTE", MovimientoCuero.orden_item_id.in_([i.id for i, _, _, _ in filas]))
+        .group_by(MovimientoCuero.orden_item_id)).all()) if filas else {}
+    reservado: dict[tuple[int, int | None], dict[str, Decimal]] = defaultdict(dict)
+    for item, lote, producto, consumo in filas:
+        pendiente = max(consumo * item.cantidad - cortado.get(item.id, ZERO), ZERO)
+        if pendiente > ZERO:
+            por_lote = reservado[(producto.cuero_id, producto.color_id)]
+            por_lote[lote] = por_lote.get(lote, ZERO) + pendiente
+    return reservado
+
+
+def _mensaje_de_faltante(nombre: str, faltante: Decimal, disponible: Decimal, reservado: dict[str, Decimal]) -> str:
+    texto = f"No alcanza: faltan {_m2_texto(faltante)} m² de {nombre}. Hay {_m2_texto(disponible)} m² en stock"
+    if not reservado:
+        return texto + "."
+    lotes = ", ".join(f"{codigo} ({_m2_texto(m2)} m²)" for codigo, m2 in reservado.items()) \
+        if len(reservado) > 1 else next(iter(reservado))
+    total = sum(reservado.values(), ZERO)
+    verbo = "tienen" if len(reservado) > 1 else "tiene"
+    return texto + f" y {lotes} {verbo} reservados {_m2_texto(total)} m²."
+
+
 def resumen_de_lote(session: Session, codigo: str) -> dict:
     """Leather a lot needs, by leather (material + color), against the stock of that same leather.
 
@@ -332,6 +377,8 @@ def resumen_de_lote(session: Session, codigo: str) -> dict:
     of the lot is added up once instead of answering "enough" to each product on its own. Square meters already cut
     against an item of the lot are no longer in the stock, so they are taken out of what is still to cut (per item,
     never more than the item needs). Products without a model, a leather or a consumption go to `sin_consumo`.
+    The leather that the OTHER open lots still have to cut is reserved (derived, informative: it blocks nothing):
+    `alcanza` compares what is left to cut against `libre` = stock - reserved, and `mensaje` explains a shortage.
     No money here: the taller role reads this.
     """
     orden = session.scalar(select(OrdenFabricacion).where(OrdenFabricacion.codigo == codigo))
@@ -363,6 +410,7 @@ def resumen_de_lote(session: Session, codigo: str) -> dict:
         if producto.codigo not in grupo["productos"]:
             grupo["productos"].append(producto.codigo)
     opciones = _opciones_disponibles(session)
+    reservas = _reservado_por_otros(session, orden.id)
     nombres_de_materiales = {m.id: m for m in session.scalars(
         select(Material).where(Material.id.in_([cuero for cuero, _ in grupos])))}
     nombres_de_colores = {c.id: c.nombre for c in session.scalars(
@@ -372,12 +420,21 @@ def resumen_de_lote(session: Session, codigo: str) -> dict:
         material = nombres_de_materiales[cuero_id]
         por_cortar = grupo["necesario"] - grupo["ya_cortado"]
         disponible = sum((p["disponible"] for p in opciones.get((cuero_id, color_id), [])), ZERO)
+        reservado = reservas.get((cuero_id, color_id), {})
+        reservado_total = sum(reservado.values(), ZERO)
+        libre = max(disponible - reservado_total, ZERO)
+        nombre = material.nombre_corto or material.nombre
+        color = nombres_de_colores.get(color_id) if color_id is not None else None
+        faltante = max(por_cortar - libre, ZERO)
         resultado.append({
             "material": material.codigo, "material_nombre": material.nombre_corto or material.nombre,
             "color": nombres_de_colores.get(color_id) if color_id is not None else None,
             "necesario": grupo["necesario"], "ya_cortado": grupo["ya_cortado"], "por_cortar": por_cortar,
-            "disponible": disponible, "alcanza": disponible >= por_cortar,
-            "faltante": max(por_cortar - disponible, ZERO), "sobrante": max(disponible - por_cortar, ZERO),
+            "disponible": disponible, "reservado_por_otros": reservado_total, "reservado_por": list(reservado),
+            "libre": libre, "alcanza": libre >= por_cortar,
+            "faltante": faltante, "sobrante": max(libre - por_cortar, ZERO),
+            "mensaje": _mensaje_de_faltante(f"{nombre} {color}" if color else nombre, faltante, disponible, reservado)
+            if faltante > ZERO else None,
             "productos": grupo["productos"],
         })
     nombres = _info_productos(session, set(sin_consumo), con_costo=False)
