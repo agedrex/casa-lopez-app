@@ -32,7 +32,8 @@ def _producto(n):
 
 def _cargar(*filas):
     session = MagicMock()
-    session.execute.return_value.all.return_value = list(filas)
+    # Each row also ends with the three lifecycle facts (price, open lot, finished lot) the query selects (S8).
+    session.execute.return_value.all.return_value = [fila + (False, False, False) for fila in filas]
     return servicios.cargar_productos(session)
 
 

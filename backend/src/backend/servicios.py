@@ -13,7 +13,7 @@ from dataclasses import asdict, dataclass, field, replace
 from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
-from sqlalchemy import Integer, and_, bindparam, cast, exists, func, or_, select, text, update
+from sqlalchemy import Integer, and_, bindparam, case, cast, exists, func, or_, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, aliased
 
@@ -116,7 +116,7 @@ class DatosProducto:
     cuero: str | None
     color: str | None
     quien: str | None
-    estado_del_ciclo: str
+    estado_del_ciclo: str  # derived at read time (`estado_del_ciclo_efectivo`), never written
     es_kit: bool
     nota: str | None
     fecha_de_alta: date | None
@@ -128,6 +128,8 @@ class DatosProducto:
     componentes: list[tuple[str, Decimal]] = field(default_factory=list)
     tamano: str | None = None
     modelo_nombre: str | None = None
+    # The value stored in the column, for the data-quality control that is about what a person saved.
+    estado_guardado: str | None = None
     creado_en: datetime | None = None
     creado_por: str | None = None
     # Leather as the list shows it: short name, else its code. `cuero` stays the code the recipe needs.
@@ -289,6 +291,68 @@ def cargar_contexto(session: Session) -> Contexto:
     )
 
 
+# --- Lifecycle label derived from facts (S8 of flujo-modelos-lotes-precio) --------------------------------------------
+# SUPUESTO: validar con Robert (QA 2026-11-18). `producto.estado_del_ciclo` is stored but nothing advances it, so what the
+# list, the filter and the ficha show is the HIGHEST of the stored value and what the facts say, never written back:
+#   COTIZADO       the product has at least one `precio_venta` row;
+#   EN_PRODUCCION  it has a line in a lot that is not finished (any state but `ESTADOS_TERMINADOS`);
+#   PRODUCIDO      it has a line in a finished lot (LISTA or CERRADA, the same criterion as the variable cost).
+# A line removed from its lot (`renglon_quitado`) is not in the lot. The three conditions are SQL EXISTS expressions used by
+# the filter AND selected as columns by `cargar_productos`, so list, count, filter and ficha always agree.
+CICLO_DE_VIDA = ("EN_DEFINICION", "COTIZADO", "EN_PRODUCCION", "PRODUCIDO")  # ranked, lowest first
+
+
+def _rango_del_ciclo(estado: str) -> int:
+    return CICLO_DE_VIDA.index(estado) if estado in CICLO_DE_VIDA else -1
+
+
+def estado_del_ciclo_efectivo(
+    guardado: str, *, con_precio: bool, en_lote_abierto: bool, en_lote_terminado: bool,
+) -> str:
+    """The highest-ranked of the stored state and the ones the facts give (pure; the SQL below says the same)."""
+    candidatos = [guardado]
+    if con_precio:
+        candidatos.append("COTIZADO")
+    if en_lote_abierto:
+        candidatos.append("EN_PRODUCCION")
+    if en_lote_terminado:
+        candidatos.append("PRODUCIDO")
+    return max(candidatos, key=_rango_del_ciclo)  # first of the highest: an unknown stored value stays if nothing beats it
+
+
+def ciclo_con_precio_sql():
+    """SQL condition: the product has a saved sale price."""
+    return exists().where(PrecioVenta.producto_id == Producto.id)
+
+
+def _ciclo_en_lote_sql(terminado: bool):
+    en_estado = OrdenFabricacion.estado.in_(ESTADOS_TERMINADOS)
+    return exists().where(
+        OrdenItem.producto_id == Producto.id, OrdenFabricacion.id == OrdenItem.orden_fabricacion_id,
+        en_estado if terminado else ~en_estado, ~renglon_quitado(),
+    )
+
+
+def ciclo_en_lote_abierto_sql():
+    """SQL condition: the product has a line in a lot that is not finished."""
+    return _ciclo_en_lote_sql(False)
+
+
+def ciclo_en_lote_terminado_sql():
+    """SQL condition: the product has a line in a finished lot."""
+    return _ciclo_en_lote_sql(True)
+
+
+def ciclo_efectivo_sql():
+    """SQL expression with the same rule as `estado_del_ciclo_efectivo`: the highest of the stored value and the facts."""
+    return case(
+        (or_(Producto.estado_del_ciclo == "PRODUCIDO", ciclo_en_lote_terminado_sql()), "PRODUCIDO"),
+        (or_(Producto.estado_del_ciclo == "EN_PRODUCCION", ciclo_en_lote_abierto_sql()), "EN_PRODUCCION"),
+        (or_(Producto.estado_del_ciclo == "COTIZADO", ciclo_con_precio_sql()), "COTIZADO"),
+        else_=Producto.estado_del_ciclo,
+    )
+
+
 def _patron(palabra: str) -> str:
     """LIKE pattern that finds `palabra` anywhere, with the wildcards of the visitor's text escaped."""
     escapada = palabra.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
@@ -303,7 +367,7 @@ def _filtrar_productos(
 
     `revisar` keeps only the products whose note has a `REVISAR:` mark, by the same criterion as `motivos_de_revision`.
     `sin_cuero` and `sin_color` keep the products with no leather / no color chosen; `estado` keeps one lifecycle state
-    (the API only lets the four valid ones through). Every filter is additive and, when absent, adds nothing to the query.
+    (the API only lets the four valid ones through; it is the derived state, `ciclo_efectivo_sql`). Every filter is additive and, when absent, adds nothing to the query.
     """
     for palabra in (q or "").split():
         patron = _patron(palabra)
@@ -322,7 +386,7 @@ def _filtrar_productos(
     if sin_color:
         consulta = consulta.where(Producto.color_id.is_(None))
     if estado:
-        consulta = consulta.where(Producto.estado_del_ciclo == estado)
+        consulta = consulta.where(ciclo_efectivo_sql() == estado)
     return consulta
 
 
@@ -333,7 +397,8 @@ def cargar_productos(
 ) -> list[DatosProducto]:
     cuero, forro = aliased(Material), aliased(Material)
     consulta = (
-        select(Producto, Modelo, Categoria.nombre, cuero.codigo, cuero.nombre_corto, forro.codigo, Color.nombre)
+        select(Producto, Modelo, Categoria.nombre, cuero.codigo, cuero.nombre_corto, forro.codigo, Color.nombre,
+               ciclo_con_precio_sql(), ciclo_en_lote_abierto_sql(), ciclo_en_lote_terminado_sql())
         .outerjoin(Modelo, Modelo.id == Producto.modelo_id)
         .outerjoin(Categoria, Categoria.id == Modelo.categoria_id)
         .outerjoin(cuero, cuero.id == Producto.cuero_id)
@@ -389,7 +454,7 @@ def cargar_productos(
         ):
             componentes.setdefault(kit_id, []).append((codigo, cantidad))
     resultado = []
-    for producto, modelo, categoria, cuero_codigo, cuero_corto, forro_codigo, color in filas:
+    for producto, modelo, categoria, cuero_codigo, cuero_corto, forro_codigo, color, con_precio, abierto, terminado in filas:
         receta_modelo = ModeloReceta(
             modelo.cuero_m2_por_unidad, forro_codigo, modelo.forro_m2_por_unidad, modelo.flex_m2_por_unidad,
             modelo.goma_eva_m2_por_unidad, modelo.herrajes_usd_por_unidad, modelo.hilo_y_cemento,
@@ -399,7 +464,10 @@ def cargar_productos(
             id=producto.id, codigo=producto.codigo,
             nombre=nombre_de_producto(producto.nombre_propio, modelo.nombre_del_modelo if modelo else None, cuero_corto, color),
             categoria=categoria, modelo_codigo=modelo.codigo if modelo else None, cuero=cuero_codigo, color=color,
-            quien=producto.quien_lo_confecciona, estado_del_ciclo=producto.estado_del_ciclo, es_kit=producto.es_kit,
+            quien=producto.quien_lo_confecciona, es_kit=producto.es_kit,
+            estado_del_ciclo=estado_del_ciclo_efectivo(
+                producto.estado_del_ciclo, con_precio=con_precio, en_lote_abierto=abierto, en_lote_terminado=terminado),
+            estado_guardado=producto.estado_del_ciclo,
             nota=producto.nota, fecha_de_alta=producto.fecha_de_alta,
             fecha_de_recotizacion=producto.fecha_de_recotizacion, fecha_de_cierre=producto.fecha_de_cierre,
             modelo=receta_modelo, extras=extras.get(producto.id, []), lotes=lotes.get(producto.id, []),
@@ -2986,7 +3054,8 @@ def controles_de_producto(datos: DatosProducto, nombre_repetido: bool) -> list[s
         avisos.append("La recotización es anterior al alta")
     if datos.fecha_de_alta and datos.fecha_de_cierre and datos.fecha_de_cierre < datos.fecha_de_alta:
         avisos.append("El cierre es anterior al alta")
-    if datos.estado_del_ciclo == "PRODUCIDO" and datos.fecha_de_cierre is None:
+    # The control reads the STORED state: a product derived as produced from its lots is not a data error.
+    if (getattr(datos, "estado_guardado", None) or datos.estado_del_ciclo) == "PRODUCIDO" and datos.fecha_de_cierre is None:
         avisos.append("Falta la fecha de cierre")
     return avisos
 

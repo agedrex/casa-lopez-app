@@ -1582,7 +1582,7 @@ def productos(
     revisar: bool = Query(False, description="true: only products whose note has a `REVISAR:` mark; false: no filter."),
     sin_cuero: bool = Query(False, description="true: only products with no leather chosen; false: no filter."),
     sin_color: bool = Query(False, description="true: only products with no color chosen; false: no filter."),
-    estado: EstadoDelCiclo | None = Query(None, description="Only the products in this lifecycle state."),
+    estado: EstadoDelCiclo | None = Query(None, description="Only the products in this lifecycle state (derived from price and lots, `servicios.ciclo_efectivo_sql`)."),
 ):
     # Sale prices are for admin and gerente (PRODUCTOS); the taller reads the same list without them.
     # Only sent when it is False, like the filters above: admin and gerente call the service as before.
@@ -1601,7 +1601,7 @@ def productos_conteo(
     revisar: bool = Query(False, description="true: only products whose note has a `REVISAR:` mark; false: no filter."),
     sin_cuero: bool = Query(False, description="true: only products with no leather chosen; false: no filter."),
     sin_color: bool = Query(False, description="true: only products with no color chosen; false: no filter."),
-    estado: EstadoDelCiclo | None = Query(None, description="Only the products in this lifecycle state."),
+    estado: EstadoDelCiclo | None = Query(None, description="Only the products in this lifecycle state (derived from price and lots, `servicios.ciclo_efectivo_sql`)."),
 ):
     extra = _filtros_extra_de_productos(sin_cuero, sin_color, estado)
     return {"total": servicios.contar_productos(session, q, categoria, revisar, **extra)}
