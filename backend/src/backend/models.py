@@ -521,6 +521,8 @@ class OrdenEstado(IdentityAndCreatedAt, Base):
     estado: Mapped[str] = mapped_column(Text)
     fecha: Mapped[date] = mapped_column(Date)
     quien_id: Mapped[int | None] = mapped_column(ForeignKey("costos.persona.id"))
+    # Auth user id (Better Auth lives in `public`: no FK) of whoever changed the state; NULL for the creation row.
+    cambiado_por: Mapped[str | None] = mapped_column(Text)
 
 
 class RegistroTarea(IdentityAndCreatedAt, Base):

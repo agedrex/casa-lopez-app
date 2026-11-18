@@ -25,7 +25,7 @@ Dejar la app lista para usar mañana: altas inline, vista de lote del taller, me
 
 - [ ] T5 (S7) worktree feat/lote-editar-items: admin edita cantidad / quita renglón
 - [ ] T6 (S8, S10) worktree feat/lote-costo-consumo: costo congelado a la fecha del lote + consumo por producto, por insumo y costo total
-- [ ] T7 (S11, S12) worktree feat/taller-estados: el taller ve sus lotes por estado y actualiza el estado; el admin ve el seguimiento de creación a fin
+- [x] T7 (S11, S12) worktree feat/taller-estados: el taller ve sus lotes por estado y actualiza el estado (POST /ordenes/{codigo}/avanzar); el admin ve el seguimiento de creación a fin. Recorrido manual por UI NO hecho
 - [ ] T8 (S9) simulación end to end con las funciones del código
 - [ ] T9 (S13) merge a main y llegada a staging
 
@@ -34,3 +34,4 @@ L1: pedido original del usuario (ver mensaje 2026-11-17: "Tengo que tomar una du
 L2: bloquear duplicados en un lote NO se hizo: test_items_can_be_added_to_an_existing_lot agrega el mismo producto dos veces a propósito; decisión de producto pendiente.
 L3: respuesta del usuario 2026-11-17 a los pendientes (ver S6-S13, verbatim arriba). Duplicados: NO se bloquean (cierra el L2).
 L4: SUPUESTO mío para S8: el costo de un lote usa precios y dólar vigentes en la fecha de creación del lote (fecha_de_envio, automática), por lo que no cambia después. Validar con el usuario.
+L5: SUPUESTO mío para S11 (validar): el taller solo avanza al estado SIGUIENTE (nueva ruta POST /ordenes/{codigo}/avanzar, fecha = hoy en Buenos Aires) y se detiene en LISTA; cerrar (fecha de entrega, cotización final) queda del administrador y POST /ordenes/{codigo}/estado sigue solo admin. Migración 0026 agrega orden_estado.cambiado_por (id de usuario, texto, sin FK): quien_id es una persona y el taller no lo es.

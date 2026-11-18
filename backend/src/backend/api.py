@@ -22,7 +22,7 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.orm import Session
 
-from backend import cueros, formulario, modelos_foto, ocr_llm, proveedores, reventa, servicios, sheets_client, voz, voz_llm
+from backend import cueros, formulario, lote_estados, modelos_foto, ocr_llm, proveedores, reventa, servicios, sheets_client, voz, voz_llm
 from backend import materiales as grilla_materiales  # `materiales` is the name of the GET /materiales route below
 from backend.auth import (
     CORTE, CUALQUIER_ROL, FORMULARIO_LEER, FORMULARIO_TRABAJAR, PRODUCTOS, SOLO_ADMIN, Usuario, require_user,
@@ -1306,6 +1306,8 @@ class EstadoOut(Salida):
     fecha: date
     quien: str | None
     quien_nombre: str | None
+    cambiado_por: str | None = None  # the logged-in user who changed it (name, else id); None on the creation row
+    registrado_en: datetime | None = None  # when the change was saved (the moment, not the day the admin typed)
 
 
 class OrdenDetalleOut(OrdenResumenOut):
@@ -1936,8 +1938,15 @@ def crear_orden(cuerpo: OrdenIn, session: Sesion):
 
 
 @router.post("/ordenes/{codigo}/estado", dependencies=ESCRITURA, response_model=OrdenDetalleOut, status_code=201)
-def cambiar_estado_de_orden(codigo: str, cuerpo: EstadoIn, session: Sesion):
-    return servicios.registrar_estado(session, codigo, **cuerpo.model_dump())
+def cambiar_estado_de_orden(codigo: str, cuerpo: EstadoIn, session: Sesion, usuario: SoloAdmin):
+    return servicios.registrar_estado(session, codigo, **cuerpo.model_dump(), usuario_id=usuario.id)
+
+
+# SUPUESTO: validar. The one write of the lots the taller gets (S11): move the lot to its NEXT state, dated today. Closing, any
+# other state and everything else of /ordenes stay admin only.
+@router.post("/ordenes/{codigo}/avanzar", response_model=OrdenDetalleOut, status_code=201)
+def avanzar_estado_de_orden(codigo: str, session: Sesion, usuario: Annotated[Usuario, Depends(CORTE)]):
+    return lote_estados.avanzar_estado(session, codigo, usuario_id=usuario.id)
 
 
 @router.post("/ordenes/{codigo}/items", dependencies=ESCRITURA, response_model=OrdenDetalleOut, status_code=201)

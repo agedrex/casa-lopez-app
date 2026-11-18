@@ -3,7 +3,7 @@ import { ErrorNotice, Notice, PageHeader } from "@/components/ui";
 import { apiGet } from "@/lib/api";
 import type { FormularioResumen, OrdenResumen } from "@/lib/types";
 import { HojasGrid } from "./hojas-grid";
-import { LotesGrid } from "./lotes-grid";
+import { LotesPorEstado } from "./lotes-por-estado";
 
 export type VistaDelTaller = "lotes" | "modelos";
 
@@ -14,7 +14,7 @@ const TABS = [
 ];
 
 /**
- * The screen of the taller, in two tabs: its lots and its models, each in the same grid as the admin's, with no
+ * The screen of the taller, in two tabs: its lots (big cards grouped by state) and its models (the grid), with no
  * filters or extra panels. No money of any kind. Only the data of the open tab is requested.
  */
 export async function LotesYModelos({ vista }: { vista: VistaDelTaller }) {
@@ -33,7 +33,7 @@ async function Lotes() {
   if (ordenes.data.length === 0) {
     return <Notice tone="info" title="Todavía no hay lotes cargados." />;
   }
-  return <LotesGrid ordenes={ordenes.data} taller />;
+  return <LotesPorEstado ordenes={ordenes.data} />;
 }
 
 async function Modelos() {

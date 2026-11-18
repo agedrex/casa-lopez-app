@@ -318,6 +318,9 @@ export type EstadoDeOrden = {
   fecha: string;
   quien: string | null;
   quien_nombre: string | null;
+  // The logged-in user who saved the change (null on the creation row) and the moment it was saved.
+  cambiado_por?: string | null;
+  registrado_en?: string | null;
 };
 
 export type OrdenDetalle = OrdenResumen & {

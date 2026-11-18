@@ -1489,12 +1489,16 @@ def detalle_orden(session: Session, codigo: str) -> dict:
     if not armados:
         raise NoEncontrado(f"No existe el lote {codigo}.")
     lote = armados[0]
-    lote["estados"] = [{
-        "estado": e.estado, "fecha": e.fecha, "quien": p_codigo, "quien_nombre": p_nombre,
-    } for e, p_codigo, p_nombre in session.execute(
+    filas = session.execute(
         select(OrdenEstado, Persona.codigo, Persona.nombre).outerjoin(Persona, Persona.id == OrdenEstado.quien_id)
         .where(OrdenEstado.orden_fabricacion_id == lote["id"]).order_by(OrdenEstado.fecha, OrdenEstado.id)
-    ).all()]
+    ).all()
+    # Who changed each state: the auth user id resolved to a name for the whole history at once (an unknown id stays as is).
+    nombres = _nombres_de_usuarios(session, {e.cambiado_por for e, _, _ in filas if e.cambiado_por})
+    lote["estados"] = [{
+        "estado": e.estado, "fecha": e.fecha, "quien": p_codigo, "quien_nombre": p_nombre,
+        "cambiado_por": nombres.get(e.cambiado_por, e.cambiado_por), "registrado_en": e.created_at,
+    } for e, p_codigo, p_nombre in filas]
     return lote
 
 
@@ -1508,8 +1512,11 @@ def _orden_por_codigo(session: Session, codigo: str, bloquear: bool = False) -> 
 
 def registrar_estado(
     session: Session, codigo: str, *, estado: str, fecha: date, quien: str | None, fecha_de_entrega: date | None,
+    usuario_id: str | None = None,
 ) -> dict:
-    """Append a history row and set the lot's state. A closed lot never changes state again."""
+    """Append a history row and set the lot's state. A closed lot never changes state again.
+
+    `quien` is the persona picked by the admin; `usuario_id` is the logged-in auth user, kept as `cambiado_por`."""
     orden = _orden_por_codigo(session, codigo, bloquear=True)
     if orden.estado == "CERRADA":
         raise Conflicto(f"El lote {codigo} ya está cerrado: no se puede cambiar su estado.")
@@ -1523,7 +1530,7 @@ def registrar_estado(
             raise DatosInvalidos("Para cerrar el lote hace falta la fecha de entrega: es la que cierra la cotización final.")
         orden.fecha_de_entrega = entrega
     _insertar(session, OrdenEstado(orden_fabricacion_id=orden.id, estado=estado, fecha=fecha,
-                                   quien_id=quien_fila.id if quien_fila else None),
+                                   quien_id=quien_fila.id if quien_fila else None, cambiado_por=usuario_id),
               "No se pudo registrar el estado del lote; intentá de nuevo.")
     orden.estado = estado
     session.commit()
