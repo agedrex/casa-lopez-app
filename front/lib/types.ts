@@ -318,6 +318,9 @@ export type EstadoDeOrden = {
   fecha: string;
   quien: string | null;
   quien_nombre: string | null;
+  // The logged-in user who saved the change (null on the creation row) and the moment it was saved.
+  cambiado_por?: string | null;
+  registrado_en?: string | null;
 };
 
 /** A line an admin took out of the lot: the row is kept and its note holds the log (date, quantity it had, who). */

@@ -17,13 +17,7 @@ import {
   thClass,
 } from "@/components/ui";
 import { apiGet } from "@/lib/api";
-import {
-  formatArs,
-  formatDate,
-  formatQuantity,
-  lotStateLabel,
-  todayIso,
-} from "@/lib/format";
+import { formatArs, formatDate, formatQuantity, todayIso } from "@/lib/format";
 import { resumenDeCuero, type TarjetaDeCuero } from "@/lib/lote-cuero";
 import { nombreDeLote } from "@/lib/lotes";
 import { canWrite, isTallerOnly } from "@/lib/permissions";
@@ -39,6 +33,8 @@ import type {
 } from "@/lib/types";
 import { ConsumoDelLote } from "./consumo-lote";
 import { RenglonEditor, RenglonesQuitados } from "./editar-renglones";
+import { AvanzarEstado } from "../avanzar-estado";
+import { LineaDeTiempo } from "../linea-de-tiempo";
 import { EstadoForm, ItemForm, PreciosForm } from "./forms";
 
 export const metadata: Metadata = { title: "Lote" };
@@ -267,36 +263,7 @@ function Items({ orden }: { orden: OrdenDetalle }) {
 }
 
 function Timeline({ orden }: { orden: OrdenDetalle }) {
-  return (
-    <section>
-      <SectionTitle>Estados del lote</SectionTitle>
-      {orden.estados.length === 0 ? (
-        <Notice tone="info" title="Este lote no tiene historial de estados." />
-      ) : (
-        <ol className="space-y-0 border-l border-line pl-6">
-          {orden.estados.map((estado, index) => (
-            <li
-              key={`${estado.estado}-${estado.fecha}-${index}`}
-              className="relative pb-6 last:pb-0"
-              aria-current={
-                index === orden.estados.length - 1 ? "step" : undefined
-              }
-            >
-              <span
-                aria-hidden="true"
-                className="absolute -left-[1.85rem] top-1.5 size-2.5 rounded-full bg-gold"
-              />
-              <p className="font-bold">{lotStateLabel(estado.estado)}</p>
-              <p className="text-sm text-muted">
-                {formatDate(estado.fecha)}
-                {estado.quien_nombre ? ` · ${estado.quien_nombre}` : ""}
-              </p>
-            </li>
-          ))}
-        </ol>
-      )}
-    </section>
-  );
+  return <LineaDeTiempo estados={orden.estados} />;
 }
 
 async function WriterSections({ orden }: { orden: OrdenDetalle }) {
@@ -430,6 +397,7 @@ function TallerLote({ orden }: { orden: OrdenDetalle }) {
           </p>
           {orden.nota ? <p className="mt-2 text-sm">{orden.nota}</p> : null}
         </section>
+        <AvanzarEstado codigo={orden.codigo} estado={orden.estado} />
         <CueroDelLote orden={orden} />
         <QueHayQueHacer orden={orden} />
         <ConsumoDelLote
