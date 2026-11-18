@@ -5,6 +5,7 @@ import {
   diasDelLote,
   diasEntre,
   lineaDeTiempo,
+  msParaDeshacer,
   siguienteEstado,
   siguienteEstadoDelTaller,
   textoDeDias,
@@ -207,4 +208,12 @@ test("el administrador solo puede pasar al estado siguiente del ciclo, sin salto
   assert.equal(siguienteEstado("LISTA"), "CERRADA");
   assert.equal(siguienteEstado("CERRADA"), null);
   assert.equal(siguienteEstado("INVENTADO"), null);
+});
+
+test("Deshacer is offered for 10 seconds after the change and never more", () => {
+  assert.equal(msParaDeshacer(1_000, 1_000), 10_000);
+  assert.equal(msParaDeshacer(1_000, 4_000), 7_000);
+  assert.equal(msParaDeshacer(1_000, 11_000), 0);
+  assert.equal(msParaDeshacer(1_000, 60_000), 0);
+  assert.equal(msParaDeshacer(5_000, 1_000), 10_000); // a clock that went back does not stretch the window
 });

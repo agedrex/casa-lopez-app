@@ -11,6 +11,7 @@ El ciclo es `PLANIFICADA` → `EN_CORTE` → `CORTADA` → `EN_CONFECCION` → `
   o volver atrás responde 409 con un mensaje como "El lote LOT-0001 está en Planificada: el siguiente estado es En corte. No se
   puede pasar a Lista." La negativa no deja fila en el historial.
 - `POST /ordenes/{codigo}/avanzar` (taller) ya avanzaba solo al siguiente y se detiene en `LISTA`: cerrar es del admin.
+- `POST /ordenes/{codigo}/estado/deshacer` (admin y taller) vuelve un estado atrás, solo si el último cambio lo hizo el mismo usuario hace menos de 10 minutos. Agrega una fila al historial (no borra nada), no sirve en lotes cerrados ni en `PLANIFICADA`, ni si ya se cortó cuero de un lote en `EN_CORTE` o `CORTADA`, y no se puede encadenar.
 - Un lote `CERRADA` no cambia de estado. Repetir el estado actual sigue siendo 409. Cerrar sin fecha de entrega sigue siendo 422.
 - Crear un lote con `estado` ya elegido (importaciones, datos de ejemplo) no pasa por esta regla.
 

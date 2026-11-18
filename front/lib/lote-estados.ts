@@ -26,6 +26,18 @@ export function siguienteEstadoDelTaller(estado: string): string | null {
   return siguiente && siguiente !== "CERRADA" ? siguiente : null;
 }
 
+/** How long the "Deshacer" button stays after a state change (the API allows 10 minutes; the screen offers it for a moment). */
+export const VENTANA_DESHACER_MS = 10_000;
+
+/** Milliseconds the "Deshacer" button still has, from the moment of the change (`avanzadoEn`) to `ahora`; 0 once it is over. */
+export function msParaDeshacer(
+  avanzadoEn: number,
+  ahora: number,
+  ventana: number = VENTANA_DESHACER_MS,
+): number {
+  return Math.min(ventana, Math.max(0, avanzadoEn + ventana - ahora));
+}
+
 export type GrupoDeLotes = { estado: string; lotes: OrdenResumen[] };
 
 /**

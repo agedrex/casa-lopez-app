@@ -53,6 +53,28 @@ const BLOQUES: Record<Bloque, { title: string; help: string }> = {
   },
 };
 
+/** Qué es cada pantalla, para el "?" del título (3 líneas como mucho). */
+function ayudaDe(bloque: Bloque | "", writer: boolean): string[] {
+  const guardado = writer
+    ? ["Los cambios se guardan al salir de la celda."]
+    : [];
+  if (bloque === "personal") {
+    return [
+      "Sueldos y cargas sociales del personal.",
+      "Un mes vacío arranca con los sueldos del anterior.",
+      ...guardado,
+    ];
+  }
+  if (bloque === "servicios") {
+    return ["Luz, agua, internet y demás servicios del mes.", ...guardado];
+  }
+  return [
+    "Sueldos y servicios del mes.",
+    "Los gastos sin monto no entran en los totales.",
+    ...guardado,
+  ];
+}
+
 function enBloque(gasto: Gasto, bloque: Bloque): boolean {
   return bloque === "personal"
     ? PERSONAL.includes(gasto.categoria)
@@ -162,9 +184,7 @@ export default async function CostosFijosPage({
       <PageHeader
         eyebrow="Costos"
         title={bloque ? BLOQUES[bloque].title : "Costos fijos"}
-        description={
-          bloque ? BLOQUES[bloque].help : "Sueldos y servicios del mes."
-        }
+        help={ayudaDe(bloque, writer).map((line) => <p key={line}>{line}</p>)}
       />
       <div className="space-y-10">
         <PeriodSelector
