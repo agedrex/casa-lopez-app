@@ -135,6 +135,74 @@ def test_a_removed_line_and_a_product_without_leather_do_not_ask_for_a_cut(api):
         assert api.post(f"/ordenes/{codigo}/avanzar").json()["estado"] == siguiente
 
 
+# --- S4: un lote cerrado no admite productos -----------------------------------------------------------------------
+
+def test_a_closed_lot_refuses_to_add_a_product_and_stays_as_it_was(api):
+    p = producto(api)
+    codigo, _ = lote(api, [(p, "2")])
+    for nuevo in CICLO[:-1]:
+        assert estado(api, codigo, nuevo).status_code == 201
+    assert estado(api, codigo, "CERRADA", fecha_de_entrega="2026-10-20").status_code == 201
+    antes = api.get(f"/ordenes/{codigo}").json()
+    respuesta = api.post(f"/ordenes/{codigo}/items", json={"producto": p, "cantidad": "1"})
+    assert respuesta.status_code == 409 and "cerrado" in respuesta.json()["detail"], respuesta.text
+    assert "agregar" in respuesta.json()["detail"]
+    assert api.get(f"/ordenes/{codigo}").json() == antes
+
+
+# --- S4: fechas -------------------------------------------------------------------------------------------------------
+
+def test_delivery_before_shipping_is_refused_when_the_lot_is_created(api):
+    p = producto(api)
+    respuesta = api.post("/ordenes", json={
+        "donde_se_hace": "INTERNA", "fecha_de_envio": "2026-10-10", "fecha_de_entrega": "2026-10-09",
+        "items": [{"producto": p, "cantidad": "1"}]})
+    assert respuesta.status_code == 422, respuesta.text
+    assert "entrega" in respuesta.json()["detail"] and "envío" in respuesta.json()["detail"]
+    assert api.get("/ordenes").json() == []  # nada se guardó
+    mismo_dia = api.post("/ordenes", json={
+        "donde_se_hace": "INTERNA", "fecha_de_envio": "2026-10-10", "fecha_de_entrega": "2026-10-10",
+        "items": [{"producto": p, "cantidad": "1"}]})
+    assert mismo_dia.status_code == 201
+
+
+def test_delivery_before_shipping_is_refused_when_closing(api):
+    codigo, _ = lote(api, [(producto(api), "2")], fecha_de_envio="2026-10-10")
+    for nuevo in CICLO[:-1]:
+        assert estado(api, codigo, nuevo).status_code == 201
+    respuesta = estado(api, codigo, "CERRADA", fecha_de_entrega="2026-10-09")
+    assert respuesta.status_code == 422 and "entrega" in respuesta.json()["detail"], respuesta.text
+    assert api.get(f"/ordenes/{codigo}").json()["estado"] == "LISTA"
+
+
+def test_dates_out_of_a_reasonable_range_are_refused_with_a_clear_message(api):
+    p = producto(api)
+    lejos = (date.today() + timedelta(days=366)).isoformat()
+    limite = (date.today() + timedelta(days=365)).isoformat()
+    for campo, valor in (("fecha_de_envio", "2030-01-01"), ("fecha_de_envio", "2019-12-31"),
+                         ("fecha_de_entrega", lejos), ("fecha_de_entrega", "2019-01-01")):
+        cuerpo = {"donde_se_hace": "INTERNA", "fecha_de_envio": "2026-10-10", campo: valor,
+                  "items": [{"producto": p, "cantidad": "1"}]}
+        respuesta = api.post("/ordenes", json=cuerpo)
+        assert respuesta.status_code == 422, (campo, valor, respuesta.text)
+        detalle = respuesta.json()["detail"]
+        assert isinstance(detalle, str) and "fecha" in detalle and "_" not in detalle
+    assert api.get("/ordenes").json() == []
+    assert api.post("/ordenes", json={"donde_se_hace": "INTERNA", "fecha_de_envio": "2020-01-01",
+                                      "fecha_de_entrega": limite, "items": [{"producto": p, "cantidad": "1"}]}).status_code == 201
+
+
+def test_the_date_of_a_state_change_and_the_delivery_date_when_closing_have_the_same_range(api):
+    codigo, _ = lote(api, [(producto(api), "2")])
+    fuera = estado(api, codigo, "EN_CORTE", fecha="2030-01-01")
+    assert fuera.status_code == 422 and "fecha" in fuera.json()["detail"], fuera.text
+    for nuevo in CICLO[:-1]:
+        assert estado(api, codigo, nuevo).status_code == 201
+    entrega = estado(api, codigo, "CERRADA", fecha_de_entrega="2030-01-01")
+    assert entrega.status_code == 422 and "entrega" in entrega.json()["detail"]
+    assert api.get(f"/ordenes/{codigo}").json()["estado"] == "LISTA"
+
+
 def test_the_untouched_rules_still_hold(api):
     """PRESERVE: repetir el estado actual sigue siendo 409 y cerrar sin entrega sigue siendo 422."""
     codigo, _ = lote(api, [(producto(api), "2")])

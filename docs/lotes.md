@@ -20,3 +20,18 @@ SUPUESTO: validar con Robert. Al avanzar a `CORTADA` o `LISTA`, cada renglón de
 producto lleve cuero tiene que tener al menos un movimiento `CORTE` (lo escribe la pantalla Corte, `POST /cueros/{codigo}/cortes`).
 Si falta, 409 con los productos y renglones sin corte. No se compara el m² cortado con el consumo del modelo (nadie confirmó
 que tenga que alcanzarlo) y los productos sin cuero (kits) no piden nada. El admin no tiene esta guarda.
+
+## Un lote cerrado no admite productos
+
+`POST /ordenes/{codigo}/items` responde 409 ("El lote LOT-0001 está cerrado: no se puede agregar un producto.") si el lote está
+`CERRADA`, igual que ya hacían cambiar la cantidad (`PUT`) y quitar un renglón (`DELETE`). El costo y la cotización final de un
+lote cerrado no cambian.
+
+## Fechas del lote
+
+Se aplican al crear el lote (`fecha_de_envio`, `fecha_de_entrega`) y al cambiar su estado (la fecha del cambio y la de entrega al
+cerrar). El rechazo es 422 con un mensaje en español y no guarda nada.
+
+- La fecha de entrega no puede ser anterior a la de envío (el mismo día vale). Al cerrar se compara con la fecha de envío del lote.
+- SUPUESTO: validar con Robert. Rango razonable: desde el 01/01/2020 hasta 365 días después de hoy
+  (`FECHA_MINIMA_DE_LOTE` y `DIAS_HACIA_ADELANTE_DE_LOTE` en `servicios.py`). Los topes los pusimos nosotros.
