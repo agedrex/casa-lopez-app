@@ -20,7 +20,7 @@ import {
 import { readItems } from "@/lib/lote-items";
 import { type UltimoLote, ultimoLote } from "@/lib/lotes";
 import type {
-  AlcanzaCuero,
+  AlcanzaLote,
   HistorialDeTaller,
   OrdenDetalle,
   ProductoResumen,
@@ -116,33 +116,38 @@ export async function buscarProductos(
   return { status: "ok", ...resultadosDeBusqueda(result.data) };
 }
 
-export type AlcanzaCueroResult =
-  | { status: "ok"; resultado: AlcanzaCuero }
+export type AlcanzaLoteResult =
+  | { status: "ok"; resultado: AlcanzaLote }
   | { status: "error"; message: string };
 
 /**
- * "¿Alcanza el cuero?" for one row of the new-lot form (`GET /cueros/alcanza`). It is informative: the
- * API calculates everything, nothing is saved and the lot can be created whatever the answer is. Only
- * the admin builds lots, so anyone else is refused.
+ * "¿Alcanza el cuero?" for the whole lot being built (`POST /cueros/alcanza-lote`). It uses the same availability as
+ * the detail of the lot once created: the stock minus what the other open lots still have to cut, with the rows that
+ * share a leather added up. It is informative: the API calculates everything, nothing is saved and the lot can be
+ * created whatever the answer is. Only the admin builds lots, so anyone else is refused.
  */
-export async function consultarAlcanzaCuero(
-  producto: string,
-  cantidad: string,
-): Promise<AlcanzaCueroResult> {
+export async function consultarAlcanzaLote(
+  lineas: { producto: string; cantidad: string }[],
+): Promise<AlcanzaLoteResult> {
   const denied = await denyUnlessWriter();
   if (denied)
     return { status: "error", message: "No tiene permiso para esta acción." };
-  const codigo = producto.trim();
-  const unidades = parseDecimalInput(cantidad);
-  if (!codigo || unidades === null || !/[1-9]/.test(unidades)) {
+  const validas = lineas.flatMap(({ producto, cantidad }) => {
+    const unidades = parseDecimalInput(cantidad);
+    const codigo = producto.trim();
+    return codigo && unidades !== null && /[1-9]/.test(unidades)
+      ? [{ producto: codigo, cantidad: unidades }]
+      : [];
+  });
+  if (validas.length === 0) {
     return {
       status: "error",
-      message: "Indicá el producto y una cantidad mayor que cero.",
+      message: "Indicá los productos y una cantidad mayor que cero.",
     };
   }
-  const result = await apiGet<AlcanzaCuero>(
-    `/cueros/alcanza?${new URLSearchParams({ producto: codigo, cantidad: unidades })}`,
-  );
+  const result = await apiPost<AlcanzaLote>("/cueros/alcanza-lote", {
+    lineas: validas,
+  });
   if (!result.ok) return { status: "error", message: result.message };
   return { status: "ok", resultado: result.data };
 }

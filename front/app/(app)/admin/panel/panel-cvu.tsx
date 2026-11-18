@@ -82,7 +82,7 @@ export function PanelCvu({ panel }: { panel: PanelCostos }) {
             variacion={variacion.costo_variable_por_unidad}
           />
           <Cifra
-            titulo="Unidades producidas"
+            titulo="Unidades de lotes terminados"
             valor={formatQuantity(actual.unidades)}
           />
         </div>

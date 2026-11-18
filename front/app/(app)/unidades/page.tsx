@@ -43,11 +43,11 @@ export default async function UnidadesPage({
       <PageHeader
         eyebrow="Costos variables"
         title="Unidades producidas"
-        description="Unidades por producto en lotes ya iniciados."
+        description="Unidades por producto en lotes terminados (en Lista o Cerrados). Un lote cuenta en el mes de su entrega o, si no tiene, el de su envío."
       />
       <form className="mb-6 flex flex-wrap items-end gap-3" action="/unidades">
         <label className="text-sm text-ink-soft">
-          Mes de envío
+          Mes del lote
           <input
             type="month"
             name="periodo"
@@ -76,8 +76,8 @@ export default async function UnidadesPage({
             tone="info"
             title={
               periodo
-                ? `No hay unidades en producción enviadas en ${formatPeriod(periodo)}.`
-                : "Todavía no hay unidades en producción."
+                ? `No hay unidades en lotes terminados en ${formatPeriod(periodo)}.`
+                : "Todavía no hay unidades en lotes terminados."
             }
           />
         ) : (

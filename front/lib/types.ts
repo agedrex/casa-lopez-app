@@ -332,6 +332,10 @@ export type RenglonQuitado = {
 };
 
 export type OrdenDetalle = OrdenResumen & {
+  /** The lot already adds its cost and units to the variable cost of its month (it is finished: Lista or Cerrada). */
+  cuenta_en_costo_variable: boolean;
+  /** The state from which a lot counts (`LISTA`). */
+  cuenta_desde_estado: string;
   items: Renglon[];
   estados: EstadoDeOrden[];
   quitados: RenglonQuitado[];
@@ -690,12 +694,16 @@ export type LoteCueroGrupo = {
   productos: string[];
 };
 
-export type LoteCuero = {
+/** The leathers of a lot, against the stock and what the other open lots reserve; no code or state yet while it is being created. */
+export type AlcanzaLote = {
+  cueros: LoteCueroGrupo[];
+  /** Products without a model, a leather or a leather consumption: they cannot be counted. */
+  sin_consumo: { producto: string; producto_nombre: string }[];
+};
+
+export type LoteCuero = AlcanzaLote & {
   lote: string;
   estado: string;
-  cueros: LoteCueroGrupo[];
-  /** Products of the lot without a model, a leather or a leather consumption: they cannot be counted. */
-  sin_consumo: { producto: string; producto_nombre: string }[];
 };
 
 /** One supply a product of a lot consumes (GET /ordenes/{codigo}/consumo). Quantities only: no money, the taller reads it. */

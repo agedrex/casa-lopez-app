@@ -163,3 +163,28 @@ test("resumenDeCuero no muestra reserva ni aviso cuando ningún otro lote reserv
     ["Necesita", "Hay"],
   );
 });
+
+test("resumenDeCuero acepta el chequeo del alta (sin código ni estado) y muestra la reserva", () => {
+  const resumen = resumenDeCuero({
+    cueros: [
+      grupo({
+        disponible: "3",
+        reservado_por_otros: "2",
+        reservado_por: ["LOT-0001"],
+        libre: "1",
+        alcanza: false,
+        faltante: "1",
+        sobrante: "0",
+        mensaje:
+          "No alcanza: faltan 1 m² de Estándar. Hay 3 m² en stock y LOT-0001 tiene reservados 2 m².",
+      }),
+    ],
+    sin_consumo: [],
+  });
+  assert.equal(resumen.faltan, 1);
+  assert.equal(resumen.tarjetas[0]?.estado, "FALTA");
+  assert.match(resumen.tarjetas[0]?.aviso ?? "", /LOT-0001 tiene reservados/);
+  assert.ok(
+    resumen.tarjetas[0]?.cifras.some((c) => c.label.includes("LOT-0001")),
+  );
+});
