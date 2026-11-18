@@ -26,7 +26,7 @@ export async function avanzarEstado(
   const session = await getSession();
   if (!session) redirect("/login");
   if (!hasRole(session.user.role, "taller") && !canWrite(session.user.role)) {
-    return error("No tiene permiso para esta acción.");
+    return error("No tenés permiso para esta acción.");
   }
   const result = await apiPost<OrdenDetalle>(
     `/ordenes/${encodeURIComponent(codigo)}/avanzar`,
@@ -54,7 +54,7 @@ export async function deshacerEstado(codigo: string): Promise<FormState> {
   const session = await getSession();
   if (!session) redirect("/login");
   if (!hasRole(session.user.role, "taller") && !canWrite(session.user.role)) {
-    return error("No tiene permiso para esta acción.");
+    return error("No tenés permiso para esta acción.");
   }
   const result = await apiPost<OrdenDetalle>(
     `/ordenes/${encodeURIComponent(codigo)}/estado/deshacer`,

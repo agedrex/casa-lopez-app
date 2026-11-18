@@ -157,3 +157,14 @@ def test_undo_unknown_lot_and_roles(api):
     como("admin", usuario="el-admin")
     avanzar(api, ruta)
     assert api.post(f"{ruta}/estado/deshacer").status_code == 201  # the admin gets what the taller gets
+
+
+def test_the_admin_state_endpoint_cannot_skip_ahead_after_an_undo(api):
+    ruta = lote(api, con_cuero_cortado=False)
+    como("taller")
+    avanzar(api, ruta)
+    assert api.post(f"{ruta}/estado/deshacer").status_code == 201  # back to PLANIFICADA
+    como("admin")
+    saltado = api.post(f"{ruta}/estado", json={"estado": "CORTADA", "fecha": "2026-11-18"})
+    assert saltado.status_code == 409
+    assert len(historial(api, ruta)) == 3
