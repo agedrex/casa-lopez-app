@@ -11,10 +11,10 @@ Rama feat/flujo-modelos-lotes-precio. Origen: QA con ego-browser en staging (202
 - S7 (F) Selector de modelo en Nuevo producto: lo mostrado y lo guardado coherente; botones no tapados por la barra inferior; limpiar datos QA/basura de staging (autorizado por el usuario).
 
 ## Tasks
-- T1 S1,S2,S3 — worker — commit: pendiente
-- T2 S4 — worker — commit: pendiente
-- T3 S5,S6 — worker — commit: pendiente
-- T4 S7 — inline — commit: pendiente
+- T1 S1,S2,S3 — worker — commit: abacf67, a6b70d9
+- T2 S4 — worker — commit: feat(precio) + feat(front) (ver git log)
+- T3 S5,S6 — worker — commit: feat(lotes) + feat(front) (ver git log)
+- T4 S7 — inline — commit: fix(front) alta de modelo y selector; limpieza de datos QA en staging pendiente
 - T5 deploy a staging y verificación con ego-browser — inline — pendiente
 
 ## Log
