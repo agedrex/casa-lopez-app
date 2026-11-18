@@ -33,7 +33,7 @@ OTRO = frozenset()
 
 CONSUMOS_DE_LA_HOJA = [
     "CUERO", "FORRO / TELA", "FORRO / POTRO", "GOMA EVA", "FRISELINA", "CARTÓN FIBRA", "FLEX", "CARTULINA", "MOIRE",
-    "HS. DE TRABAJO", "Y/O MANO DE OBRA TALLER", "DESPERDICIO 30%", "CORTE MANO DE OBRA", "EMPAQUE",
+    "HS. DE TRABAJO", "Y/O MANO DE OBRA TALLER", "CORTE MANO DE OBRA", "EMPAQUE",
 ]
 HERRAJES_DE_LA_HOJA = [
     "CIERRE N5", "CIERRE N3", "DESLIZADOR N5", "DESLIZADOR N3", "HEBILLA", "MOSQUETÓN", "MEDIA LUNA", "ARGOLLA 10MM",
@@ -54,8 +54,8 @@ def linea(nombre="CUERO", seccion="CONSUMO", cantidad=None, comentario=None):
 
 # --- S2 / S3: the preloaded rows ------------------------------------------------------------------------------------
 
-def test_s2_the_preloaded_consumos_are_the_14_rows_of_the_sheet_in_order():
-    assert list(LINEAS_PRECARGADAS["CONSUMO"]) == CONSUMOS_DE_LA_HOJA and len(CONSUMOS_DE_LA_HOJA) == 14
+def test_s2_the_preloaded_consumos_are_the_13_rows_of_the_sheet_in_order():
+    assert list(LINEAS_PRECARGADAS["CONSUMO"]) == CONSUMOS_DE_LA_HOJA and len(CONSUMOS_DE_LA_HOJA) == 13
 
 
 def test_s3_the_preloaded_herrajes_are_the_16_rows_of_the_sheet_in_order():
@@ -697,6 +697,20 @@ def alta(api, nombre="cartera  lucía", **extra):
     return api.post("/productos/nuevo", json={"nombre": nombre, "categoria": "Billeteras", **extra})
 
 
+def enviar(api, codigo):
+    """The explicit "Enviar al taller" of the admin: BORRADOR -> ENVIADO."""
+    como("admin", "admin-1")
+    respuesta = api.post(f"/formularios/{codigo}/enviar")
+    assert respuesta.status_code == 200 and respuesta.json()["estado"] == "ENVIADO", respuesta.text
+    return respuesta.json()
+
+
+def alta_enviada(api, nombre="cartera  lucía", **extra):
+    datos = alta(api, nombre, **extra).json()
+    enviar(api, datos["formulario"])
+    return datos
+
+
 def test_pg_the_quick_create_makes_a_model_and_a_form_already_sent_but_no_product(api):
     respuesta = alta(api)
     assert respuesta.status_code == 201, respuesta.text
@@ -704,11 +718,11 @@ def test_pg_the_quick_create_makes_a_model_and_a_form_already_sent_but_no_produc
     assert datos["nombre"] == "CARTERA LUCÍA" and datos["modelo"].startswith("MOD-") and "producto" not in datos
     form = api.get(f"/formularios/{datos['formulario']}").json()
     assert (form["estado"], form["articulo"], form["modelo"], form["producto"]) == (
-        "ENVIADO", "CARTERA LUCÍA", datos["modelo"], None)
-    assert form["enviado_en"] is not None and len(form["lineas"]) == 30
+        "BORRADOR", "CARTERA LUCÍA", datos["modelo"], None)
+    assert form["enviado_en"] is None and len(form["lineas"]) == 29
     assert api.get(f"/modelos/{datos['modelo']}").json()["nombre_del_modelo"] == "CARTERA LUCÍA"
     como("taller")
-    assert api.get(f"/formularios/{datos['formulario']}").status_code == 200  # the taller already sees it
+    assert api.get(f"/formularios/{datos['formulario']}").status_code == 404  # the taller gets it only after "Enviar al taller"
 
 
 def test_pg_the_quick_create_refuses_a_repeated_name_and_leaves_nothing_behind(api):
@@ -731,16 +745,20 @@ def test_pg_only_admin_can_use_the_quick_create_and_the_taller_gets_the_sent_she
     datos = respuesta.json()
     assert api.get(f"/modelos/{datos['modelo']}").json()["validado"] is False
     hoja = api.get(f"/formularios/{datos['formulario']}").json()
-    assert (hoja["estado"], hoja["creado_por"], hoja["articulo"]) == ("ENVIADO", "admin-1", "ZZ MODELO DEL TALLER")
+    assert (hoja["estado"], hoja["creado_por"], hoja["articulo"]) == ("BORRADOR", "admin-1", "ZZ MODELO DEL TALLER")
     assert api.post("/productos/nuevo", json={"nombre": "ZZ Modelo del Taller", "categoria": "Billeteras"}).status_code == 409
     assert api.post("/productos/nuevo", json={"nombre": "Y", "categoria": "Categoría que no existe"}).status_code == 422
     como("taller", "taller-9")
-    assert api.get(f"/formularios/{datos['formulario']}").status_code == 200  # the taller receives it
+    assert api.get(f"/formularios/{datos['formulario']}").status_code == 404  # still a draft: the taller does not see it
+    assert len(api.get("/formularios").json()) == antes
+    enviar(api, datos["formulario"])
+    como("taller", "taller-9")
+    assert api.get(f"/formularios/{datos['formulario']}").status_code == 200  # the taller receives it once the admin sends it
     assert len(api.get("/formularios").json()) == antes + 1
 
 
 def test_pg_the_taller_sees_a_sent_sheet_until_it_is_validated_and_then_no_more(api):
-    datos = alta(api, "zz hoja propia").json()
+    datos = alta_enviada(api, "zz hoja propia")
     codigo = datos["formulario"]
     con_cuero(api, codigo)
     como("taller", "taller-9")
@@ -753,7 +771,7 @@ def test_pg_the_taller_sees_a_sent_sheet_until_it_is_validated_and_then_no_more(
 
 
 def test_pg_validating_copies_the_measures_to_the_model_once(api):
-    datos = alta(api, "Zz Mochila de prueba").json()
+    datos = alta_enviada(api, "Zz Mochila de prueba")
     codigo = datos["formulario"]
     como("taller")
     form = api.get(f"/formularios/{codigo}").json()
@@ -785,7 +803,7 @@ def test_pg_a_new_model_takes_name_category_size_and_notes_and_asks_for_no_consu
 
 
 def test_pg_the_form_the_workshop_gets_carries_the_model_name_and_its_notes(api):
-    datos = alta(api, "Zz Cartera taller", nota="Forro de potro, sin flex").json()
+    datos = alta_enviada(api, "Zz Cartera taller", nota="Forro de potro, sin flex")
     como("taller")
     form = api.get(f"/formularios/{datos['formulario']}").json()
     assert (form["articulo"], form["nota"], form["estado"], form["modelo"]) == (
@@ -814,7 +832,8 @@ def test_pg_the_model_sheet_shows_its_form_and_its_state_follows_the_workflow(ap
     datos = alta(api, "Zz Cartera ficha").json()
     codigo = datos["formulario"]
     de_modelo = api.get("/formularios", params={"modelo": datos["modelo"]}).json()
-    assert [(f["codigo"], f["estado"]) for f in de_modelo] == [(codigo, "ENVIADO")]
+    assert [(f["codigo"], f["estado"]) for f in de_modelo] == [(codigo, "BORRADOR")]
+    enviar(api, codigo)
     con_cuero(api, codigo)
     assert api.post(f"/formularios/{codigo}/completar").status_code == 200
     como("admin", "admin-1")
@@ -830,3 +849,207 @@ def test_pg_old_models_with_consumptions_still_work(api):
     viejo = api.get("/modelos", params={"limit": 1}).json()[0]
     assert viejo["cuero_m2_por_unidad"] is not None and viejo["validado"] is False
     assert api.get("/formularios", params={"modelo": viejo["codigo"]}).json() == []  # no sheet, no error
+
+
+# --- flujo-modelos-lotes-precio S1: no 30% waste row, honest units --------------------------------------------------------
+
+def test_flujo_s1_the_waste_row_is_gone_from_the_template_and_from_the_cap_exemptions():
+    assert "DESPERDICIO 30%" not in LINEAS_PRECARGADAS["CONSUMO"]
+    assert "DESPERDICIO 30%" not in formulario.FILAS_SIN_TOPE
+    assert formulario.FILAS_SIN_TOPE == {"HS. DE TRABAJO", "Y/O MANO DE OBRA TALLER", "CORTE MANO DE OBRA", "EMPAQUE"}
+    with pytest.raises(DatosInvalidos, match="no puede superar"):  # it is an ordinary row now: capped like any other
+        armar_lineas([linea("DESPERDICIO 30%", cantidad=D("101"))])
+    assert armar_lineas([linea("HS. DE TRABAJO", cantidad=D("250"))])[0]["cantidad"] == D("250")  # still exempt
+
+
+@pytest.mark.parametrize("seccion, nombre, unidad", [
+    ("CONSUMO", "CUERO", "m²"), ("CONSUMO", "CARTÓN FIBRA", "m²"), ("CONSUMO", "algo agregado a mano", "m²"),
+    ("CONSUMO", "HS. DE TRABAJO", "horas"), ("CONSUMO", "  hs.  de   trabajo ", "horas"),
+    ("CONSUMO", "Y/O MANO DE OBRA TALLER", "$"), ("CONSUMO", "CORTE MANO DE OBRA", "$"), ("CONSUMO", "EMPAQUE", "unidades"),
+    ("HERRAJE", "CIERRE N5", "unidades"), ("HERRAJE", "EMPAQUE", "unidades"),
+])
+def test_flujo_s1_every_row_has_its_own_unit_and_none_of_the_labour_rows_says_m2(seccion, nombre, unidad):
+    assert formulario.unidad_de_fila(seccion, nombre) == unidad
+
+
+def test_flujo_s1_the_api_line_carries_its_unit():
+    from backend.api import FormularioLineaOut
+    salida = FormularioLineaOut.model_validate(
+        {"seccion": "CONSUMO", "orden": 1, "nombre": "HS. DE TRABAJO", "cantidad": D("3"), "comentario": None})
+    assert salida.model_dump()["unidad"] == "horas"
+
+
+# --- flujo-modelos-lotes-precio S3: what validating copies to the model, and what it reports ------------------------------
+
+FORROS = [(7, "Potro / Popurrí / Cuero", "Potro"), (8, "Tela forrería (Gross textil 1 × 1,50)", "Tela")]
+
+
+def plan(lineas, insumos=(), forros=FORROS):
+    return formulario.planificar_aplicacion(lineas, list(insumos), list(forros))
+
+
+def test_flujo_s3_forro_tela_copies_the_measure_and_picks_the_lining_material():
+    resultado = plan([("CONSUMO", "CUERO", D("1.2")), ("CONSUMO", "FORRO / TELA", D("0.8")), ("CONSUMO", "FLEX", D("0.3"))])
+    assert resultado["medidas"] == {
+        "cuero_m2_por_unidad": D("1.2"), "forro_m2_por_unidad": D("0.8"), "flex_m2_por_unidad": D("0.3")}
+    assert resultado["forro_id"] == 8 and resultado["no_aplicadas"] == []
+
+
+def test_flujo_s3_forro_potro_picks_the_other_lining():
+    resultado = plan([("CONSUMO", "FORRO / POTRO", D("0.5"))])
+    assert (resultado["medidas"], resultado["forro_id"]) == ({"forro_m2_por_unidad": D("0.5")}, 7)
+
+
+def test_flujo_s3_two_forro_rows_with_quantity_are_not_guessed_and_both_are_reported():
+    resultado = plan([("CONSUMO", "FORRO / TELA", D("0.8")), ("CONSUMO", "FORRO / POTRO", D("0.2"))])
+    assert resultado["medidas"] == {} and resultado["forro_id"] is None
+    assert [f["nombre"] for f in resultado["no_aplicadas"]] == ["FORRO / TELA", "FORRO / POTRO"]
+    assert "un solo forro" in resultado["no_aplicadas"][0]["motivo"]
+
+
+def test_flujo_s3_a_forro_without_a_matching_material_copies_the_measure_and_says_the_material_is_missing():
+    resultado = plan([("CONSUMO", "FORRO / SEDA", D("0.5"))])
+    assert resultado["medidas"] == {"forro_m2_por_unidad": D("0.5")} and resultado["forro_id"] is None
+    assert resultado["no_aplicadas"][0]["nombre"] == "FORRO / SEDA" and "elegí el forro" in resultado["no_aplicadas"][0]["motivo"]
+
+
+def test_flujo_s3_a_herraje_without_a_material_is_reported_and_with_one_it_is_saved_even_with_other_spelling():
+    lineas = [("HERRAJE", "CIERRE N5", D("1"))]
+    sin = plan(lineas)
+    assert sin["insumos"] == {} and [f["nombre"] for f in sin["no_aplicadas"]] == ["CIERRE N5"]
+    assert "material" in sin["no_aplicadas"][0]["motivo"]
+    for nombre in ("Cierre N5", "Cierre N°5", "CIERRE Nº 5", "cierre n 5"):
+        con = plan(lineas, insumos=[(20, nombre, None)])
+        assert con["insumos"] == {20: D("1")} and con["no_aplicadas"] == [], nombre
+
+
+def test_flujo_s3_rows_with_a_quantity_that_have_no_field_in_the_model_are_reported_and_blank_ones_are_not():
+    resultado = plan([
+        ("CONSUMO", "HS. DE TRABAJO", D("3.5")), ("CONSUMO", "EMPAQUE", D("1")), ("CONSUMO", "CORTE MANO DE OBRA", None),
+        ("CONSUMO", "FRISELINA", D("0")), ("CONSUMO", "CUERO", D("0")),
+    ])
+    assert [f["nombre"] for f in resultado["no_aplicadas"]] == ["HS. DE TRABAJO", "EMPAQUE"]
+    assert resultado["medidas"] == {"cuero_m2_por_unidad": D("0")}  # a typed zero still means "no lleva"
+
+
+def test_flujo_s3_the_row_names_are_matched_without_case_or_repeated_spaces():
+    resultado = plan([("CONSUMO", " goma   eva ", D("0.1"))])
+    assert resultado["medidas"] == {"goma_eva_m2_por_unidad": D("0.1")}
+
+
+# --- flujo-modelos-lotes-precio S2 / S3 against PostgreSQL -----------------------------------------------------------------
+
+def hoja_con(api, codigo, cantidades, extra=()):
+    """Admin edits the sheet (any state it may edit): quantities by row name, plus rows added by hand."""
+    como("admin", "admin-1")
+    hoja = api.get(f"/formularios/{codigo}").json()
+    cuerpo = cuerpo_de(hoja)
+    for l in cuerpo["lineas"]:
+        if l["nombre"] in cantidades:
+            l["cantidad"] = cantidades[l["nombre"]]
+    cuerpo["lineas"].extend(extra)
+    respuesta = api.put(f"/formularios/{codigo}", json=cuerpo)
+    assert respuesta.status_code == 200, respuesta.text
+    return respuesta.json()
+
+
+def test_pg_flujo_s2_the_admin_edits_the_whole_template_in_borrador_enviado_and_completado_but_not_validado(api):
+    codigo = alta(api, "Zz Plantilla editable").json()["formulario"]
+    como("admin", "admin-1")
+    for estado in ("BORRADOR", "ENVIADO", "COMPLETADO"):
+        if estado == "ENVIADO":
+            enviar(api, codigo)
+        if estado == "COMPLETADO":
+            con_cuero(api, codigo)
+            assert api.post(f"/formularios/{codigo}/completar").status_code == 200
+        como("admin", "admin-1")
+        hoja = api.get(f"/formularios/{codigo}").json()
+        assert hoja["estado"] == estado
+        cuerpo = cuerpo_de(hoja)
+        cuerpo["lineas"] = [l for l in cuerpo["lineas"] if l["nombre"] != "MOIRE"]  # remove a row
+        cuerpo["lineas"] = [{**l, "nombre": "CUERO PRINCIPAL"} if l["nombre"] == "CUERO" else l for l in cuerpo["lineas"]]  # rename
+        cuerpo["lineas"].append({"seccion": "HERRAJE", "nombre": f"A MEDIDA {estado}", "cantidad": "2", "comentario": None})  # add
+        guardada = api.put(f"/formularios/{codigo}", json=cuerpo)
+        assert guardada.status_code == 200, (estado, guardada.text)
+        nombres = [l["nombre"] for l in guardada.json()["lineas"]]
+        assert "MOIRE" not in nombres and "CUERO PRINCIPAL" in nombres and nombres[-1] == f"A MEDIDA {estado}"
+        cuerpo["lineas"] = [{**l, "nombre": "CUERO"} if l["nombre"] == "CUERO PRINCIPAL" else l for l in cuerpo["lineas"]]
+        cuerpo["lineas"] = [l for l in cuerpo["lineas"] if not l["nombre"].startswith("A MEDIDA")]
+        cuerpo["lineas"].append({"seccion": "CONSUMO", "nombre": "MOIRE", "cantidad": None, "comentario": None})
+        assert api.put(f"/formularios/{codigo}", json=cuerpo).status_code == 200  # put the template back for the next state
+    assert api.post(f"/formularios/{codigo}/validar").status_code == 200
+    assert api.put(f"/formularios/{codigo}", json=cuerpo).status_code == 409
+
+
+def test_pg_flujo_s2_the_taller_adds_removes_and_renames_rows_only_while_enviado(api):
+    codigo = alta_enviada(api, "Zz Taller edita filas")["formulario"]
+    como("taller", "taller-9")
+    hoja = api.get(f"/formularios/{codigo}").json()
+    cuerpo = cuerpo_de(hoja)
+    cuerpo["lineas"] = [{**l, "nombre": "FORRO / TELA GRUESA"} if l["nombre"] == "FORRO / TELA" else l
+                        for l in cuerpo["lineas"] if l["nombre"] != "MOIRE"]
+    cuerpo["lineas"].append({"seccion": "HERRAJE", "nombre": "BROCHE ESPECIAL", "cantidad": "3", "comentario": None})
+    guardada = api.put(f"/formularios/{codigo}", json=cuerpo)
+    assert guardada.status_code == 200, guardada.text
+    nombres = [l["nombre"] for l in guardada.json()["lineas"]]
+    assert "MOIRE" not in nombres and "FORRO / TELA GRUESA" in nombres and "BROCHE ESPECIAL" in nombres
+    con_cuero(api, codigo)
+    assert api.post(f"/formularios/{codigo}/completar").status_code == 200
+    assert api.put(f"/formularios/{codigo}", json=cuerpo).status_code == 409  # waiting for the review
+
+
+def test_pg_flujo_s2_a_new_model_is_a_draft_nobody_but_the_admin_sees_until_it_is_sent(api):
+    datos = alta(api, "Zz Borrador del modelo").json()
+    hoja = api.get(f"/formularios/{datos['formulario']}").json()
+    assert (hoja["estado"], hoja["enviado_en"]) == ("BORRADOR", None) and len(hoja["lineas"]) == 29
+    como("taller", "taller-9")
+    assert datos["formulario"] not in [f["codigo"] for f in api.get("/formularios").json()]
+    enviado = enviar(api, datos["formulario"])
+    assert enviado["enviado_en"] is not None
+    como("taller", "taller-9")
+    assert datos["formulario"] in [f["codigo"] for f in api.get("/formularios").json()]
+
+
+def test_pg_flujo_s3_validating_the_qa_sheet_copies_cuero_forro_and_flex_and_lists_the_herraje_that_matched_nothing(api):
+    datos = alta_enviada(api, "Zz Hoja de QA")
+    codigo = datos["formulario"]
+    hoja_con(api, codigo, {"CUERO": "1.2", "FORRO / TELA": "0.8", "FLEX": "0.3", "CIERRE N5": "1"})
+    como("taller", "taller-9")
+    assert api.post(f"/formularios/{codigo}/completar").status_code == 200
+    como("admin", "admin-1")
+    validada = api.post(f"/formularios/{codigo}/validar")
+    assert validada.status_code == 200, validada.text
+    modelo = api.get(f"/modelos/{datos['modelo']}").json()
+    assert (D(modelo["cuero_m2_por_unidad"]), D(modelo["forro_m2_por_unidad"]), D(modelo["flex_m2_por_unidad"])) == (
+        D("1.2"), D("0.8"), D("0.3"))
+    assert modelo["forro"] == "MAT-FO02"  # Tela
+    assert [f["nombre"] for f in validada.json()["no_aplicadas"]] == ["CIERRE N5"]
+    assert validada.json()["sin_material"] == ["CIERRE N5"]
+    # the admin still sees the list when it opens the validated sheet again
+    assert [f["nombre"] for f in api.get(f"/formularios/{codigo}").json()["no_aplicadas"]] == ["CIERRE N5"]
+
+
+def test_pg_flujo_s3_a_herraje_with_a_material_becomes_an_insumo_whatever_its_spelling(api):
+    from backend.models import Etapa, Material
+    from sqlalchemy import select
+    api.session.add(Material(
+        codigo="MAT-ZZ77", nombre="Cierre N°5", etapa_id=api.session.scalar(select(Etapa.id).where(Etapa.codigo == "HERRAJES")),
+        unidad_de_consumo="unidad", cotizable=True))
+    api.session.flush()
+    datos = alta_enviada(api, "Zz Hoja con cierre")
+    codigo = datos["formulario"]
+    hoja_con(api, codigo, {"CUERO": "1", "CIERRE N5": "1"})
+    como("taller", "taller-9")
+    assert api.post(f"/formularios/{codigo}/completar").status_code == 200
+    como("admin", "admin-1")
+    validada = api.post(f"/formularios/{codigo}/validar").json()
+    assert validada["no_aplicadas"] == [] and validada["sin_material"] == []
+    assert [(i["material"], D(i["cantidad_por_unidad"])) for i in api.get(f"/modelos/{datos['modelo']}").json()["insumos"]] == [
+        ("MAT-ZZ77", D("1"))]
+
+
+def test_pg_flujo_s1_the_api_lines_carry_their_unit(api):
+    hoja = api.get(f"/formularios/{crear(api, 'Zz Unidades')['codigo']}").json()
+    unidades = {l["nombre"]: l["unidad"] for l in hoja["lineas"]}
+    assert (unidades["CUERO"], unidades["HS. DE TRABAJO"], unidades["Y/O MANO DE OBRA TALLER"], unidades["EMPAQUE"],
+            unidades["CIERRE N5"]) == ("m²", "horas", "$", "unidades", "unidades")

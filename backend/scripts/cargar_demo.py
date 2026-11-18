@@ -133,7 +133,7 @@ LOTES = (
 MEDIDAS = {
     "CUERO": "0.42", "FORRO / TELA": "0.35", "FORRO / POTRO": "0", "GOMA EVA": "0.12", "FRISELINA": "0.30",
     "CARTÓN FIBRA": "0.08", "FLEX": "0.20", "CARTULINA": "0.05", "MOIRE": "0.10", "HS. DE TRABAJO": "3.5",
-    "Y/O MANO DE OBRA TALLER": "0", "DESPERDICIO 30%": "0.13", "CORTE MANO DE OBRA": "0.5", "EMPAQUE": "1",
+    "Y/O MANO DE OBRA TALLER": "0", "CORTE MANO DE OBRA": "0.5", "EMPAQUE": "1",
     "CIERRE N5": "1", "CIERRE N3": "0", "DESLIZADOR N5": "1", "DESLIZADOR N3": "0", "HEBILLA": "2", "MOSQUETÓN": "0",
     "MEDIA LUNA": "0", "ARGOLLA 10MM": "2", "IMÁN": "0", "TORNIQUETE": "0", "CADENA": "0.6", "REMACHES": "8",
     "SPAGUETTI": "0", "TRENCILLA": "0.8", "MANGUERA": "0", "OJALILLO": "4",
@@ -514,6 +514,8 @@ def _cargar_lotes(carga: _Carga, plan: Plan, codigo_de: dict[int, str | None]) -
 
 def _hecho(paso: str, detalle: dict) -> bool:
     """Whether a step of a form already happened, judging by what the form looks like now."""
+    if paso == "enviar":
+        return detalle["estado"] != formulario.BORRADOR
     if paso == "llenar":
         return any(linea["cantidad"] is not None for linea in detalle["lineas"])
     if paso == "completar":
@@ -523,8 +525,13 @@ def _hecho(paso: str, detalle: dict) -> bool:
     return detalle["estado"] == formulario.VALIDADO  # validar
 
 
+def pasos_de(plan: FormularioPlan) -> list[str]:
+    """The steps after creating a form. A new model's sheet starts as BORRADOR (the admin sends it explicitly), so the demo sends it first."""
+    return (["enviar"] if plan.tipo == "MODELO" else []) + list(plan.pasos)
+
+
 def _nuevo_formulario(session: Session, plan: FormularioPlan) -> str:
-    """A MODELO form is a new model with its form already sent to the workshop; a SUELTO one is a loose BORRADOR."""
+    """A MODELO form is a new model whose form the demo then sends to the workshop (`pasos_de`); a SUELTO one is a loose BORRADOR."""
     if plan.tipo == "MODELO":
         return formulario.alta_rapida(
             session, nombre=plan.articulo, categoria=plan.categoria, tamano=plan.tamano, nota=plan.marca,
@@ -557,11 +564,11 @@ def _cargar_formularios(carga: _Carga, plan: Plan) -> None:
                 carga.omitir("formularios", f"No se creó el formulario de {f.articulo}: {error}")
                 continue
             codigo = nuevo[0] if nuevo else None
-            pendientes = list(f.pasos)
+            pendientes = pasos_de(f)
         else:
             carga.omitir("formularios")
             detalle = formulario.obtener_formulario(session, codigo, ROLES)
-            pendientes = [paso for paso in f.pasos if not _hecho(paso, detalle)]
+            pendientes = [paso for paso in pasos_de(f) if not _hecho(paso, detalle)]
         for paso in pendientes:
             try:
                 carga.crear("pasos de formulario", lambda c=codigo, s=paso, p=f: _paso_de_formulario(session, c, s, p))

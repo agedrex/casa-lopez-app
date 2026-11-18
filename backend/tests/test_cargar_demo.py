@@ -245,10 +245,10 @@ def test_five_forms_in_the_states_the_demo_needs():
 def test_the_practice_form_is_a_new_model_sent_empty_and_the_completed_one_is_fully_filled():
     practica, completada, devuelta, borrador, validada = plan().formularios
     assert practica.tipo == "MODELO" and practica.pasos == () and all(c is None for _, _, c in practica.lineas)
-    assert len(completada.lineas) == 30 and all(c is not None and c >= 0 for _, _, c in completada.lineas)
+    assert len(completada.lineas) == 29 and all(c is not None and c >= 0 for _, _, c in completada.lineas)
     assert completada.pasos == ("llenar", "completar") and validada.pasos == ("llenar", "completar", "validar")
     assert devuelta.pasos[-1] == "devolver" and devuelta.comentario
-    assert 0 < sum(c is not None for _, _, c in devuelta.lineas) < 30  # partly filled
+    assert 0 < sum(c is not None for _, _, c in devuelta.lineas) < 29  # partly filled
     assert borrador.tipo == "SUELTO" and borrador.pasos == ()
     assert {(s, n) for s, n, _ in practica.lineas} == {(l["seccion"], l["nombre"]) for l in formulario.lineas_precargadas()}
 
@@ -368,7 +368,7 @@ def test_forms_are_visible_to_the_taller_only_when_sent_or_completed_and_the_pra
     vistos = {f["articulo"] for f in formulario.listar_formularios(session, q=None, estado=None, roles=taller)}
     assert vistos & set(demo) == {a for a, f in demo.items() if f["estado"] in ("ENVIADO", "COMPLETADO")}
     practica = formulario.obtener_formulario(session, demo["BANDOLERA MINI NUEVA"]["codigo"], taller)
-    assert practica["estado"] == "ENVIADO" and len(practica["lineas"]) == 30
+    assert practica["estado"] == "ENVIADO" and len(practica["lineas"]) == 29
     assert all(l["cantidad"] is None for l in practica["lineas"]) and practica["modelo"] is not None
     modelo = servicios.detalle_modelo(session, practica["modelo"])
     assert modelo["cuero_m2_por_unidad"] is None and modelo["validado"] is False  # a new model with empty consumptions

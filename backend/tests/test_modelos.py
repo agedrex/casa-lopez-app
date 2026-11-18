@@ -27,11 +27,13 @@ def test_pg_a_model_without_sheet_has_null_hoja_fields(api):
     assert primero["hoja_codigo"] is None and primero["hoja_estado"] is None
 
 
-def test_pg_a_new_model_lists_its_sent_sheet(api):
+def test_pg_a_new_model_lists_its_draft_sheet_and_then_the_sent_one(api):
     como("admin")
     datos = api.post("/productos/nuevo", json={"nombre": "Zz Modelo con hoja", "categoria": "Billeteras"}).json()
     fila = modelo_de_lista(api, datos["modelo"])
-    assert (fila["hoja_codigo"], fila["hoja_estado"]) == (datos["formulario"], "ENVIADO")
+    assert (fila["hoja_codigo"], fila["hoja_estado"]) == (datos["formulario"], "BORRADOR")
+    assert api.post(f"/formularios/{datos['formulario']}/enviar").status_code == 200
+    assert modelo_de_lista(api, datos["modelo"])["hoja_estado"] == "ENVIADO"
 
 
 def test_pg_the_newest_sheet_wins_and_other_models_keep_their_own(api):

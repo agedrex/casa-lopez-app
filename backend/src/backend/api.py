@@ -19,7 +19,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, Path, Query, Request, UploadFile
 from fastapi.responses import JSONResponse, Response
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 from sqlalchemy.orm import Session
 
 from backend import consumo_lote, cueros, formulario, lote_estados, modelos_foto, ocr_llm, proveedores, reventa, servicios, sheets_client, voz, voz_llm
@@ -2797,6 +2797,16 @@ class FormularioLineaOut(Salida):
     cantidad: Decimal | None
     comentario: str | None
 
+    @computed_field  # the unit of the row (m², horas, $, unidades): one rule, `formulario.unidad_de_fila`
+    @property
+    def unidad(self) -> str:
+        return formulario.unidad_de_fila(self.seccion, self.nombre)
+
+
+class FormularioNoAplicadaOut(Salida):
+    nombre: str
+    motivo: str
+
 
 class FormularioResumenOut(Salida):
     codigo: str
@@ -2820,6 +2830,8 @@ class FormularioOut(FormularioResumenOut):
     lineas: list[FormularioLineaOut]
     # Only the answer of `validar` fills it: the rows with a quantity that matched no material (not saved as supplies).
     sin_material: list[str] | None = None
+    # The answer of `validar`, and the sheet of a VALIDADO form for the admin: every row with a quantity that did not reach the model.
+    no_aplicadas: list[FormularioNoAplicadaOut] | None = None
 
 
 @router.post("/formularios", response_model=FormularioOut, status_code=201)
@@ -2844,9 +2856,9 @@ class ProductoNuevoOut(BaseModel):
 
 @router.post("/productos/nuevo", response_model=ProductoNuevoOut, status_code=201)
 def crear_producto_solo_con_nombre(cuerpo: ProductoNuevoIn, session: Sesion, usuario: SoloAdmin):
-    """New model (name, category, size and notes; no consumption): the app makes the model code and its consumption form,
-    already sent to the workshop, which reads the notes there. Admin only: the taller receives the sent sheet and fills
-    it, but cannot create models (403). The product comes after the admin validates the form.
+    """New model (name, category, size and notes; no consumption): the app makes the model code and its consumption form as a
+    BORRADOR (the admin edits it and sends it with `POST /formularios/{codigo}/enviar`; the workshop reads the notes there).
+    Admin only: the taller receives the sheet once it is sent and fills it, but cannot create models (403). The product comes after the admin validates the form.
     The category must already exist: only the admin creates categories (`POST /categorias`)."""
     return formulario.alta_rapida(session, quien=usuario.id, **cuerpo.model_dump())
 

@@ -1,7 +1,8 @@
 """Consumption form of a new article ("formulario de consumos y herrajes"): the digital version of the paper sheet.
 
-One form per article. The admin creates it with the preloaded rows (empty quantities), sends it to the workshop, the
-workshop fills it in and completes it, and the admin validates it or sends it back with a review comment. This module
+One form per article. The admin creates it with the preloaded rows (empty quantities; the template), edits it (add, remove, rename
+rows, quantities) and sends it to the workshop with an explicit "Enviar al taller"; the workshop fills it in and completes it, and
+the admin validates it or sends it back with a review comment. The preloaded list is only the template: nothing forces a row to stay. This module
 does NOT cost, calculate or convert anything (no USD, no totals): quantities are exactly what a person typed, and
 nothing here touches `modelo`, `receta_linea` or the cost engine. Forms are never deleted.
 
@@ -14,8 +15,11 @@ State machine (`ACCIONES`):
     `completar` and `validar` need at least one row with a quantity above 0 (422): a blank sheet is never completed or validated
     (`enviar` does not check it: the admin sends the blank sheet to the workshop, that is the workflow).
     VALIDADO is immutable: any change is a 409 and the way to change it is `duplicar`.
-    Validating also saves the supplies of the sheet (HERRAJE rows and a few CONSUMO rows with a quantity) as `modelo_insumo`
-    of its model when a costable material has the same name, and answers the names that matched none in `sin_material`.
+    Validating copies the sheet to its model (`planificar_aplicacion`): CUERO / FLEX / GOMA EVA measures, the one `FORRO / <material>`
+    row (measure and lining material) and the supplies (HERRAJE rows and a few CONSUMO rows with a quantity) as `modelo_insumo`
+    when a costable material has the same name. The answer of `validar`, and the sheet of a VALIDADO form for the admin, list every
+    row with a quantity that did not reach the model in `no_aplicadas` ({nombre, motivo}); `sin_material` keeps only the supplies
+    that matched no material.
 
 Who edits what (`comprobar_edicion`): the admin edits articulo, nota and the rows while BORRADOR / ENVIADO / COMPLETADO.
 A `taller` user edits ONLY the rows (add, remove, rename, quantities, comments) and ONLY while ENVIADO. Who sees what
@@ -27,7 +31,8 @@ COMPLETADO form; `formulario_consumo.taller_id` is informative only.
 HTTP (routes in api.py; errors are `{"detail": <Spanish message>}`: 403 not allowed, 404 missing or not visible,
 409 invalid transition or immutable form, 422 invalid data):
     POST /formularios                       admin   {articulo, taller?, producto?, nota?} -> BORRADOR with the preloaded rows
-    POST /productos/nuevo                   admin only      {nombre, categoria, tamano?, nota?} -> new model + its sheet already ENVIADO
+    POST /productos/nuevo                   admin only      {nombre, categoria, tamano?, nota?} -> new model + its sheet as BORRADOR
+                                            (the admin edits it and sends it with POST /formularios/{codigo}/enviar)
     GET  /formularios?q=&estado=&producto=&modelo=  admin, taller (taller: ENVIADO / COMPLETADO and its own); producto = PRD-NNNN, modelo = MOD-NNNN
     GET  /formularios/{codigo}              same visibility; 404 otherwise
     PUT  /formularios/{codigo}              admin or taller; {articulo, nota?, lineas: [{seccion, nombre, cantidad?, comentario?}]}
@@ -40,6 +45,7 @@ HTTP (routes in api.py; errors are `{"detail": <Spanish message>}`: 403 not allo
     POST /formularios/{codigo}/duplicar     admin   {articulo} -> new BORRADOR copying the rows (names, quantities, comments)
 """
 
+import re
 import unicodedata
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -65,7 +71,7 @@ CONSUMO, HERRAJE = FORM_SECTIONS
 LINEAS_PRECARGADAS: dict[str, tuple[str, ...]] = {
     CONSUMO: (
         "CUERO", "FORRO / TELA", "FORRO / POTRO", "GOMA EVA", "FRISELINA", "CARTÓN FIBRA", "FLEX", "CARTULINA", "MOIRE",
-        "HS. DE TRABAJO", "Y/O MANO DE OBRA TALLER", "DESPERDICIO 30%", "CORTE MANO DE OBRA", "EMPAQUE",
+        "HS. DE TRABAJO", "Y/O MANO DE OBRA TALLER", "CORTE MANO DE OBRA", "EMPAQUE",
     ),
     HERRAJE: (
         "CIERRE N5", "CIERRE N3", "DESLIZADOR N5", "DESLIZADOR N3", "HEBILLA", "MOSQUETÓN", "MEDIA LUNA", "ARGOLLA 10MM",
@@ -92,11 +98,16 @@ MENSAJE_HOJA_VACIA = {
 }
 MENSAJE_VALIDADO = "El formulario ya está validado y no se puede modificar: duplicalo para hacer cambios."
 ESTADOS_VISIBLES_PARA_TALLER = frozenset({ENVIADO, COMPLETADO})
-# Rows of the sheet that are hours, labour or percentages, not a quantity of material or units: no per-unit cap (S1).
-# SUPUESTO: validar con Robert. Every other row (leather, lining, boards, every HERRAJE, rows added by hand) is capped.
-FILAS_SIN_TOPE = frozenset({
-    "HS. DE TRABAJO", "Y/O MANO DE OBRA TALLER", "DESPERDICIO 30%", "CORTE MANO DE OBRA", "EMPAQUE",
-})
+# Rows of the CONSUMO table that are not square metres of material, with their unit (flujo-modelos-lotes-precio S1). SUPUESTO:
+# validar con Robert (hours; labour in pesos; EMPAQUE counted in units). The sheet no longer has the "DESPERDICIO 30%" row: the
+# workshop writes the real consumption of everything. Any other CONSUMO row (leather, lining, boards, rows added by hand) is m²
+# and every HERRAJE row is a count of units.
+UNIDAD_DE_FILA = {
+    "HS. DE TRABAJO": "horas", "Y/O MANO DE OBRA TALLER": "$", "CORTE MANO DE OBRA": "$", "EMPAQUE": "unidades",
+}
+UNIDAD_CONSUMO, UNIDAD_HERRAJE = "m²", "unidades"
+# Those rows are hours / labour / counts, not a quantity of material per unit: no per-unit cap (S1).
+FILAS_SIN_TOPE = frozenset(UNIDAD_DE_FILA)
 MAX_LINEAS = 200  # per form; far above the 30 rows of the sheet, only a guard against absurd bodies
 
 
@@ -112,6 +123,13 @@ def lineas_precargadas() -> list[dict]:
         {"seccion": seccion, "orden": orden, "nombre": nombre, "cantidad": None, "comentario": None}
         for seccion, nombres in LINEAS_PRECARGADAS.items() for orden, nombre in enumerate(nombres, start=1)
     ]
+
+
+def unidad_de_fila(seccion: str, nombre: str | None) -> str:
+    """The unit a row is measured in: its own for the hours / labour / packing rows, m² for any other CONSUMO row, units for HERRAJE."""
+    if seccion == HERRAJE:
+        return UNIDAD_HERRAJE
+    return UNIDAD_DE_FILA.get(" ".join((nombre or "").upper().split()), UNIDAD_CONSUMO)
 
 
 def es_visible(estado: str, roles: frozenset[str], propio: bool = False) -> bool:
@@ -264,7 +282,13 @@ def listar_formularios(
 
 
 def obtener_formulario(session: Session, codigo: str, roles: frozenset[str], quien: str | None = None) -> dict:
-    return _detalle(session, *_cargar(session, codigo, roles, quien=quien))
+    """The sheet. For the admin, a VALIDADO sheet also lists the rows that did not reach the model (`no_aplicadas`), so the list
+    does not vanish after the answer of `validar`."""
+    fila, producto, taller, modelo = _cargar(session, codigo, roles, quien=quien)
+    detalle = _detalle(session, fila, producto, taller, modelo)
+    if fila.estado == VALIDADO and ADMIN in roles:
+        detalle["no_aplicadas"] = _plan_de(session, fila)["no_aplicadas"]
+    return detalle
 
 
 # --- Writes -----------------------------------------------------------------------------------------------------------
@@ -308,8 +332,8 @@ def comprobar_foto_de_modelo(session: Session, modelo_id: int, *, roles: frozens
         raise SinPermiso("No tenés permiso para subir la foto de este modelo.")
 
 
-# Rows of the form whose measure goes to the model when the admin validates (m2 per unit). FORRO is not copied: the model also
-# needs the lining material, a choice a person makes. HERRAJES are quantities, not the USD amount the model keeps.
+# Rows of the form whose measure goes to the model when the admin validates (m2 per unit). The `FORRO / <material>` row is handled
+# apart (measure + the lining material). HERRAJES are quantities saved as supplies, not the USD amount the model keeps.
 MEDIDAS_AL_VALIDAR = {"CUERO": "cuero_m2_por_unidad", "FLEX": "flex_m2_por_unidad", "GOMA EVA": "goma_eva_m2_por_unidad"}
 
 
@@ -324,12 +348,13 @@ def normalizar_nombre(nombre: str | None) -> str:
 def alta_rapida(
     session: Session, *, nombre: str, categoria: str, quien: str, tamano: str | None = None, nota: str | None = None,
 ) -> dict:
-    """New model from its name, category and notes (no consumption), with its consumption form already sent to the workshop,
-    in one transaction. This is the only way the app creates a model.
+    """New model from its name, category and notes (no consumption), with its consumption form as a BORRADOR, in one transaction.
+    This is the only way the app creates a model.
 
-    The model is what gets designed and measured: the workshop fills the form, the admin validates it and the measures and
-    supplies become the recipe of the model. The product (model + leather + colour) is created after validation. The notes are
-    kept on the model and copied to the form, which is where the workshop reads them (the workshop cannot edit them).
+    The model is what gets designed and measured: the admin edits the form (it starts as the template) and sends it to the
+    workshop with an explicit `enviar`, the workshop fills it, the admin validates it and the measures and supplies become the
+    recipe of the model. The product (model + leather + colour) is created after validation. The notes are kept on the model
+    and copied to the form, which is where the workshop reads them (the workshop cannot edit them).
     """
     nombre = normalizar_nombre(nombre)
     if any(existente.casefold() == nombre.casefold() for existente in session.scalars(select(Modelo.nombre_del_modelo))):
@@ -347,7 +372,7 @@ def alta_rapida(
     _insertar(session, modelo, "Ya hay un modelo con ese nombre, o no se pudo asignar el código; intentá de nuevo.")
     fila = _nuevo(
         session, articulo=nombre, producto_id=None, taller_id=None, nota=nota, quien=quien, lineas=lineas_precargadas())
-    fila.modelo_id, fila.estado, fila.enviado_en = modelo.id, ENVIADO, datetime.now(timezone.utc)
+    fila.modelo_id = modelo.id  # the sheet stays BORRADOR: nobody but the admin sees it until "Enviar al taller"
     session.commit()
     return {"modelo": modelo.codigo, "formulario": fila.codigo, "nombre": nombre}
 
@@ -358,9 +383,11 @@ INSUMOS_DE_CONSUMO = ("FRISELINA", "CARTÓN FIBRA", "CARTULINA", "MOIRE")
 
 
 def normalizar_para_comparar(nombre: str | None) -> str:
-    """Name for matching: no accents, no case, single spaces (CARTÓN  Fibra == carton fibra)."""
-    sin_tildes = "".join(c for c in unicodedata.normalize("NFKD", nombre or "") if not unicodedata.combining(c))
-    return " ".join(sin_tildes.casefold().split())
+    """Name for matching: no accents, no case, single spaces, no ordinal signs or dots (CARTÓN  Fibra == carton fibra,
+    CIERRE N°5 == Cierre N 5 == cierre n5)."""
+    sin_ordinales = (nombre or "").translate(str.maketrans("", "", "º°ª."))  # before NFKD, which turns º into "o"
+    sin_tildes = "".join(c for c in unicodedata.normalize("NFKD", sin_ordinales) if not unicodedata.combining(c))
+    return re.sub(r"\bn (\d)", r"n\1", " ".join(sin_tildes.casefold().split()))
 
 
 def separar_insumos(
@@ -395,20 +422,100 @@ def separar_insumos(
     return cantidades, sin_material
 
 
-def _guardar_insumos(session: Session, modelo: Modelo, fila: FormularioConsumo) -> list[str]:
-    """Save the supplies of the form as `modelo_insumo` rows of the model (one per material, updated if it already exists,
-    removed when the sheet no longer lists it) and return the names with a quantity that matched no costable material (those are not saved)."""
+MOTIVO_SIN_MATERIAL = "No hay un material con este nombre: cargalo en Materiales o corregí el nombre de la fila para que quede como insumo del modelo."
+MOTIVO_SIN_CAMPO = "Esta fila no se copia al modelo: el modelo no tiene un campo para este dato."
+MOTIVO_VARIOS_FORROS = "El modelo lleva un solo forro: dejá una sola fila de forro con cantidad."
+
+
+def planificar_aplicacion(
+    lineas: list[tuple[str, str, Decimal | None]], materiales: list[tuple[int, str, str | None]],
+    forros: list[tuple[int, str, str | None]],
+) -> dict:
+    """What validating a sheet copies to its model, and what it cannot (pure: no database).
+
+    `lineas` are (seccion, nombre, cantidad) in sheet order; `materiales` the (id, nombre, nombre_corto) a supply may point to;
+    `forros` the lining materials. Returns:
+      medidas      {modelo column: quantity} for CUERO / FLEX / GOMA EVA and, from the one `FORRO / <material>` row, the lining;
+      forro_id     the lining material that row names (None when no material matches or the row is ambiguous);
+      insumos      {material id: quantity} (see `separar_insumos`);
+      sin_material the supply names that matched no material;
+      no_aplicadas [{nombre, motivo}] every row with a quantity above 0 that did not reach the model (in sheet order), so
+                   the admin can fix it by hand. A typed 0 in CUERO / FLEX / GOMA EVA is copied: it means "no lleva".
+    """
+    insumos, sin_material = separar_insumos(lineas, materiales)
+    sin_material_claves = {normalizar_para_comparar(n) for n in sin_material}
+    medidas_claves = {normalizar_para_comparar(k): campo for k, campo in MEDIDAS_AL_VALIDAR.items()}
+    de_consumo = {normalizar_para_comparar(n) for n in INSUMOS_DE_CONSUMO}
+    medidas: dict[str, Decimal] = {}
+    forro_filas: list[tuple[int, str, Decimal]] = []
+    no_aplicadas: list[tuple[int, dict]] = []
+    avisadas: set[str] = set()
+    for indice, (seccion, nombre, cantidad) in enumerate(lineas):
+        if cantidad is None:
+            continue
+        clave, limpio = normalizar_para_comparar(nombre), " ".join(nombre.split())
+        if seccion == CONSUMO and clave in medidas_claves:
+            medidas[medidas_claves[clave]] = cantidad
+        elif seccion == CONSUMO and re.match(r"forro\b", clave):
+            forro_filas.append((indice, limpio, cantidad))
+        elif cantidad > 0 and clave in sin_material_claves and (seccion == HERRAJE or clave in de_consumo):
+            if clave not in avisadas:
+                avisadas.add(clave)
+                no_aplicadas.append((indice, {"nombre": limpio, "motivo": MOTIVO_SIN_MATERIAL}))
+        elif cantidad > 0 and seccion == CONSUMO and clave not in de_consumo:
+            no_aplicadas.append((indice, {"nombre": limpio, "motivo": MOTIVO_SIN_CAMPO}))
+    forro_id = None
+    con_cantidad = [f for f in forro_filas if f[2] > 0]
+    if len(con_cantidad) > 1:
+        no_aplicadas.extend((i, {"nombre": n, "motivo": MOTIVO_VARIOS_FORROS}) for i, n, _ in con_cantidad)
+    elif len(con_cantidad) == 1:
+        indice, nombre, cantidad = con_cantidad[0]
+        medidas["forro_m2_por_unidad"] = cantidad
+        elegido = normalizar_para_comparar(nombre.split("/", 1)[1]) if "/" in nombre else ""
+        ids = {m_id for m_id, largo, corto in forros if elegido and elegido in (normalizar_para_comparar(largo), normalizar_para_comparar(corto))}
+        if len(ids) == 1:
+            (forro_id,) = ids
+        else:
+            no_aplicadas.append((indice, {
+                "nombre": nombre,
+                "motivo": "Se copió la medida del forro, pero no hay un material de forro con este nombre: elegí el forro en el modelo."}))
+    elif forro_filas:  # only zeros: "no lleva forro"
+        medidas["forro_m2_por_unidad"] = Decimal(0)
+    return {
+        "medidas": medidas, "forro_id": forro_id, "insumos": insumos, "sin_material": sin_material,
+        "no_aplicadas": [fila for _, fila in sorted(no_aplicadas, key=lambda par: par[0])],
+    }
+
+
+def _plan_de(session: Session, fila: FormularioConsumo) -> dict:
+    """`planificar_aplicacion` for the rows and materials stored today."""
     materiales = session.execute(
         select(Material.id, Material.nombre, Material.nombre_corto)
         .join(Etapa, Etapa.id == Material.etapa_id)
         .where(Material.cotizable.is_(True), Etapa.codigo.in_(MATERIAL_STAGES)).order_by(Material.id)
+    ).all()
+    forros = session.execute(
+        select(Material.id, Material.nombre, Material.nombre_corto)
+        .join(Etapa, Etapa.id == Material.etapa_id)
+        .where(Material.cotizable.is_(True), Etapa.codigo == "FORRO").order_by(Material.id)
     ).all()
     lineas = session.execute(
         select(FormularioConsumoLinea.seccion, FormularioConsumoLinea.nombre, FormularioConsumoLinea.cantidad)
         .where(FormularioConsumoLinea.formulario_id == fila.id)
         .order_by(FormularioConsumoLinea.seccion, FormularioConsumoLinea.orden)
     ).all()
-    cantidades, sin_material = separar_insumos([tuple(l) for l in lineas], [tuple(m) for m in materiales])
+    return planificar_aplicacion([tuple(l) for l in lineas], [tuple(m) for m in materiales], [tuple(f) for f in forros])
+
+
+def _guardar_insumos(session: Session, modelo: Modelo, fila: FormularioConsumo) -> list[str]:
+    """Save the supplies of the form as `modelo_insumo` rows of the model (one per material, updated if it already exists,
+    removed when the sheet no longer lists it) and return the names with a quantity that matched no costable material (those are not saved)."""
+    plan = _plan_de(session, fila)
+    _escribir_insumos(session, modelo, plan["insumos"])
+    return plan["sin_material"]
+
+
+def _escribir_insumos(session: Session, modelo: Modelo, cantidades: dict[int, Decimal]) -> None:
     existentes = {i.material_id: i for i in session.scalars(select(ModeloInsumo).where(ModeloInsumo.modelo_id == modelo.id))}
     for material_id, cantidad in cantidades.items():
         if material_id in existentes:
@@ -421,13 +528,13 @@ def _guardar_insumos(session: Session, modelo: Modelo, fila: FormularioConsumo) 
     for material_id, insumo in existentes.items():  # the validated sheet is the truth: supplies it no longer lists go
         if material_id not in cantidades:
             session.delete(insumo)
-    return sin_material
 
 
-def _aplicar_medidas(session: Session, fila: FormularioConsumo) -> list[str] | None:
-    """On validation, copy the measured m2 to the sheet's model and save its supplies, unless that model was already validated.
+def _aplicar_medidas(session: Session, fila: FormularioConsumo) -> dict | None:
+    """On validation, copy the sheet to its model (measures, lining, supplies), unless that model was already validated.
 
-    Returns the rows with a quantity that matched no material, or None when the model was not touched.
+    Returns the plan that was applied (`planificar_aplicacion`: it carries `sin_material` and `no_aplicadas`), or None when the
+    model was not touched.
     """
     modelo_id = fila.modelo_id
     if modelo_id is None and fila.producto_id is not None:  # forms made before 0017 only know their product
@@ -435,13 +542,14 @@ def _aplicar_medidas(session: Session, fila: FormularioConsumo) -> list[str] | N
     modelo = session.get(Modelo, modelo_id) if modelo_id is not None else None
     if modelo is None or modelo.validado:
         return None
-    for linea in session.scalars(select(FormularioConsumoLinea).where(
-            FormularioConsumoLinea.formulario_id == fila.id, FormularioConsumoLinea.seccion == CONSUMO)):
-        campo = MEDIDAS_AL_VALIDAR.get(linea.nombre.strip().upper())
-        if campo and linea.cantidad is not None:
-            setattr(modelo, campo, linea.cantidad)
+    plan = _plan_de(session, fila)
+    for campo, cantidad in plan["medidas"].items():
+        setattr(modelo, campo, cantidad)
+    if plan["forro_id"] is not None:
+        modelo.forro_id = plan["forro_id"]
     modelo.origen_de_los_consumos, modelo.validado = "MEDIDO", True
-    return _guardar_insumos(session, modelo, fila)
+    _escribir_insumos(session, modelo, plan["insumos"])
+    return plan
 
 
 def guardar_formulario(
@@ -481,7 +589,7 @@ def cambiar_estado(
     nuevo = siguiente_estado(accion, fila.estado, roles)
     if accion in MENSAJE_HOJA_VACIA and not _tiene_cantidades(session, fila):
         raise DatosInvalidos(MENSAJE_HOJA_VACIA[accion])
-    sin_material = None
+    plan = None
     if accion == "devolver":
         comentario = _texto_o_nada(comentario)
         if comentario is None:
@@ -493,12 +601,12 @@ def cambiar_estado(
         fila.completado_por, fila.completado_en = quien, ahora
     elif accion == "validar":
         fila.validado_por, fila.validado_en = quien, ahora
-        sin_material = _aplicar_medidas(session, fila)
+        plan = _aplicar_medidas(session, fila)
     fila.estado = nuevo
     session.commit()  # get_session rolls back whatever is not committed
     detalle = _detalle(session, fila, producto, taller, modelo)
-    if sin_material is not None:  # only the answer of `validar` carries it
-        detalle["sin_material"] = sin_material
+    if plan is not None:  # only the answer of `validar` carries it
+        detalle["sin_material"], detalle["no_aplicadas"] = plan["sin_material"], plan["no_aplicadas"]
     return detalle
 
 
