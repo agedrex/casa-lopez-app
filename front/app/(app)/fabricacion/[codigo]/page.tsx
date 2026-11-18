@@ -437,6 +437,11 @@ function CueroCard({ tarjeta }: { tarjeta: TarjetaDeCuero }) {
           </div>
         ))}
       </dl>
+      {tarjeta.aviso ? (
+        <p className="mt-3 break-words text-sm text-bordeaux" role="alert">
+          {tarjeta.aviso}
+        </p>
+      ) : null}
       <p className="mt-3 break-words text-xs text-muted">
         Para: {tarjeta.productos.join(", ")}
       </p>
