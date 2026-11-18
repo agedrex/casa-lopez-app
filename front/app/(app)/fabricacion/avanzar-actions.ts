@@ -15,9 +15,8 @@ import { fromFailure } from "@/lib/write-guard";
  * The taller moves a lot to its next state (one step, dated today by the API, which also records who did it).
  * Admin and taller only: anyone can post to a server action, so the role is checked here and the API checks it again.
  *
- * There is no "undo" on purpose (S3 of ux-heuristicas): the API has no way back for the taller. `/ordenes/{codigo}/estado`
- * is admin only, `lote_estados` only moves forward and a lot state change also touches the leather stock, so a
- * "Deshacer" needs its own endpoint and rules in the backend. The screen asks for confirmation before saving instead.
+ * The screen asks for confirmation before saving and, after a success, offers "Deshacer" for a few seconds
+ * (`deshacerEstado`, which only goes back one state; the API decides if it is allowed).
  */
 export async function avanzarEstado(
   codigo: string,
@@ -44,4 +43,24 @@ export async function avanzarEstado(
       ? `Listo: el lote está «${lotStateLabel(result.data.estado)}».`
       : `Listo: el lote está «${lotStateLabel(result.data.estado)}». Falta que el administrador lo cierre.`,
   );
+}
+
+/**
+ * "Deshacer": the lot goes back ONE state, by a new history row (nothing is deleted). The API only allows it for the user
+ * who made the last change, within 10 minutes, and never over a leather cut or a closed lot: its 409 text says why
+ * and what to do, so it is shown as is. Same roles as `avanzarEstado`.
+ */
+export async function deshacerEstado(codigo: string): Promise<FormState> {
+  const session = await getSession();
+  if (!session) redirect("/login");
+  if (!hasRole(session.user.role, "taller") && !canWrite(session.user.role)) {
+    return error("No tiene permiso para esta acción.");
+  }
+  const result = await apiPost<OrdenDetalle>(
+    `/ordenes/${encodeURIComponent(codigo)}/estado/deshacer`,
+    {},
+  );
+  if (!result.ok) return fromFailure(result);
+  refresh();
+  return ok(`Listo: el lote volvió a «${lotStateLabel(result.data.estado)}».`);
 }

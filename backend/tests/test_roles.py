@@ -136,6 +136,7 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
     ("PUT", "/ordenes/{codigo}/items/{item}"): ADMIN, ("DELETE", "/ordenes/{codigo}/items/{item}"): ADMIN,
     # The other one: the taller moves a lot to its NEXT state (never closes it). Any state, closing and the rest of /ordenes are admin only.
     ("POST", "/ordenes/{codigo}/avanzar"): CORTE,
+    ("POST", "/ordenes/{codigo}/estado/deshacer"): CORTE,
     **{("POST", ruta): ADMIN for ruta in (
         "/cueros", "/productos", "/productos/{codigo}/precio-venta", "/productos/{codigo}/extras",
         "/productos/{codigo}/componentes", "/productos/{codigo}/cotizaciones", "/precios", "/dolar",
@@ -254,7 +255,7 @@ def test_admin_only_routes_refuse_everyone_else_without_calling_the_service(monk
                 ("GET", "/productos/X-1"),
                 ("GET", "/modelos"), ("GET", "/modelos/MOD-1"), ("GET", "/precios"), ("GET", "/categorias"), ("GET", "/catalogos"), ("GET", "/dolar"),
                 ("POST", "/cueros/PZC-1/cortes"), ("POST", "/cueros/PZC-1/sobrante"), ("POST", "/voz/interpretar"),
-                ("POST", "/ordenes/LOT-1/avanzar"),
+                ("POST", "/ordenes/LOT-1/avanzar"), ("POST", "/ordenes/LOT-1/estado/deshacer"),
                 ("GET", "/formularios"), ("GET", "/formularios/FCO-0001"), ("PUT", "/formularios/FCO-0001"),
                 ("POST", "/formularios/FCO-0001/completar"), ("POST", "/modelos/MOD-0001/foto")]),
     ("admin", [("GET", "/panel/costos"), ("GET", "/grilla"), ("GET", "/precios"), ("GET", "/dolar"), ("GET", "/colores"),

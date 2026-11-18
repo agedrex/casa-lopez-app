@@ -32,3 +32,5 @@ L3: Slices: T1 (6566a50), T2 (3a44252), T3 (último commit); la rama supera ~400
 L4: Cierre 2026-11-18. PR #52 mergeado y verificado en staging como admin. Pendientes para otra sesión (detalle en Engram `odd/ux-heuristicas/pendientes`): verificar rol taller en staging, "Deshacer" de estado de lote (backend), decisiones de voseo y Herrajes, P3 (ayuda contextual, validación inline, skeletons).
 
 L5: "resolve esos pendietes" (2026-11-18). Voseo y Herrajes-oculto quedan como están hasta que Robert decida (no son resolubles por código).
+
+L6: Decisiones confirmadas por el usuario: voseo en toda la UI; el taller no ve importes en $ ni Herrajes.

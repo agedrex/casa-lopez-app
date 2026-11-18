@@ -159,7 +159,7 @@ SOLO_ADMIN = {"/parametros/{codigo}", "/personas", "/personas/{codigo}/activo", 
 SOLO_CORTE = {"/cueros/{codigo}/cortes", "/cueros/{codigo}/sobrante", "/voz/interpretar",
               "/ordenes/{codigo}/items/{item}/precios", "/formularios/{codigo}/completar",
               # The next state of a lot (see test_lote_estados.py and test_roles.py).
-              "/ordenes/{codigo}/avanzar",
+              "/ordenes/{codigo}/avanzar", "/ordenes/{codigo}/estado/deshacer",
               # Photo of a model (see test_modelo_foto.py and test_roles.py): the same pair that fills the consumption sheet.
               "/modelos/{codigo}/foto"}
 ESCRITURAS = [(m, r) for m, r in RUTAS if m == "POST" and r not in SOLO_ADMIN | SOLO_CORTE]

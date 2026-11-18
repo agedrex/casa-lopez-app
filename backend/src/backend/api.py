@@ -2009,6 +2009,13 @@ def avanzar_estado_de_orden(codigo: str, session: Sesion, usuario: Annotated[Usu
     return lote_estados.avanzar_estado(session, codigo, usuario_id=usuario.id)
 
 
+# SUPUESTO: validar. "Deshacer" (T5 de ux-heuristicas): back ONE state, same guard as the advance (admin and taller), by a new
+# history row, and only for the user and the 10 minutes of the last change (`lote_estados.retroceder_estado`).
+@router.post("/ordenes/{codigo}/estado/deshacer", response_model=OrdenDetalleOut, status_code=201)
+def deshacer_estado_de_orden(codigo: str, session: Sesion, usuario: Annotated[Usuario, Depends(CORTE)]):
+    return lote_estados.retroceder_estado(session, codigo, usuario_id=usuario.id)
+
+
 @router.post("/ordenes/{codigo}/items", dependencies=ESCRITURA, response_model=OrdenDetalleOut, status_code=201)
 def agregar_item_a_orden(codigo: str, cuerpo: ItemIn, session: Sesion):
     datos = cuerpo.model_dump()
