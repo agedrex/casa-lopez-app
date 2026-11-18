@@ -15,7 +15,7 @@ import {
   thClass,
 } from "@/components/ui";
 import { apiGet } from "@/lib/api";
-import { lifecycleLabel } from "@/lib/format";
+import { formatInstantDate, lifecycleLabel } from "@/lib/format";
 import { canOpenProductSheet, canWrite } from "@/lib/permissions";
 import {
   collapseSpaces,
@@ -31,21 +31,6 @@ import { ProductosNav } from "./productos-nav";
 export const metadata: Metadata = { title: "Productos" };
 
 const PAGE_SIZE = 50;
-
-// The server stores an instant (UTC): the day is the one of the shop, not the one of the server or the browser.
-const creationDay = new Intl.DateTimeFormat("es-AR", {
-  timeZone: "America/Argentina/Buenos_Aires",
-  day: "2-digit",
-  month: "2-digit",
-  year: "numeric",
-});
-
-/** `2026-11-16T14:30:00+00:00` -> `16/11/2026`; `—` when the product has no creation date. */
-function creationDate(value: string | null | undefined): string {
-  if (!value) return "—";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "—" : creationDay.format(date);
-}
 
 type Search = Promise<{
   pagina?: string | string[];
@@ -388,7 +373,7 @@ function ProductTable({
                     {producto.color ?? "—"}
                   </p>
                   <p className="mt-1 text-xs text-muted">
-                    Creado: {creationDate(producto.creado_en)}
+                    Creado: {formatInstantDate(producto.creado_en)}
                     {producto.creado_por ? ` · ${producto.creado_por}` : ""}
                   </p>
                 </SheetLink>
@@ -480,7 +465,7 @@ function ProductTable({
                         </span>
                       </td>
                       <td className={tdClass}>
-                        {creationDate(producto.creado_en)}
+                        {formatInstantDate(producto.creado_en)}
                         <span className="block max-w-40 truncate text-xs text-muted">
                           {producto.creado_por ?? "—"}
                         </span>
