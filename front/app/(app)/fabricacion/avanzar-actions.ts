@@ -30,9 +30,8 @@ export async function avanzarEstado(
     {},
   );
   if (!result.ok) {
-    return fromFailure(result, {
-      409: "El lote ya cambió de estado o ya está cerrado. Actualizá la página.",
-    });
+    // The 409 text comes from the API (closed, already ready, leather not cut yet): it says what to do, so it is shown as is.
+    return fromFailure(result);
   }
   refresh();
   const nuevo = siguienteEstadoDelTaller(result.data.estado);

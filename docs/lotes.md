@@ -35,3 +35,8 @@ cerrar). El rechazo es 422 con un mensaje en español y no guarda nada.
 - La fecha de entrega no puede ser anterior a la de envío (el mismo día vale). Al cerrar se compara con la fecha de envío del lote.
 - SUPUESTO: validar con Robert. Rango razonable: desde el 01/01/2020 hasta 365 días después de hoy
   (`FECHA_MINIMA_DE_LOTE` y `DIAS_HACIA_ADELANTE_DE_LOTE` en `servicios.py`). Los topes los pusimos nosotros.
+
+## Front
+
+La pantalla del lote (`/fabricacion/[codigo]`) ofrece en "Cambiar el estado" solo el estado siguiente, y los botones de cambio de
+estado (admin) y "avanzar" (taller) muestran tal cual el mensaje 409 del backend (cerrado, estado que corresponde, falta cortar cuero).
