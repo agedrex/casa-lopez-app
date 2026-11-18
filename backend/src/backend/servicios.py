@@ -25,7 +25,7 @@ from backend.costeo import (
 from backend.models import (
     Categoria, Color, CompraReventa, Cotizacion, Etapa, FormularioConsumo, GastoPeriodo, Impuesto, KitComponente, Material, Modelo,
     ModeloFoto, ModeloInsumo, MovimientoCuero, OrdenEstado, OrdenFabricacion, OrdenItem, Parametro, Persona, PrecioMaterial, PrecioVenta, Producto,
-    ProductoReventa, Proveedor, RecetaLinea, Taller, TipoCambio, Transferencia, Venta, RENGLON_QUITADO, renglon_quitado,
+    ProductoReventa, Proveedor, RecetaLinea, Taller, TipoCambio, Transferencia, Venta, LOT_STATES, RENGLON_QUITADO, renglon_quitado,
 )
 from backend.receta import (
     Cotizado, Extra, InsumoModelo, ModeloReceta, ProductoReceta, Receta, cotizar_producto, generar_receta,
@@ -48,6 +48,13 @@ UNIQUE_VIOLATION = "23505"
 # SUPUESTO: validar. A price more than this many percent away from the previous one of the same material,
 # color and currency is flagged (never blocked). The 50 comes from the task, not from the plantilla.
 SALTO_PRECIO_PCT = Decimal("50")
+
+
+# Names of the lot states as the people read them: error messages never show the internal codes.
+ETIQUETA_ESTADO_LOTE = {
+    "PLANIFICADA": "Planificada", "EN_CORTE": "En corte", "CORTADA": "Cortada", "EN_CONFECCION": "En confección",
+    "LISTA": "Lista", "CERRADA": "Cerrada",
+}
 
 
 class DatosInvalidos(ValueError):
@@ -1577,9 +1584,16 @@ def registrar_estado(
     orden = _orden_por_codigo(session, codigo, bloquear=True)
     if orden.estado == "CERRADA":
         raise Conflicto(f"El lote {codigo} ya está cerrado: no se puede cambiar su estado.")
+    etiqueta = ETIQUETA_ESTADO_LOTE
     if estado == orden.estado:
         # SUPUESTO: validar. Repeating the current state is refused so a double click leaves one history row.
-        raise Conflicto(f"El lote {codigo} ya está en estado {estado}.")
+        raise Conflicto(f"El lote {codigo} ya está en estado {etiqueta[estado]}.")
+    # SUPUESTO: validar con Robert. A lot only goes to the next state of the cycle, never skips one nor goes back (QA 2026-11-17).
+    siguiente = LOT_STATES[LOT_STATES.index(orden.estado) + 1]
+    if estado != siguiente:
+        raise Conflicto(
+            f"El lote {codigo} está en {etiqueta[orden.estado]}: el siguiente estado es {etiqueta[siguiente]}. "
+            f"No se puede pasar a {etiqueta[estado]}.")
     quien_fila = _por_codigo(session, Persona, quien, "la persona")
     if estado == "CERRADA":
         entrega = fecha_de_entrega or orden.fecha_de_entrega
