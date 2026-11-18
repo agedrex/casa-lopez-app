@@ -410,3 +410,23 @@ test("the API quantities come back to the editor as a person types them", () => 
     "0,25",
   );
 });
+
+test("the mobile menu uses the same groups and order as the desktop sidebar", () => {
+  for (const roles of [["admin"], ["gerente"], ["taller"]] as const) {
+    assert.deepEqual(navForRole([...roles]), desktopNavForRole([...roles]));
+  }
+  const titles = navForRole(["admin"]).map((group) => group.title);
+  assert.deepEqual(titles, [
+    "",
+    "Producción",
+    "Abastecimiento",
+    "Costos fijos",
+    "Costos variables",
+    "Simulador",
+  ]);
+  const tabs = mobileTabs(navForRole(["admin"]), ["admin"]);
+  assert.deepEqual(
+    tabs.map((tab) => tab.href),
+    ["/admin/panel", "/productos", "/fabricacion"],
+  );
+});

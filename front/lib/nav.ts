@@ -78,7 +78,7 @@ export const NAV_ITEMS: NavGroup[] = [
 ];
 
 const MOBILE_TAB_HREFS: Record<Role, readonly string[]> = {
-  admin: ["/admin/panel", "/productos", "/materiales", "/fabricacion"],
+  admin: ["/admin/panel", "/productos", "/fabricacion"],
   gerente: ["/productos", "/escenarios"],
   // One entry, Lotes y modelos; Voz stays one tap away in the "+" button's quick actions.
   taller: ["/fabricacion"],
@@ -216,10 +216,9 @@ export function desktopNavForRole(roles: Role[]): NavGroup[] {
     : restrictedNav(roles);
 }
 
+/** Menu of the mobile "Más" sheet: same groups and order as the desktop sidebar. */
 export function navForRole(roles: Role[]): NavGroup[] {
-  return roles.includes("admin")
-    ? filterByRole(NAV_ITEMS, roles)
-    : restrictedNav(roles);
+  return desktopNavForRole(roles);
 }
 
 export function mobileTabs(groups: NavGroup[], roles: Role[]): NavItem[] {
