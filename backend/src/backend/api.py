@@ -174,6 +174,32 @@ class AlcanzaCueroOut(Salida):
     mensaje: str | None
 
 
+class LoteCueroGrupoOut(Salida):
+    material: str
+    material_nombre: str
+    color: str | None
+    necesario: Decimal
+    ya_cortado: Decimal
+    por_cortar: Decimal
+    disponible: Decimal
+    alcanza: bool
+    faltante: Decimal
+    sobrante: Decimal
+    productos: list[str]
+
+
+class LoteCueroSinConsumoOut(Salida):
+    producto: str
+    producto_nombre: str
+
+
+class LoteCueroOut(Salida):
+    lote: str
+    estado: str
+    cueros: list[LoteCueroGrupoOut]
+    sin_consumo: list[LoteCueroSinConsumoOut]
+
+
 # --- Request bodies --------------------------------------------------------------------------------
 
 class ProductoIn(Entrada):
@@ -1731,6 +1757,12 @@ def unidades_por_producto(session: Sesion, periodo: str | None = Query(None, pat
 @router.get("/ordenes/{codigo}", dependencies=LECTURA_CORTE, response_model=OrdenDetalleOut)
 def orden(codigo: str, session: Sesion):
     return servicios.detalle_orden(session, codigo)
+
+
+@router.get("/ordenes/{codigo}/cuero", dependencies=LECTURA_CORTE, response_model=LoteCueroOut)
+def cuero_de_la_orden(codigo: str, session: Sesion):
+    """Leather the lot needs by leather against its stock (square meters only, no money: the taller reads it)."""
+    return cueros.resumen_de_lote(session, codigo)
 
 
 @router.get("/fabricacion/casa-vs-taller", dependencies=LECTURA_ADMIN, response_model=CasaVsTallerOut)

@@ -651,6 +651,33 @@ export type AlcanzaCuero = {
   mensaje: string | null;
 };
 
+/** One leather (material + color) a lot needs (GET /ordenes/{codigo}/cuero). Square meters only: no money, the taller reads it. */
+export type LoteCueroGrupo = {
+  material: string;
+  material_nombre: string;
+  color: string | null;
+  /** m² the lot's products need of this leather. */
+  necesario: string;
+  /** m² already cut against the lot's items (they are no longer in the stock). */
+  ya_cortado: string;
+  /** m² still to cut: `necesario` minus `ya_cortado`. */
+  por_cortar: string;
+  /** m² in stock of this same leather (the source of GET /cueros/alcanza). */
+  disponible: string;
+  alcanza: boolean;
+  faltante: string;
+  sobrante: string;
+  productos: string[];
+};
+
+export type LoteCuero = {
+  lote: string;
+  estado: string;
+  cueros: LoteCueroGrupo[];
+  /** Products of the lot without a model, a leather or a leather consumption: they cannot be counted. */
+  sin_consumo: { producto: string; producto_nombre: string }[];
+};
+
 // Cost panel (GET /panel/costos). Every amount is computed by the API; the front only displays it.
 
 export type MotivoEquilibrio =

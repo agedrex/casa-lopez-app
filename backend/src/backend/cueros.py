@@ -4,15 +4,15 @@ from collections import defaultdict
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from backend.models import (
-    Color, Etapa, Material, Modelo, MovimientoCuero, OrdenItem, Parametro,
+    Color, Etapa, Material, Modelo, MovimientoCuero, OrdenFabricacion, OrdenItem, Parametro,
     Persona, PiezaCuero, PrecioMaterial, Producto, TipoCambio,
 )
 from backend.servicios import (
-    Conflicto, DatosInvalidos, NoEncontrado, _insertar, _rango_del_mes, _siguiente_numero, costos_fijos, mes_de,
+    Conflicto, DatosInvalidos, NoEncontrado, _info_productos, _insertar, _rango_del_mes, _siguiente_numero, costos_fijos, mes_de,
 )
 
 
@@ -232,17 +232,8 @@ def listar_cueros(session: Session, material: str | None = None, color: str | No
     return list(grupos.values())
 
 
-def alcanza(session: Session, producto: str, cantidad: Decimal) -> dict:
-    fila = session.scalar(select(Producto).where(Producto.codigo == producto))
-    if fila is None:
-        raise NoEncontrado(f"No existe el producto {producto}.")
-    modelo = session.get(Modelo, fila.modelo_id) if fila.modelo_id else None
-    base = {"producto": producto, "cantidad": cantidad, "necesario": None, "disponible": ZERO,
-            "alcanza": False, "faltante": None, "piezas": [], "alternativas": [], "mensaje": None}
-    if modelo is None or modelo.cuero_m2_por_unidad is None or modelo.cuero_m2_por_unidad <= ZERO or fila.cuero_id is None:
-        base["mensaje"] = "El producto no tiene modelo o consumo de cuero cargado."
-        return base
-    necesario = modelo.cuero_m2_por_unidad * cantidad
+def _opciones_disponibles(session: Session) -> dict[tuple[int, int | None], list[dict]]:
+    """Pieces with leather left, by (material id, color id), scraps first. The single source of stock for `alcanza` and the lot summary."""
     filas = _filas(session)
     movimientos = _movimientos(session, [pieza.id for pieza, _, _ in filas])
     opciones: dict[tuple[int, int | None], list[dict]] = defaultdict(list)
@@ -257,6 +248,21 @@ def alcanza(session: Session, producto: str, cantidad: Decimal) -> dict:
             })
     for piezas in opciones.values():
         piezas.sort(key=lambda p: (ORDEN_ESTADOS[p["estado"]], p["codigo"]))
+    return opciones
+
+
+def alcanza(session: Session, producto: str, cantidad: Decimal) -> dict:
+    fila = session.scalar(select(Producto).where(Producto.codigo == producto))
+    if fila is None:
+        raise NoEncontrado(f"No existe el producto {producto}.")
+    modelo = session.get(Modelo, fila.modelo_id) if fila.modelo_id else None
+    base = {"producto": producto, "cantidad": cantidad, "necesario": None, "disponible": ZERO,
+            "alcanza": False, "faltante": None, "piezas": [], "alternativas": [], "mensaje": None}
+    if modelo is None or modelo.cuero_m2_por_unidad is None or modelo.cuero_m2_por_unidad <= ZERO or fila.cuero_id is None:
+        base["mensaje"] = "El producto no tiene modelo o consumo de cuero cargado."
+        return base
+    necesario = modelo.cuero_m2_por_unidad * cantidad
+    opciones = _opciones_disponibles(session)
     elegidas = opciones[(fila.cuero_id, fila.color_id)]
     disponible = sum((p["disponible"] for p in elegidas), ZERO)
     base.update(necesario=necesario, disponible=disponible, alcanza=disponible >= necesario,
@@ -314,4 +320,67 @@ def retazos_del_mes(session: Session, periodo: str | None = None) -> dict:
     return {
         "periodo": periodo, "total_retazos": total, "sin_precio": sum(r["total_ars"] is None for r in retazos),
         "total_gastos_fabrica": gastos, "total_fabrica": gastos + total, "retazos": retazos,
+    }
+
+
+def resumen_de_lote(session: Session, codigo: str) -> dict:
+    """Leather a lot needs, by leather (material + color), against the stock of that same leather.
+
+    Stock comes from `_opciones_disponibles`, the same source as `alcanza`, so a leather shared by several products
+    of the lot is added up once instead of answering "enough" to each product on its own. Square meters already cut
+    against an item of the lot are no longer in the stock, so they are taken out of what is still to cut (per item,
+    never more than the item needs). Products without a model, a leather or a consumption go to `sin_consumo`.
+    No money here: the taller role reads this.
+    """
+    orden = session.scalar(select(OrdenFabricacion).where(OrdenFabricacion.codigo == codigo))
+    if orden is None:
+        raise NoEncontrado(f"No existe el lote {codigo}.")
+    items = session.execute(
+        select(OrdenItem, Producto, Modelo.cuero_m2_por_unidad)
+        .join(Producto, Producto.id == OrdenItem.producto_id)
+        .outerjoin(Modelo, Modelo.id == Producto.modelo_id)
+        .where(OrdenItem.orden_fabricacion_id == orden.id).order_by(OrdenItem.id)).all()
+    cortado = dict(session.execute(
+        select(MovimientoCuero.orden_item_id, -func.sum(MovimientoCuero.m2))
+        .where(MovimientoCuero.tipo == "CORTE", MovimientoCuero.orden_item_id.in_([i.id for i, _, _ in items]))
+        .group_by(MovimientoCuero.orden_item_id)).all()) if items else {}
+    grupos: dict[tuple[int, int | None], dict] = {}
+    sin_consumo: list[str] = []
+    for item, producto, consumo in items:
+        if consumo is None or consumo <= ZERO or producto.cuero_id is None:
+            if producto.codigo not in sin_consumo:
+                sin_consumo.append(producto.codigo)
+            continue
+        necesario = consumo * item.cantidad
+        ya_cortado = min(cortado.get(item.id, ZERO), necesario)
+        grupo = grupos.setdefault((producto.cuero_id, producto.color_id), {
+            "necesario": ZERO, "ya_cortado": ZERO, "productos": [],
+        })
+        grupo["necesario"] += necesario
+        grupo["ya_cortado"] += ya_cortado
+        if producto.codigo not in grupo["productos"]:
+            grupo["productos"].append(producto.codigo)
+    opciones = _opciones_disponibles(session)
+    nombres_de_materiales = {m.id: m for m in session.scalars(
+        select(Material).where(Material.id.in_([cuero for cuero, _ in grupos])))}
+    nombres_de_colores = {c.id: c.nombre for c in session.scalars(
+        select(Color).where(Color.id.in_([color for _, color in grupos if color is not None])))}
+    resultado = []
+    for (cuero_id, color_id), grupo in grupos.items():
+        material = nombres_de_materiales[cuero_id]
+        por_cortar = grupo["necesario"] - grupo["ya_cortado"]
+        disponible = sum((p["disponible"] for p in opciones.get((cuero_id, color_id), [])), ZERO)
+        resultado.append({
+            "material": material.codigo, "material_nombre": material.nombre_corto or material.nombre,
+            "color": nombres_de_colores.get(color_id) if color_id is not None else None,
+            "necesario": grupo["necesario"], "ya_cortado": grupo["ya_cortado"], "por_cortar": por_cortar,
+            "disponible": disponible, "alcanza": disponible >= por_cortar,
+            "faltante": max(por_cortar - disponible, ZERO), "sobrante": max(disponible - por_cortar, ZERO),
+            "productos": grupo["productos"],
+        })
+    nombres = _info_productos(session, set(sin_consumo), con_costo=False)
+    resultado.sort(key=lambda g: (g["material_nombre"], g["color"] or "", g["material"]))
+    return {
+        "lote": orden.codigo, "estado": orden.estado, "cueros": resultado,
+        "sin_consumo": [{"producto": c, "producto_nombre": nombres[c].nombre if c in nombres else c} for c in sin_consumo],
     }

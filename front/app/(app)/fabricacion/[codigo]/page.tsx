@@ -24,11 +24,13 @@ import {
   lotStateLabel,
   todayIso,
 } from "@/lib/format";
+import { resumenDeCuero, type TarjetaDeCuero } from "@/lib/lote-cuero";
 import { nombreDeLote } from "@/lib/lotes";
 import { canWrite, isTallerOnly } from "@/lib/permissions";
 import { collapseSpaces } from "@/lib/productos";
 import { requireSession } from "@/lib/session";
 import type {
+  LoteCuero,
   OrdenDetalle,
   Persona,
   PreciosTalleres,
@@ -107,6 +109,7 @@ export default async function LotePage({
         actions={<LotStateBadge estado={orden.estado} />}
       />
       <div className="space-y-10">
+        <CueroDelLote orden={orden} />
         <QueHayQueHacer orden={orden} />
         <Summary orden={orden} />
         {orden.avisos.length > 0 ? (
@@ -416,10 +419,96 @@ function TallerLote({ orden }: { orden: OrdenDetalle }) {
           </p>
           {orden.nota ? <p className="mt-2 text-sm">{orden.nota}</p> : null}
         </section>
+        <CueroDelLote orden={orden} />
         <QueHayQueHacer orden={orden} />
         <Timeline orden={orden} />
       </div>
     </>
+  );
+}
+
+const CUERO_STYLE: Record<TarjetaDeCuero["estado"], string> = {
+  FALTA: "border-bordeaux/40 bg-bordeaux/5",
+  ALCANZA: "border-line bg-surface",
+  YA_CORTADO: "border-line bg-paper-mid",
+};
+
+function CueroCard({ tarjeta }: { tarjeta: TarjetaDeCuero }) {
+  return (
+    <li
+      className={`rounded-card border p-4 shadow-card ${CUERO_STYLE[tarjeta.estado]}`}
+    >
+      <p className="break-words font-bold">{tarjeta.titulo}</p>
+      <p
+        className={`mt-1 font-display text-2xl ${
+          tarjeta.estado === "FALTA" ? "text-bordeaux" : ""
+        }`}
+      >
+        {tarjeta.mensaje}
+      </p>
+      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+        {tarjeta.cifras.map((cifra) => (
+          <div key={cifra.label} className="contents">
+            <dt className="text-muted">{cifra.label}</dt>
+            <dd className="text-right tabular-nums">{cifra.value}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="mt-3 break-words text-xs text-muted">
+        Para: {tarjeta.productos.join(", ")}
+      </p>
+    </li>
+  );
+}
+
+/**
+ * Leather the lot needs against the leather in stock, one card per leather (material and color). Square
+ * meters only: the taller reads it, so there is no money here. The API adds up the products that share a
+ * leather and takes out what was already cut. A closed lot has nothing left to cut, so it is not shown.
+ */
+async function CueroDelLote({ orden }: { orden: OrdenDetalle }) {
+  if (orden.estado === "CERRADA" || orden.items.length === 0) return null;
+  const result = await apiGet<LoteCuero>(
+    `/ordenes/${encodeURIComponent(orden.codigo)}/cuero`,
+  );
+  if (!result.ok) {
+    return (
+      <section aria-label="Cuero del lote">
+        <SectionTitle>Cuero del lote</SectionTitle>
+        <ErrorNotice
+          title="No pudimos calcular el cuero del lote."
+          message={result.message}
+        />
+      </section>
+    );
+  }
+  const resumen = resumenDeCuero(result.data);
+  return (
+    <section aria-label="Cuero del lote">
+      <SectionTitle>Cuero del lote</SectionTitle>
+      <p
+        className={`mb-3 text-sm ${resumen.faltan > 0 ? "font-bold text-bordeaux" : "text-muted"}`}
+        role={resumen.faltan > 0 ? "alert" : undefined}
+      >
+        {resumen.titular}
+      </p>
+      {resumen.tarjetas.length > 0 ? (
+        <ul className="grid gap-3 sm:grid-cols-2">
+          {resumen.tarjetas.map((tarjeta) => (
+            <CueroCard key={tarjeta.key} tarjeta={tarjeta} />
+          ))}
+        </ul>
+      ) : null}
+      {resumen.sinConsumo.length > 0 ? (
+        <div className="mt-3">
+          <Notice title="Sin consumo de cuero cargado (no se cuentan arriba)">
+            {resumen.sinConsumo
+              .map((p) => `${p.producto_nombre} (${p.producto})`)
+              .join(", ")}
+          </Notice>
+        </div>
+      ) : null}
+    </section>
   );
 }
 

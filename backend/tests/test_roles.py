@@ -99,6 +99,7 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
     ("GET", "/colores"): CORTE,  # taller keeps it; the gerente pages read /catalogos instead
     ("GET", "/ordenes"): CORTE,
     ("GET", "/ordenes/{codigo}"): CORTE,
+    ("GET", "/ordenes/{codigo}/cuero"): CORTE,
     ("GET", "/ordenes/unidades-por-producto"): ADMIN,
     ("GET", "/voz/estado"): CORTE,
     # Admin only reads.
