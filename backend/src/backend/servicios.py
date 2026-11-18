@@ -2647,6 +2647,8 @@ def crear_categoria(session: Session, *, nombre: str, nota: str | None) -> dict:
     return _catalogo_a_dict(fila)
 
 
+MENSAJE_MODELO_SIN_CONSUMOS = "El modelo no tiene consumos cargados: cargá el cuero, el forro u otro consumo antes de validarlo."
+
 # Models. The consumption fields of the sheet's Modelos tab; NULL = missing data, 0 = "no lleva".
 CAMPOS_DE_CONSUMO = (
     "cuero_m2_por_unidad", "forro_m2_por_unidad", "flex_m2_por_unidad", "goma_eva_m2_por_unidad",
@@ -2736,9 +2738,32 @@ def _modelo_por_codigo(session: Session, codigo: str) -> Modelo:
     return modelo
 
 
+# The consumptions that make a model "not empty" (S1). Confection and hours are not materials, so they do not count.
+CAMPOS_DE_MATERIAL = (
+    "cuero_m2_por_unidad", "forro_m2_por_unidad", "flex_m2_por_unidad", "goma_eva_m2_por_unidad",
+    "herrajes_usd_por_unidad", "hilo_y_cemento",
+)
+
+
+def hay_cantidad(valores) -> bool:
+    """True when at least one value is a number above 0 (None = missing data and 0 = "no lleva" both count as nothing)."""
+    return any(v is not None and v > 0 for v in valores)
+
+
+def modelo_tiene_consumos(session: Session, modelo: Modelo) -> bool:
+    """SUPUESTO: validar con Robert. A model has consumptions when any material consumption is above 0 or it has supplies."""
+    return hay_cantidad(getattr(modelo, campo) for campo in CAMPOS_DE_MATERIAL) or bool(
+        session.scalar(select(ModeloInsumo.id).where(ModeloInsumo.modelo_id == modelo.id).limit(1)))
+
+
 def cambiar_validado(session: Session, codigo: str, validado: bool) -> dict:
-    """The one in-place flag of a model that carries no consumption: a person confirms (or withdraws) the numbers."""
-    _modelo_por_codigo(session, codigo).validado = validado
+    """The one in-place flag of a model that carries no consumption: a person confirms (or withdraws) the numbers.
+
+    S1: an empty model (no consumption above 0, no supplies) cannot be validated; withdrawing the mark is always allowed."""
+    modelo = _modelo_por_codigo(session, codigo)
+    if validado and not modelo_tiene_consumos(session, modelo):
+        raise DatosInvalidos(MENSAJE_MODELO_SIN_CONSUMOS)
+    modelo.validado = validado
     session.commit()
     return detalle_modelo(session, codigo)
 

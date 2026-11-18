@@ -199,12 +199,14 @@ def test_pg_saving_the_supplies_twice_updates_the_row_instead_of_duplicating_it(
 def test_pg_an_already_validated_model_is_not_touched_and_nothing_is_reported(api):
     material(api, "MAT-IN01", "Cierre N5", "HERRAJES", "unidad")
     modelo, codigo = completar_hoja(api, {"CIERRE N5": "2", "HEBILLA": "1", "CUERO": "0.4"})
+    # An empty model cannot be validated (S1): give it its own leather first, then validate it.
+    api.session.scalar(select(Modelo).where(Modelo.codigo == modelo)).cuero_m2_por_unidad = D("0.9")
     assert api.post(f"/modelos/{modelo}/validado", json={"validado": True}).status_code == 200
     respuesta = api.post(f"/formularios/{codigo}/validar")
     assert respuesta.status_code == 200
     assert respuesta.json()["sin_material"] is None
     assert insumos_de(api, modelo) == []
-    assert api.get(f"/modelos/{modelo}").json()["cuero_m2_por_unidad"] is None  # the measures were not copied either
+    assert D(api.get(f"/modelos/{modelo}").json()["cuero_m2_por_unidad"]) == D("0.9")  # the measures of the sheet were not copied
 
 
 def test_pg_only_costable_materials_of_a_material_stage_can_be_matched(api):

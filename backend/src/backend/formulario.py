@@ -10,6 +10,8 @@ State machine (`ACCIONES`):
     completar  taller / admin    ENVIADO -> COMPLETADO      (sets completado_por / completado_en)
     devolver   admin    COMPLETADO -> ENVIADO               (needs a comment, stored in comentario_revision)
     validar    admin    COMPLETADO -> VALIDADO              (sets validado_por / validado_en)
+    `completar` and `validar` need at least one row with a quantity above 0 (422): a blank sheet is never completed or validated
+    (`enviar` does not check it: the admin sends the blank sheet to the workshop, that is the workflow).
     VALIDADO is immutable: any change is a 409 and the way to change it is `duplicar`.
     Validating also saves the supplies of the sheet (HERRAJE rows and a few CONSUMO rows with a quantity) as `modelo_insumo`
     of its model when a costable material has the same name, and answers the names that matched none in `sin_material`.
@@ -52,6 +54,7 @@ from backend.models import (
 )
 from backend.servicios import (
     TAMANOS, Conflicto, DatosInvalidos, NoEncontrado, _insertar, _patron, _por_codigo, _siguiente_numero, _texto_o_nada,
+    hay_cantidad,
 )
 
 BORRADOR, ENVIADO, COMPLETADO, VALIDADO = FORM_STATES
@@ -81,6 +84,10 @@ _QUE_SE_PUEDE = {
     "completar": "Solo se puede completar un formulario enviado al taller",
     "devolver": "Solo se puede devolver a revisión un formulario completado",
     "validar": "Solo se puede validar un formulario completado",
+}
+MENSAJE_HOJA_VACIA = {
+    "completar": "La hoja no tiene ninguna cantidad cargada: completá al menos una fila antes de enviarla.",
+    "validar": "La hoja no tiene ninguna cantidad cargada: no se puede validar vacía.",
 }
 MENSAJE_VALIDADO = "El formulario ya está validado y no se puede modificar: duplicalo para hacer cambios."
 ESTADOS_VISIBLES_PARA_TALLER = frozenset({ENVIADO, COMPLETADO})
@@ -449,6 +456,12 @@ def guardar_formulario(
     return _detalle(session, fila, producto, taller, modelo)
 
 
+def _tiene_cantidades(session: Session, fila: FormularioConsumo) -> bool:
+    """S1: at least one row of the sheet has a quantity above 0 (blank and 0 both mean nothing was measured)."""
+    return hay_cantidad(session.scalars(
+        select(FormularioConsumoLinea.cantidad).where(FormularioConsumoLinea.formulario_id == fila.id)))
+
+
 def cambiar_estado(
     session: Session, codigo: str, accion: str, *, roles: frozenset[str], quien: str, comentario: str | None = None,
     ahora: datetime | None = None,
@@ -457,6 +470,8 @@ def cambiar_estado(
     ahora = ahora or datetime.now(timezone.utc)
     fila, producto, taller, modelo = _cargar(session, codigo, roles, quien=quien, bloquear=True)
     nuevo = siguiente_estado(accion, fila.estado, roles)
+    if accion in MENSAJE_HOJA_VACIA and not _tiene_cantidades(session, fila):
+        raise DatosInvalidos(MENSAJE_HOJA_VACIA[accion])
     sin_material = None
     if accion == "devolver":
         comentario = _texto_o_nada(comentario)

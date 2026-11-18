@@ -192,6 +192,7 @@ def con_formulario(monkeypatch, instancia):
     session = MagicMock()
     monkeypatch.setattr(formulario, "_cargar", lambda s, codigo, roles, quien=None, bloquear=False: (instancia, None, None, None))
     monkeypatch.setattr(formulario, "_detalle", lambda s, f, p, t, m=None: {"estado": f.estado, "articulo": f.articulo, "nota": f.nota})
+    monkeypatch.setattr(formulario, "_tiene_cantidades", lambda s, f: True)  # the empty-sheet rule has its own tests (S1)
     return session
 
 
@@ -468,6 +469,16 @@ def cuerpo_de(formulario_json, **cambios):
     }
 
 
+def con_cuero(api, codigo, cantidad="0.4"):
+    """Let the taller write a CUERO quantity on a sheet that is ENVIADO (an empty sheet can no longer be completed, S1)."""
+    como("taller")
+    hoja = api.get(f"/formularios/{codigo}").json()
+    for l in hoja["lineas"]:
+        if l["nombre"] == "CUERO":
+            l["cantidad"] = cantidad
+    assert api.put(f"/formularios/{codigo}", json=cuerpo_de(hoja)).status_code == 200
+
+
 def test_pg_create_returns_a_borrador_with_the_preloaded_rows_and_the_next_code(api):
     primero = crear(api)
     assert primero["estado"] == "BORRADOR" and primero["codigo"].startswith("FCO-") and primero["creado_por"] == "admin-1"
@@ -603,7 +614,7 @@ def test_pg_list_search_and_what_each_role_sees(api):
     uno, dos, tres = crear(api, "Mochila Aventura"), crear(api, "Billetera Zeta"), crear(api, "Cartera 100%")
     api.post(f"/formularios/{dos['codigo']}/enviar")
     api.post(f"/formularios/{tres['codigo']}/enviar")
-    como("taller")
+    con_cuero(api, tres["codigo"])
     api.post(f"/formularios/{tres['codigo']}/completar")
     como("admin")
     todos = {f["codigo"]: f["estado"] for f in api.get("/formularios").json()}
@@ -731,6 +742,7 @@ def test_pg_only_admin_can_use_the_quick_create_and_the_taller_gets_the_sent_she
 def test_pg_the_taller_sees_a_sent_sheet_until_it_is_validated_and_then_no_more(api):
     datos = alta(api, "zz hoja propia").json()
     codigo = datos["formulario"]
+    con_cuero(api, codigo)
     como("taller", "taller-9")
     assert api.post(f"/formularios/{codigo}/completar").status_code == 200
     como("admin", "admin-1")
@@ -803,9 +815,7 @@ def test_pg_the_model_sheet_shows_its_form_and_its_state_follows_the_workflow(ap
     codigo = datos["formulario"]
     de_modelo = api.get("/formularios", params={"modelo": datos["modelo"]}).json()
     assert [(f["codigo"], f["estado"]) for f in de_modelo] == [(codigo, "ENVIADO")]
-    como("taller")
-    form = api.get(f"/formularios/{codigo}").json()
-    assert api.put(f"/formularios/{codigo}", json=cuerpo_de(form)).status_code == 200
+    con_cuero(api, codigo)
     assert api.post(f"/formularios/{codigo}/completar").status_code == 200
     como("admin", "admin-1")
     assert api.get("/formularios", params={"modelo": datos["modelo"]}).json()[0]["estado"] == "COMPLETADO"
