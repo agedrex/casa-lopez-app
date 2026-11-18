@@ -1,12 +1,20 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { completarHoja, guardarHoja } from "@/app/(app)/taller/modelos/actions";
+import { useRef, useState, useTransition } from "react";
+import {
+  completarHoja,
+  enviarHojaAlTaller,
+  guardarHoja,
+} from "@/app/(app)/taller/modelos/actions";
 import { type FormState, IDLE } from "@/lib/action-state";
 import {
+  type AccionHoja,
+  agregarFila,
   type FilaHoja,
   filasDeHoja,
   type ModoHoja,
+  quitarFila,
+  renombrarFila,
   SECCIONES,
 } from "@/lib/formularios";
 import type { FormularioLinea } from "@/lib/types";
@@ -17,37 +25,46 @@ import {
   SecondaryButton,
 } from "./form";
 
-/** Big title of a section; the border color and the help line tell "Consumos" (m²) and "Herrajes" (units) apart. */
+/** Big title of a section; the border color and the help line tell "Consumos" and "Herrajes" apart. Each row shows its own unit. */
 function TituloSeccion({ seccion }: { seccion: (typeof SECCIONES)[number] }) {
   return (
     <div className={`mb-3 border-l-4 ${seccion.accent} pl-4`}>
-      <h3 className="text-2xl">
-        {seccion.title}{" "}
-        <span className="text-base text-muted">({seccion.unit})</span>
-      </h3>
+      <h3 className="text-2xl">{seccion.title}</h3>
       <p className="mt-0.5 text-sm text-muted">{seccion.help}</p>
     </div>
   );
 }
 
 /**
- * The consumption sheet of a model: the CONSUMOS (m²) and HERRAJES (units) tables of the paper sheet. It calculates nothing.
- * - `editar` (taller, sheet ENVIADO): quantity and comment of every preloaded row; "Guardar" and "Enviar". Empty rows are ignored.
- * - `revisar` and `leer`: the filled rows as text. In `revisar` the admin buttons come from the page (Validar / Devolver).
+ * The consumption sheet of a model: the CONSUMOS and HERRAJES tables of the paper sheet, which the preloaded rows only start. It
+ * calculates nothing.
+ * - `editar` and `revisar` (whoever may edit: the admin until it is validated, the taller while ENVIADO): every row can be
+ *   renamed, removed, and rows can be added; quantity and comment of each. Empty added rows are ignored. `acciones` are the
+ *   buttons: Guardar, "Enviar al taller" (admin, draft) and "Completar y enviar a revisión" (taller). In `revisar` the admin
+ *   buttons Validar / Devolver come from the page and work on what was last saved.
+ * - `leer`: the filled rows as text.
  * The page passes `key={estado}` so a state change (completed, returned) starts from the fresh rows.
  */
 export function HojaConsumos({
   codigo,
   lineas,
   modo,
+  acciones,
 }: {
   codigo: string;
   lineas: FormularioLinea[];
   modo: ModoHoja;
+  acciones: AccionHoja[];
 }) {
-  if (modo === "editar")
-    return <HojaEditable codigo={codigo} lineas={lineas} />;
-  return <HojaDeSoloLectura lineas={lineas} />;
+  if (modo === "leer") return <HojaDeSoloLectura lineas={lineas} />;
+  return (
+    <HojaEditable
+      codigo={codigo}
+      lineas={lineas}
+      acciones={acciones}
+      enRevision={modo === "revisar"}
+    />
+  );
 }
 
 function HojaDeSoloLectura({ lineas }: { lineas: FormularioLinea[] }) {
@@ -68,12 +85,12 @@ function HojaDeSoloLectura({ lineas }: { lineas: FormularioLinea[] }) {
               <ul className="divide-y divide-line/70 rounded-card border border-line bg-surface">
                 {llenas.map((fila) => (
                   <li
-                    key={`${fila.seccion}-${fila.nombre}`}
+                    key={fila.id}
                     className="grid gap-1 px-4 py-3 text-sm sm:grid-cols-[minmax(0,1.2fr)_8rem_minmax(0,1.5fr)] sm:gap-4"
                   >
                     <span>{fila.nombre}</span>
                     <span className="tabular-nums sm:text-right">
-                      {fila.cantidad || "—"}
+                      {fila.cantidad ? `${fila.cantidad} ${fila.unidad}` : "—"}
                     </span>
                     <span className="text-muted">{fila.comentario}</span>
                   </li>
@@ -97,24 +114,39 @@ function HojaDeSoloLectura({ lineas }: { lineas: FormularioLinea[] }) {
 function HojaEditable({
   codigo,
   lineas,
+  acciones,
+  enRevision,
 }: {
   codigo: string;
   lineas: FormularioLinea[];
+  acciones: AccionHoja[];
+  enRevision: boolean;
 }) {
   const [filas, setFilas] = useState<FilaHoja[]>(() => filasDeHoja(lineas));
   const [state, setState] = useState<FormState>(IDLE);
   const [pending, startTransition] = useTransition();
+  const contador = useRef(0);
+  // The row just added, so its name field takes the focus.
+  const [enfocar, setEnfocar] = useState<string | null>(null);
 
-  const cambiar = (indice: number, cambio: Partial<FilaHoja>) =>
+  const cambiar = (id: string, cambio: Partial<FilaHoja>) =>
     setFilas((actuales) =>
-      actuales.map((fila, i) => (i === indice ? { ...fila, ...cambio } : fila)),
+      actuales.map((fila) => (fila.id === id ? { ...fila, ...cambio } : fila)),
     );
 
-  const enviar = (accion: typeof guardarHoja) => {
-    startTransition(async () => {
-      setState(await accion(codigo, filas));
-    });
+  const agregar = (seccion: FilaHoja["seccion"]) => {
+    contador.current += 1;
+    const id = `nueva-${contador.current}`;
+    setFilas((actuales) => agregarFila(actuales, seccion, id));
+    setEnfocar(id);
   };
+
+  const accionDe = (valor: string): typeof guardarHoja =>
+    valor === "completar"
+      ? completarHoja
+      : valor === "enviar"
+        ? enviarHojaAlTaller
+        : guardarHoja;
 
   return (
     <form
@@ -122,12 +154,12 @@ function HojaEditable({
       onSubmit={(event) => {
         event.preventDefault();
         const submitter = (event.nativeEvent as SubmitEvent).submitter;
-        enviar(
-          submitter instanceof HTMLButtonElement &&
-            submitter.value === "completar"
-            ? completarHoja
-            : guardarHoja,
+        const accion = accionDe(
+          submitter instanceof HTMLButtonElement ? submitter.value : "",
         );
+        startTransition(async () => {
+          setState(await accion(codigo, filas));
+        });
       }}
     >
       {SECCIONES.map((seccion) => (
@@ -136,31 +168,61 @@ function HojaEditable({
             <TituloSeccion seccion={seccion} />
           </legend>
           <ul className="space-y-1.5">
-            {filas.map((fila, indice) =>
+            {filas.map((fila) =>
               fila.seccion !== seccion.value ? null : (
                 <li
-                  key={`${fila.seccion}-${fila.nombre}`}
-                  className="grid grid-cols-[minmax(0,1fr)_7.5rem] gap-2 rounded-card border border-line bg-surface p-2 sm:grid-cols-[minmax(0,1.2fr)_8rem_minmax(0,1.5fr)] sm:items-center sm:gap-3 sm:px-3"
+                  key={fila.id}
+                  className="grid grid-cols-[minmax(0,1fr)_2.75rem] gap-2 rounded-card border border-line bg-surface p-2 sm:grid-cols-[minmax(0,1.2fr)_9rem_minmax(0,1.5fr)_2.5rem] sm:items-center sm:gap-3 sm:px-3"
                 >
-                  <span className="self-center text-sm">{fila.nombre}</span>
                   <input
-                    aria-label={`${fila.nombre}: cantidad (${seccion.unit})`}
-                    inputMode="decimal"
+                    aria-label="Nombre de la fila"
+                    placeholder="Nombre de la fila"
+                    maxLength={200}
                     autoComplete="off"
-                    placeholder="0,00"
-                    value={fila.cantidad}
+                    // biome-ignore lint/a11y/noAutofocus: the row the person just added gets the focus
+                    autoFocus={enfocar === fila.id}
+                    value={fila.nombre}
                     onChange={(e) =>
-                      cambiar(indice, { cantidad: e.target.value })
+                      setFilas((actuales) =>
+                        renombrarFila(actuales, fila.id, e.target.value),
+                      )
                     }
-                    className={`${inputClass} min-h-11 text-right tabular-nums sm:min-h-9`}
+                    className={`${inputClass} min-h-11 text-sm sm:min-h-9`}
                   />
+                  <button
+                    type="button"
+                    aria-label={`Quitar la fila ${fila.nombre || "sin nombre"}`}
+                    title="Quitar la fila"
+                    onClick={() =>
+                      setFilas((actuales) => quitarFila(actuales, fila.id))
+                    }
+                    className="min-h-11 rounded-card border border-line text-lg leading-none text-muted hover:border-bordeaux hover:text-bordeaux sm:order-4 sm:min-h-9"
+                  >
+                    ×
+                  </button>
+                  <label className="col-span-2 flex items-center gap-2 sm:col-span-1">
+                    <input
+                      aria-label={`${fila.nombre || "Fila nueva"}: cantidad (${fila.unidad})`}
+                      inputMode="decimal"
+                      autoComplete="off"
+                      placeholder="0,00"
+                      value={fila.cantidad}
+                      onChange={(e) =>
+                        cambiar(fila.id, { cantidad: e.target.value })
+                      }
+                      className={`${inputClass} min-h-11 text-right tabular-nums sm:min-h-9`}
+                    />
+                    <span className="w-16 shrink-0 text-xs text-muted">
+                      {fila.unidad}
+                    </span>
+                  </label>
                   <input
-                    aria-label={`${fila.nombre}: comentarios o modificaciones`}
+                    aria-label={`${fila.nombre || "Fila nueva"}: comentarios o modificaciones`}
                     placeholder="Comentarios / modificaciones"
                     maxLength={2000}
                     value={fila.comentario}
                     onChange={(e) =>
-                      cambiar(indice, { comentario: e.target.value })
+                      cambiar(fila.id, { comentario: e.target.value })
                     }
                     className={`${inputClass} col-span-2 min-h-11 sm:col-span-1 sm:min-h-9`}
                   />
@@ -168,16 +230,53 @@ function HojaEditable({
               ),
             )}
           </ul>
+          <button
+            type="button"
+            onClick={() => agregar(seccion.value)}
+            className="mt-2 min-h-11 text-sm underline decoration-gold underline-offset-4 sm:min-h-0"
+          >
+            + Agregar fila a {seccion.title.toLowerCase()}
+          </button>
         </fieldset>
       ))}
+      {enRevision ? (
+        <p className="text-sm text-muted">
+          Si cambiás algo, tocá Guardar antes de validar o devolver la hoja:
+          esas acciones usan lo último que se guardó.
+        </p>
+      ) : null}
       <FormFeedback state={state} />
       <div className="flex flex-col gap-2 sm:flex-row">
-        <SecondaryButton pending={pending} value="guardar" name="accion">
-          {pending ? "Guardando…" : "Guardar"}
-        </SecondaryButton>
-        <PrimaryButton pending={pending} value="completar" name="accion">
-          {pending ? "Enviando…" : "Enviar"}
-        </PrimaryButton>
+        {acciones.includes("guardar") ? (
+          <SecondaryButton
+            pending={pending}
+            value="guardar"
+            name="accion"
+            pendingLabel="Guardando…"
+          >
+            Guardar
+          </SecondaryButton>
+        ) : null}
+        {acciones.includes("enviar") ? (
+          <PrimaryButton
+            pending={pending}
+            value="enviar"
+            name="accion"
+            pendingLabel="Enviando…"
+          >
+            Enviar al taller
+          </PrimaryButton>
+        ) : null}
+        {acciones.includes("completar") ? (
+          <PrimaryButton
+            pending={pending}
+            value="completar"
+            name="accion"
+            pendingLabel="Enviando…"
+          >
+            Enviar
+          </PrimaryButton>
+        ) : null}
       </div>
     </form>
   );

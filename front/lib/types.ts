@@ -1347,7 +1347,12 @@ export type FormularioLinea = {
   nombre: string;
   cantidad: string | null;
   comentario: string | null;
+  /** Unit of the row (m², horas, $, unidades): decided by the API from the row name and section. */
+  unidad: string;
 };
+
+/** A row with a quantity that validating did not copy to the model, and why. */
+export type FormularioNoAplicada = { nombre: string; motivo: string };
 
 export type FormularioDetalle = FormularioResumen & {
   nota: string | null;
@@ -1357,6 +1362,8 @@ export type FormularioDetalle = FormularioResumen & {
   lineas: FormularioLinea[];
   /** Only the answer of "validar": rows with a quantity that matched no material. */
   sin_material?: string[] | null;
+  /** The answer of "validar" and the sheet of a VALIDADO form (admin only): every row that did not reach the model. */
+  no_aplicadas?: FormularioNoAplicada[] | null;
 };
 
 /** What `POST /productos/nuevo` answers: the codes of the new model and of its sheet. */

@@ -310,7 +310,7 @@ test("admin and gerente matrices hold; taller cannot reach admin-only product pa
 
 // --- The sheet screens (lib/formularios.ts) ---------------------------------------------------------------------------
 
-test("the taller edits a sheet only while it is ENVIADO; the admin reviews a COMPLETADO one; everything else is read only", () => {
+test("the taller edits a sheet only while it is ENVIADO; the admin edits it until it is validated (and reviews a COMPLETADO one); everything else is read only", () => {
   const estados = ["BORRADOR", "ENVIADO", "COMPLETADO", "VALIDADO"] as const;
   assert.deepEqual(
     estados.map((estado) => modoDeHoja("taller", estado)),
@@ -318,10 +318,10 @@ test("the taller edits a sheet only while it is ENVIADO; the admin reviews a COM
   );
   assert.deepEqual(
     estados.map((estado) => modoDeHoja("admin", estado)),
-    ["leer", "leer", "revisar", "leer"],
+    ["editar", "editar", "revisar", "leer"],
   );
   // Admin wins when a user holds both roles; a gerente never edits.
-  assert.equal(modoDeHoja("taller,admin", "ENVIADO"), "leer");
+  assert.equal(modoDeHoja("taller,admin", "ENVIADO"), "editar");
   assert.equal(modoDeHoja("gerente", "ENVIADO"), "leer");
 });
 
@@ -335,10 +335,12 @@ test("a taller may add a photo while the sheet is ENVIADO or when it created it;
 
 test("the rows go to the API as typed: empty is null, comma and dot are the same, a bad number is refused with its row", () => {
   const fila = (cantidad: string, extra = {}) => ({
+    id: "CONSUMO-0",
     seccion: "CONSUMO" as const,
     nombre: "CUERO",
     cantidad,
     comentario: "",
+    unidad: "m²",
     ...extra,
   });
   assert.deepEqual(
@@ -389,13 +391,16 @@ test("the API quantities come back to the editor as a person types them", () => 
       nombre: "CIERRE N5",
       cantidad: "2.000000",
       comentario: null,
+      unidad: "unidades",
     },
   ]);
   assert.deepEqual(fila, {
+    id: "HERRAJE-0",
     seccion: "HERRAJE",
     nombre: "CIERRE N5",
     cantidad: "2",
     comentario: "",
+    unidad: "unidades",
   });
   assert.equal(
     filasDeHoja([
@@ -405,6 +410,7 @@ test("the API quantities come back to the editor as a person types them", () => 
         nombre: "CUERO",
         cantidad: "0.250000",
         comentario: "x",
+        unidad: "m²",
       },
     ])[0].cantidad,
     "0,25",

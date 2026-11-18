@@ -15,6 +15,7 @@ import {
   formatUsd,
   stageLabel,
 } from "@/lib/format";
+import { cubiertoPorInsumos } from "@/lib/formulario-insumos";
 import { CONSUMPTION_FIELDS } from "@/lib/modelos";
 import type { Material, ModeloDetalle } from "@/lib/types";
 import { ConsumosForm } from "./[codigo]/modelo-forms";
@@ -26,8 +27,14 @@ import type { ForroOption } from "./consumption-fields";
 function display(
   field: (typeof CONSUMPTION_FIELDS)[number],
   value: string | null,
+  insumos: ModeloDetalle["insumos"],
 ) {
-  if (value === null) return "Falta el dato";
+  if (value === null) {
+    // Validating a sheet saves herrajes / hilo y cemento as supplies (listed below) and those replace this amount in the cost.
+    return cubiertoPorInsumos(field.name, insumos)
+      ? "Según los insumos (ver abajo)"
+      : "Falta el dato";
+  }
   if (field.unit === "USD") return formatUsd(value);
   if (field.unit === "ARS") return formatArs(value);
   return `${formatQuantity(value)} ${field.unit}`;
@@ -59,7 +66,7 @@ export function ConsumosTable({ modelo }: { modelo: ModeloDetalle }) {
               <tr key={field.name}>
                 <td className={tdClass}>{field.label}</td>
                 <td className={`${tdClass} ${numClass}`}>
-                  {display(field, modelo[field.name])}
+                  {display(field, modelo[field.name], modelo.insumos)}
                 </td>
               </tr>
             ))}
@@ -68,7 +75,8 @@ export function ConsumosTable({ modelo }: { modelo: ModeloDetalle }) {
       </TableWrap>
       <p className="mt-2 text-xs text-muted">
         &quot;Falta el dato&quot; es un consumo sin cargar; 0 significa que el
-        modelo no lleva ese insumo.
+        modelo no lleva ese insumo. Los herrajes y el hilo y cemento que vienen
+        de la hoja del taller figuran como insumos, abajo.
       </p>
       <InsumosTable insumos={modelo.insumos} />
     </>
