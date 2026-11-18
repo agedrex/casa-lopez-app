@@ -136,3 +136,16 @@ def test_a_dry_run_counts_but_writes_nothing(session):
     assert [f.fila for f in simulada.a_crear] == [22, 23, 24] and simulada.colores_nuevos == ["Arena"]
     real = importar(session)
     assert [f.fila for f in real.a_crear] == [f.fila for f in simulada.a_crear]
+
+
+def test_a_row_whose_model_already_has_a_product_with_that_leather_and_colour_stops_the_import_instead_of_duplicating(session):
+    """S5: crear_producto refuses the same model + leather + colour; the importer lets that conflict through (main() reports it)."""
+    codigo_modelo = session.scalar(select(Modelo.codigo).where(Modelo.fila_excel_viejo == 22))
+    servicios.crear_color(session, nombre="Arena", nota=None)  # the row's leather text says "C Arena"
+    existente = servicios.crear_producto(
+        session, modelo=codigo_modelo, cuero="MAT-CU01", color="Arena", quien_lo_confecciona=None, fecha_de_alta=None,
+        nombre_propio=None, es_kit=False)["codigo"]
+    antes = cantidad(session, Producto)
+    with pytest.raises(servicios.Conflicto, match=existente):
+        importar(session, [fila(fila=22)])
+    assert cantidad(session, Producto) == antes

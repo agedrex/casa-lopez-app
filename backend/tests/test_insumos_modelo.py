@@ -214,9 +214,9 @@ def test_pg_only_costable_materials_of_a_material_stage_can_be_matched(api):
     assert insumos_de(api, modelo) == []
 
 
-def producto_de(api, modelo):
+def producto_de(api, modelo, cuero="MAT-CU01"):
     return servicios.crear_producto(
-        api.session, modelo=modelo, cuero="MAT-CU01", color=None, quien_lo_confecciona="INTERNA", fecha_de_alta=None,
+        api.session, modelo=modelo, cuero=cuero, color=None, quien_lo_confecciona="INTERNA", fecha_de_alta=None,
         nombre_propio=None, es_kit=False)
 
 
@@ -241,7 +241,7 @@ def test_pg_a_supply_without_a_price_makes_the_product_quote_incomplete_with_a_w
     assert ficha["costo_hoy"] is None
     assert "Sin precio para MAT-IN01 a esa fecha" in ficha["avisos"]
     precio(api, "MAT-IN01", "1.5", "USD", "unidad")
-    assert producto_de(api, modelo)["costo_hoy"] is not None
+    assert producto_de(api, modelo, cuero="MAT-CU02")["costo_hoy"] is not None  # another leather: same model + leather is a 409 (S5)
 
 
 def test_pg_a_model_without_supplies_has_an_empty_list_and_keeps_its_cost(api):

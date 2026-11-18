@@ -97,6 +97,7 @@ def test_the_service_stores_the_user_id_in_the_new_product(monkeypatch):
     monkeypatch.setattr(servicios, "_material_de_receta", lambda *a, **k: SimpleNamespace(id=2))
     monkeypatch.setattr(servicios, "_siguiente_numero", lambda *a, **k: 7)
     monkeypatch.setattr(servicios, "_color_id", lambda *a, **k: None)
+    monkeypatch.setattr(servicios, "_comprobar_producto_repetido", lambda *a, **k: None)  # the rule has its own tests
     monkeypatch.setattr(servicios, "_insertar", lambda session, fila, conflicto: guardados.append(fila))
     monkeypatch.setattr(servicios, "ficha_producto", lambda session, codigo: {"codigo": codigo})
     datos = dict(modelo="MOD-0001", cuero="MAT-CU01", color=None, quien_lo_confecciona="INTERNA", fecha_de_alta=None,

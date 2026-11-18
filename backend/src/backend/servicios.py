@@ -878,6 +878,23 @@ def _material_de_receta(session: Session, codigo: str, etapa: str | None = None)
     return material
 
 
+def _comprobar_producto_repetido(session: Session, modelo: Modelo, cuero_id: int | None, color_id: int | None) -> None:
+    """S5: one product per model + leather + colour (a missing leather or colour counts as its own value).
+
+    SUPUESTO: validar con Robert. The sheet has no "archived" flag on `producto` yet, so every product counts; when one is
+    added, archived products must stop blocking a new one. The model row is locked so two simultaneous requests cannot both pass.
+    """
+    session.execute(select(Modelo.id).where(Modelo.id == modelo.id).with_for_update())
+    existente = session.scalar(
+        select(Producto.codigo).where(
+            Producto.modelo_id == modelo.id,
+            Producto.cuero_id.is_(None) if cuero_id is None else Producto.cuero_id == cuero_id,
+            Producto.color_id.is_(None) if color_id is None else Producto.color_id == color_id,
+        ).order_by(Producto.id).limit(1))
+    if existente:
+        raise Conflicto(f"Ya existe el producto {existente} con ese modelo, cuero y color: abrilo en lugar de crear otro.")
+
+
 def crear_producto(
     session: Session, *, modelo: str | None, cuero: str | None, color: str | None,
     quien_lo_confecciona: str | None, fecha_de_alta: date | None, nombre_propio: str | None,
@@ -888,10 +905,13 @@ def crear_producto(
         raise DatosInvalidos("Falta el modelo (solo un kit puede ir sin modelo).")
     modelo_fila = _por_codigo(session, Modelo, modelo, "el modelo")
     cuero_fila = _material_de_receta(session, cuero, "CUERO") if cuero else None
+    color_id = _color_id(session, color)
+    if modelo_fila is not None:  # a kit (no model) is outside the rule
+        _comprobar_producto_repetido(session, modelo_fila, cuero_fila.id if cuero_fila else None, color_id)
     codigo = f"PRD-{_siguiente_numero(session, Producto.codigo, 'PRD'):04d}"
     fila = Producto(
         codigo=codigo, modelo_id=modelo_fila.id if modelo_fila else None, cuero_id=cuero_fila.id if cuero_fila else None,
-        color_id=_color_id(session, color), quien_lo_confecciona=quien_lo_confecciona,
+        color_id=color_id, quien_lo_confecciona=quien_lo_confecciona,
         fecha_de_alta=fecha_de_alta, nombre_propio=nombre_propio, es_kit=es_kit, nota=nota, creado_por=quien,
     )
     _insertar(session, fila, "No se pudo asignar el código del producto; intentá de nuevo.")
