@@ -27,7 +27,7 @@ export default async function TalleresPage() {
       <PageHeader
         eyebrow="Producción"
         title="Talleres"
-        description="Agenda de los talleres que confeccionan. Un taller desactivado se oculta de los lotes nuevos pero conserva su historia."
+        description="Agenda de los talleres que confeccionan."
         actions={
           canWrite(user.role) ? (
             <Link

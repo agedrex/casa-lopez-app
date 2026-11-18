@@ -32,11 +32,11 @@ export async function createPrecio(
   const unidad = text(formData, "unidad_del_precio");
   const vigenteDesde = text(formData, "vigente_desde");
   const color = optional(formData, "color");
-  if (!material) return error("Elija el material.");
+  if (!material) return error("Elegí el material.");
   if (precio === null) {
-    return error("Ingrese el precio, por ejemplo 24 o 5857,14.");
+    return error("Ingresá el precio, por ejemplo 24 o 5857,14.");
   }
-  if (!MONEDAS.includes(moneda)) return error("Elija la moneda.");
+  if (!MONEDAS.includes(moneda)) return error("Elegí la moneda.");
   if (!vigenteDesde) return error("Indique desde qué fecha rige el precio.");
 
   // The form never offers a blocked material; refuse it here too (anyone can post to an action).
@@ -86,7 +86,7 @@ export async function createPrecio(
   });
   if (!result.ok) {
     return fromFailure(result, {
-      409: "Ya hay un precio de ese material y color para esa fecha. Cargue uno con otra fecha.",
+      409: "Ya hay un precio de ese material y color para esa fecha. Cargá uno con otra fecha.",
     });
   }
   refresh();
@@ -146,7 +146,7 @@ export async function guardarMaterialesLote(
     if ("moneda" in valores) {
       const moneda = String(valores.moneda ?? "").trim();
       if (!MONEDAS.includes(moneda)) {
-        return error(`${codigo}: elija la moneda del precio.`);
+        return error(`${codigo}: elegí la moneda del precio.`);
       }
       body.moneda = moneda;
     }
@@ -163,10 +163,10 @@ export async function guardarMaterialesLote(
     const nombre = String(fila?.nombre ?? "").trim();
     if (!nombre) return error(`${name}: indique el nombre del material.`);
     const etapa = String(fila?.etapa ?? "").trim();
-    if (!etapa) return error(`${name}: elija la etapa.`);
+    if (!etapa) return error(`${name}: elegí la etapa.`);
     const unidad = String(fila?.unidad_de_consumo ?? "").trim();
     if (!UNIDADES.includes(unidad)) {
-      return error(`${name}: elija la unidad de consumo.`);
+      return error(`${name}: elegí la unidad de consumo.`);
     }
     const rawPrecio = String(fila?.precio ?? "").trim();
     const precio = rawPrecio ? parseDecimalInput(rawPrecio) : null;
@@ -177,7 +177,7 @@ export async function guardarMaterialesLote(
     }
     const moneda = String(fila?.moneda ?? "").trim();
     if (precio && !MONEDAS.includes(moneda)) {
-      return error(`${name}: elija la moneda del precio.`);
+      return error(`${name}: elegí la moneda del precio.`);
     }
     nuevosBody.push({
       nombre,

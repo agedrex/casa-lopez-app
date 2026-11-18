@@ -21,7 +21,7 @@ test("readCantidad rechaza cero, vacío, negativos y texto", () => {
       {
         status: "error",
         message:
-          "Ingrese una cantidad mayor que cero. Para sacar el producto del lote usá «Quitar».",
+          "Ingresá una cantidad mayor que cero. Para sacar el producto del lote usá «Quitar».",
         avisos: [],
       },
       raw,

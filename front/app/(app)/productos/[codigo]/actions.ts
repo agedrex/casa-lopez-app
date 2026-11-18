@@ -66,7 +66,7 @@ export async function addComponente(
   const componente = text(formData, "componente");
   const cantidad = parseDecimalInput(text(formData, "cantidad"));
   if (!componente) return error("Indique el código del producto componente.");
-  if (!positive(cantidad)) return error("Ingrese una cantidad mayor que cero.");
+  if (!positive(cantidad)) return error("Ingresá una cantidad mayor que cero.");
 
   const result = await apiPost<Ficha>(
     `/productos/${encodeURIComponent(codigo)}/componentes`,

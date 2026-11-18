@@ -30,10 +30,7 @@ export function CreateUserForm() {
   const { state, pending, formKey, onSubmit } = useActionForm(createUser);
   return (
     <form key={formKey} onSubmit={onSubmit} className="space-y-5">
-      <p className="text-sm text-muted">
-        La contraseña inicial la escribe usted y se la pasa a la persona. Nadie
-        puede registrarse solo.
-      </p>
+      <p className="text-sm text-muted">Definís vos la contraseña inicial.</p>
       <div className="grid gap-5 sm:grid-cols-2">
         <Field id="usuario-nombre" label="Nombre">
           <input
@@ -58,7 +55,7 @@ export function CreateUserForm() {
         <Field
           id="usuario-rol"
           label="Rol"
-          hint="Gerente solo mira los productos y su cotización; Taller accede a corte, cueros y voz; Administrador carga datos y además gestiona esta sección."
+          hint="Gerente: solo mira. Taller: corte, cueros y voz. Administrador: todo."
         >
           <select
             id="usuario-rol"
@@ -167,10 +164,10 @@ export function BanForm({
     <form onSubmit={onSubmit} className="space-y-2">
       <p className="text-sm text-muted">
         {archived
-          ? "Este usuario fue eliminado: no puede iniciar sesión y no aparece en la lista. Restaurarlo le devuelve el acceso."
+          ? "Eliminado: no puede iniciar sesión. Restaurarlo le devuelve el acceso."
           : banned
-            ? "Este usuario está desactivado y no puede iniciar sesión. Activarlo le devuelve el acceso."
-            : "Desactivar cierra sus sesiones y le impide iniciar sesión. No se borra nada: se puede volver a activar."}
+            ? "Desactivado: no puede iniciar sesión. Activarlo le devuelve el acceso."
+            : "Desactivar cierra sus sesiones y le impide iniciar sesión."}
       </p>
       {disabledReason ? (
         <p className="text-xs text-muted">{disabledReason}</p>
@@ -289,9 +286,7 @@ export function ArchiveForm({
   return (
     <form onSubmit={onSubmit} className="space-y-3">
       <p className="text-sm text-muted">
-        Eliminar quita al usuario de la lista y le impide entrar. Sus
-        cotizaciones y su historia se conservan, y se puede restaurar cuando
-        haga falta.
+        Eliminar lo saca de la lista y le impide entrar. Se puede restaurar.
       </p>
       {disabledReason ? (
         <p className="text-xs text-muted">{disabledReason}</p>

@@ -74,7 +74,7 @@ export function useDictation(onText: (text: string) => void) {
     } catch {
       recognition.current = null;
       setListening(false);
-      setStatus("No se pudo iniciar el micrófono. Escriba el pedido.");
+      setStatus("No se pudo iniciar el micrófono. Escribí el pedido.");
     }
   }, []);
 

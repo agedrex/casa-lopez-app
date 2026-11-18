@@ -21,26 +21,21 @@ export function SimularForm({ enCurso }: { enCurso: boolean }) {
       pendingLabel="Simulando…"
       summary={() => (
         <p>
-          Se van a armar todas las pestañas con los datos de hoy y contar sus
-          filas. <strong>No se escribe nada en Google.</strong>
+          Se arman las pestañas y se cuentan sus filas.{" "}
+          <strong>No se escribe nada en Google.</strong>
         </p>
       )}
     >
-      <p className="text-sm text-muted">
-        Sirve para comprobar que la vista se arma bien antes de escribir en el
-        Sheet.
-      </p>
+      <p className="text-sm text-muted">Comprobá la vista antes de escribir.</p>
     </ConfirmForm>
   );
 }
 
 export function SincronizarForm({
   configurado,
-  faltantes,
   enCurso,
 }: {
   configurado: boolean;
-  faltantes: string[];
   enCurso: boolean;
 }) {
   if (!configurado) {
@@ -48,7 +43,7 @@ export function SincronizarForm({
       <Bloqueado
         id="sincronizar"
         etiqueta="Sincronizar ahora"
-        motivo={`Falta configurar ${faltantes.join(" y ")} en el servicio del backend.`}
+        motivo="No disponible. Pedíselo a un administrador."
       />
     );
   }
@@ -75,10 +70,7 @@ export function SincronizarForm({
         </p>
       )}
     >
-      <p className="text-sm text-muted">
-        Escribe en Google. Las cuentas y los costos se calculan en la app; el
-        Sheet solo los muestra.
-      </p>
+      <p className="text-sm text-muted">Escribe en Google.</p>
     </ConfirmForm>
   );
 }

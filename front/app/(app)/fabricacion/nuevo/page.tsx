@@ -25,7 +25,7 @@ export default async function NuevoLotePage() {
       <PageHeader
         eyebrow="Lotes"
         title="Nuevo lote"
-        description="Elija quién lo hace (la fábrica o un taller) y busque los productos; verá si alcanza el cuero. La fecha es la de hoy y el lote se llama con su código y esa fecha. Los costos los calcula la aplicación."
+        description="Elegí quién lo hace y buscá los productos."
       />
     </>
   );

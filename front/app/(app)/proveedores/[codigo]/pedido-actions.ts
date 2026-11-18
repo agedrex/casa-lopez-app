@@ -82,7 +82,7 @@ export async function createPedidoDeProveedor(
   if (typeof read === "string") return error(read);
   const { lineas, pieles } = read;
   if (lineas.length === 0 && pieles.length === 0) {
-    return error("Agregue al menos un material.");
+    return error("Agregá al menos un material.");
   }
 
   const result = await apiPost<PedidoProveedor>(
@@ -135,9 +135,9 @@ export async function crearMaterialRapido(
   if (denied)
     return { ok: false, message: "No tiene permiso para esta acción." };
   const nombre = nombreCrudo.replace(/\s+/g, " ").trim();
-  if (!nombre) return { ok: false, message: "Escriba el nombre del material." };
+  if (!nombre) return { ok: false, message: "Escribí el nombre del material." };
   if (!ETAPAS_RAPIDAS.includes(etapa)) {
-    return { ok: false, message: "Elija qué tipo de material es." };
+    return { ok: false, message: "Elegí qué tipo de material es." };
   }
   const created = await apiPost<MaterialesLote>("/materiales/lote", {
     cambios: [],

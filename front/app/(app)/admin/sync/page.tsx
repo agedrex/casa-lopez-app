@@ -45,8 +45,7 @@ export default async function SyncPage({
     );
   }
 
-  const { configurado, variables, faltantes, pestanas, en_curso, ultima } =
-    estado.data;
+  const { configurado, pestanas, en_curso, ultima } = estado.data;
   const pedida = Array.isArray(params.pestana)
     ? params.pestana[0]
     : params.pestana;
@@ -62,7 +61,7 @@ export default async function SyncPage({
       <PageHeader
         eyebrow="Negocio y Administración"
         title="Google Sheets"
-        description="Una copia para ver y consultar. La app calcula todo y empuja los datos al Sheet; nada vuelve del Sheet a la app, y lo que se escriba allá se pisa en la próxima sincronización."
+        description="Copia de solo lectura: lo que se escriba allá se pisa."
       />
       <div className="space-y-12">
         <section>
@@ -70,28 +69,12 @@ export default async function SyncPage({
           <Card className="space-y-3">
             <p>
               <Badge tone={configurado ? "good" : "warn"}>
-                {configurado ? "Configurado" : "Sin configurar"}
+                {configurado ? "Disponible" : "No disponible"}
               </Badge>
             </p>
-            {configurado ? (
+            {configurado ? null : (
               <p className="text-sm text-muted">
-                Las dos variables están cargadas en el servicio del backend. Por
-                seguridad, acá nunca se muestran sus valores.
-              </p>
-            ) : (
-              <p className="text-sm text-muted">
-                Para escribir en Google hay que cargar en el servicio del
-                backend (Railway) estas variables de entorno:{" "}
-                {variables.map((nombre, indice) => (
-                  <span key={nombre}>
-                    {indice > 0 ? " y " : ""}
-                    <code className="rounded bg-parchment px-1.5 py-0.5 text-xs">
-                      {nombre}
-                    </code>
-                    {faltantes.includes(nombre) ? " (falta)" : " (cargada)"}
-                  </span>
-                ))}
-                . Mientras tanto se puede simular.
+                Pedíselo a un administrador. Mientras tanto podés simular.
               </p>
             )}
           </Card>
@@ -106,11 +89,7 @@ export default async function SyncPage({
             </Card>
             <Card>
               <h3 className="mb-3 text-lg">Sincronizar</h3>
-              <SincronizarForm
-                configurado={configurado}
-                faltantes={faltantes}
-                enCurso={en_curso}
-              />
+              <SincronizarForm configurado={configurado} enCurso={en_curso} />
             </Card>
           </div>
         </section>
@@ -172,14 +151,12 @@ export default async function SyncPage({
                 </table>
               </TableWrap>
               <p className="text-xs text-muted">
-                Este resumen vive en la memoria del servicio: se borra si el
-                backend se reinicia.
+                Se borra si el backend se reinicia.
               </p>
             </div>
           ) : (
             <Notice tone="info" title="Todavía no hubo ejecuciones.">
-              El resumen se guarda en memoria; aparece después de simular o
-              sincronizar y se pierde si el backend se reinicia.
+              Aparece después de simular o sincronizar.
             </Notice>
           )}
         </section>

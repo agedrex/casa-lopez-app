@@ -70,7 +70,7 @@ export default async function ReventaProductoPage({
         <BackLink />
         {result.status === 404 ? (
           <Notice tone="info" title="No encontramos ese producto">
-            Revise el código o vuelva al listado de mercadería.
+            Revisá el código o volvé al listado de mercadería.
           </Notice>
         ) : (
           <ErrorNotice message={result.message} />
@@ -87,7 +87,7 @@ export default async function ReventaProductoPage({
       <PageHeader
         eyebrow={`Mercadería ${producto.codigo}`}
         title={producto.nombre}
-        description="El costo es lo que pagaste por unidad en la última compra. Cada compra nueva queda en el historial."
+        description="Costo: lo pagado por unidad en la última compra."
         actions={
           producto.activo ? undefined : <Badge tone="warn">Archivado</Badge>
         }

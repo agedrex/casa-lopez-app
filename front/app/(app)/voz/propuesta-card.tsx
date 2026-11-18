@@ -47,8 +47,8 @@ export function PropuestaCard({ propuesta }: { propuesta: VozPropuesta }) {
         <h3 ref={heading} tabIndex={-1} className="sr-only">
           {title}
         </h3>
-        {propuesta.avisos.join(" ")} Pruebe con otra frase (hay ejemplos más
-        abajo) o cargue el dato desde su pantalla.
+        {propuesta.avisos.join(" ")} Probá con otra frase (hay ejemplos abajo) o
+        cargá el dato desde su pantalla.
       </Notice>
     );
   }
@@ -270,7 +270,7 @@ export function PropuestaCard({ propuesta }: { propuesta: VozPropuesta }) {
         <FormFeedback state={state} />
         {done ? (
           <p className="text-sm text-muted">
-            Listo. Para otra carga, escriba o dicte un pedido nuevo.
+            Listo. Para otra carga, escribí o dictá un pedido nuevo.
           </p>
         ) : (
           <div className="flex flex-wrap gap-3">
@@ -374,7 +374,7 @@ function Select({
           aria-describedby={missing ? `${id}-falta` : undefined}
           className={missingClass(missing)}
         >
-          <option value="">Elija una opción</option>
+          <option value="">Elegí una opción</option>
           {options.map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}
@@ -439,7 +439,7 @@ function Choice({
       >
         <legend className="mb-1.5 text-xs uppercase tracking-caps-sm text-muted">
           {label}
-          {optional ? " (opcional)" : ""}: elija una opción
+          {optional ? " (opcional)" : ""}: elegí una opción
         </legend>
         <ul className="space-y-1.5">
           {candidates.map((candidate) => (

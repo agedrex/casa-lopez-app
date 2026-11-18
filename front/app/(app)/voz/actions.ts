@@ -35,7 +35,7 @@ export async function interpretarVoz(
   if (!texto) {
     return {
       status: "error",
-      message: "Escriba o dicte lo que quiere cargar.",
+      message: "Escribí o dictá lo que querés cargar.",
     };
   }
   if (texto.length > VOZ_MAX_CHARS) {

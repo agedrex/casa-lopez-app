@@ -22,7 +22,7 @@ async function run(simular: boolean): Promise<FormState> {
   );
   if (!result.ok) {
     return fromFailure(result, {
-      0: "La API no respondió a tiempo. Puede que la sincronización haya seguido: mire la última ejecución en unos minutos.",
+      0: "La API no respondió a tiempo. Puede que la sincronización haya seguido: mirá la última ejecución en unos minutos.",
     });
   }
   refresh();

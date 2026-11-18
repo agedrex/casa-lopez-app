@@ -163,9 +163,7 @@ export default async function CostosFijosPage({
         eyebrow="Costos"
         title={bloque ? BLOQUES[bloque].title : "Costos fijos"}
         description={
-          bloque
-            ? `${BLOQUES[bloque].help} Cargá, cambiá o quitá cada línea.`
-            : "Sueldos y servicios del mes. Cargá, cambiá o quitá cada línea."
+          bloque ? BLOQUES[bloque].help : "Sueldos y servicios del mes."
         }
       />
       <div className="space-y-10">

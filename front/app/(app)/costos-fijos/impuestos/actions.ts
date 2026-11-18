@@ -8,7 +8,7 @@ import type { Impuesto } from "@/lib/types";
 import { denyUnlessAdmin, fromFailure, text } from "@/lib/write-guard";
 
 const PERCENT_HELP =
-  "Escriba el porcentaje entre 0 y 100, con hasta un decimal: por ejemplo 21 o 3,5.";
+  "Escribí el porcentaje entre 0 y 100, con hasta un decimal: por ejemplo 21 o 3,5.";
 
 export async function createImpuesto(
   _previous: FormState,

@@ -38,12 +38,12 @@ test("readItems lee las filas paralelas y deja los precios vacíos en null", () 
 test("readItems pide al menos un producto", () => {
   assert.deepEqual(readItems(form([])), {
     status: "error",
-    message: "Agregue al menos un producto al lote.",
+    message: "Agregá al menos un producto al lote.",
     avisos: [],
   });
   assert.equal(
     (readItems(form([{}, {}])) as { message: string }).message,
-    "Agregue al menos un producto al lote.",
+    "Agregá al menos un producto al lote.",
   );
 });
 

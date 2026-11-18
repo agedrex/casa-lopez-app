@@ -175,12 +175,12 @@ export async function registrarCompra(
 
   const unidades = parseDecimalInput(text(formData, "unidades"));
   if (!positive(unidades)) {
-    return error("Ingrese las unidades compradas, mayores que cero.");
+    return error("Ingresá las unidades compradas, mayores que cero.");
   }
   const costo = parseDecimalInput(text(formData, "costo"));
   if (!positive(costo)) {
     return error(
-      "Ingrese el costo por unidad mayor que cero, por ejemplo 12500.",
+      "Ingresá el costo por unidad mayor que cero, por ejemplo 12500.",
     );
   }
   const precioTexto = text(formData, "precio_venta");

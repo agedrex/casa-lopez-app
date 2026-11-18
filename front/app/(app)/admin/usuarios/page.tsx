@@ -57,7 +57,7 @@ export default async function UsuariosPage({
       <PageHeader
         eyebrow="Negocio y Administración"
         title="Usuarios"
-        description="Quién puede entrar a la aplicación. Elija un usuario para editar sus datos, rol y contraseña, o para eliminarlo (se archiva y se puede restaurar)."
+        description="Quién puede entrar a la aplicación."
         actions={
           <Link
             href="/admin/usuarios/nuevo"
@@ -115,7 +115,7 @@ export default async function UsuariosPage({
                 <tr key={user.id} className="hover:bg-paper-mid/50">
                   <td className={tdClass}>
                     {user.name}
-                    {user.id === me.id ? " (usted)" : ""}
+                    {user.id === me.id ? " (vos)" : ""}
                     <span className="block text-xs text-muted">
                       {user.email}
                     </span>

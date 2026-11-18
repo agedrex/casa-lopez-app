@@ -34,7 +34,7 @@ export async function resolveCatalogChoice(options: {
 
   const nombre = text(formData, newField);
   if (!nombre) {
-    return { ok: false, state: error(`Escriba el nombre de ${noun}.`) };
+    return { ok: false, state: error(`Escribí el nombre de ${noun}.`) };
   }
 
   const created = await apiPost<ItemCatalogo>(path, { nombre, nota: null });
@@ -82,7 +82,7 @@ export async function resolveCueroChoice(options: {
   if (check.denied) return { ok: false, state: check.denied };
   const nombre = text(formData, newField);
   if (!nombre) {
-    return { ok: false, state: error("Escriba el nombre del cuero nuevo.") };
+    return { ok: false, state: error("Escribí el nombre del cuero nuevo.") };
   }
   const created = await apiPost<MaterialesLote>("/materiales/lote", {
     cambios: [],
@@ -132,7 +132,7 @@ export async function resolveTallerChoice(options: {
   if (check.denied) return { ok: false, state: check.denied };
   const nombre = text(formData, newField);
   if (!nombre) {
-    return { ok: false, state: error("Escriba el nombre del taller nuevo.") };
+    return { ok: false, state: error("Escribí el nombre del taller nuevo.") };
   }
   const created = await apiPost<{ codigo: string }>("/talleres", {
     nombre,

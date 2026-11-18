@@ -57,7 +57,7 @@ export default async function ProveedoresPage({
       <PageHeader
         eyebrow="Datos de base"
         title="Proveedores"
-        description="Agenda de proveedores. Entrá a uno para ver lo que ofrece y sus pedidos."
+        description="Agenda de proveedores, con lo que ofrecen y sus pedidos."
       />
       <div className="space-y-10">
         <section aria-label="Buscar proveedores">

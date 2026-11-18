@@ -7,7 +7,7 @@ export default function HistoricoPage() {
   return (
     <ComingSoon
       title="Histórico (Excel viejo)"
-      description="Acá vas a poder consultar los datos que llegaron del Excel anterior."
+      description="Consulta de los datos del Excel anterior."
     />
   );
 }

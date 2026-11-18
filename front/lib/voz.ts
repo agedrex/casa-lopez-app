@@ -114,13 +114,13 @@ const SPEECH_ERRORS: Record<string, string> = {
   "not-allowed":
     "El navegador no tiene permiso para usar el micrófono. Habilítelo en la barra de direcciones o escriba el pedido.",
   "service-not-allowed":
-    "El navegador no permite el reconocimiento de voz en este sitio. Escriba el pedido.",
+    "El navegador no permite el reconocimiento de voz en este sitio. Escribí el pedido.",
   "no-speech": "No se escuchó nada. Pruebe de nuevo o escriba el pedido.",
-  "audio-capture": "No se encontró un micrófono. Escriba el pedido.",
+  "audio-capture": "No se encontró un micrófono. Escribí el pedido.",
   network:
-    "El reconocimiento de voz del navegador necesita conexión a internet. Escriba el pedido.",
+    "El reconocimiento de voz del navegador necesita conexión a internet. Escribí el pedido.",
   "language-not-supported":
-    "Este navegador no reconoce el español de Argentina. Escriba el pedido.",
+    "Este navegador no reconoce el español de Argentina. Escribí el pedido.",
 };
 
 /** Spanish text for a recognizer error code; null for the ones that are not a problem (the person stopped it). */

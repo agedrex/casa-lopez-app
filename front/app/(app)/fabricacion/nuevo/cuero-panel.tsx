@@ -43,8 +43,7 @@ export function CueroPanel({
       <div className="space-y-1">
         <h2 className="text-xs uppercase tracking-caps-sm text-muted">Cuero</h2>
         <p className="text-sm text-muted">
-          Es solo informativo: no impide crear el lote. Cada producto se calcula
-          por separado; si dos usan el mismo cuero, sumá los m².
+          Solo informativo: no impide crear el lote.
         </p>
       </div>
       <ul className="space-y-4">
