@@ -27,7 +27,8 @@ export async function createProducto(
   if (denied) return denied;
 
   const esKit = formData.get("es_kit") === "on";
-  const modelo = optional(formData, "modelo");
+  // The suggestions show "NAME · Category": accept what the person typed or picked, keep only the name or code.
+  const modelo = optional(formData, "modelo")?.split(" · ")[0].trim() || null;
   const quien = text(formData, "quien_lo_confecciona");
   if (!modelo && !esKit) {
     return error("Elija el modelo (solo un kit puede ir sin modelo).");
