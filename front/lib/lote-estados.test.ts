@@ -5,6 +5,7 @@ import {
   diasDelLote,
   diasEntre,
   lineaDeTiempo,
+  siguienteEstado,
   siguienteEstadoDelTaller,
   textoDeDias,
 } from "./lote-estados";
@@ -170,4 +171,12 @@ test("days a lot has taken: to the delivery date, else to today while open, else
     diasDelLote({ ...base, fecha_de_envio: null }, "2026-11-17"),
     "—",
   );
+});
+
+test("el administrador solo puede pasar al estado siguiente del ciclo, sin saltos", () => {
+  assert.equal(siguienteEstado("PLANIFICADA"), "EN_CORTE");
+  assert.equal(siguienteEstado("EN_CONFECCION"), "LISTA");
+  assert.equal(siguienteEstado("LISTA"), "CERRADA");
+  assert.equal(siguienteEstado("CERRADA"), null);
+  assert.equal(siguienteEstado("INVENTADO"), null);
 });
