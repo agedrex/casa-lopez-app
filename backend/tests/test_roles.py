@@ -131,6 +131,8 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
         "/formularios/{codigo}/duplicar")},
     # The only write the voice grants a taller: the price a workshop quoted or was paid for a lot line.
     ("POST", "/ordenes/{codigo}/items/{item}/precios"): CORTE,
+    # Changing the units of a lot line or removing it: admin only (S7 of lanzamiento-listo).
+    ("PUT", "/ordenes/{codigo}/items/{item}"): ADMIN, ("DELETE", "/ordenes/{codigo}/items/{item}"): ADMIN,
     **{("POST", ruta): ADMIN for ruta in (
         "/cueros", "/productos", "/productos/{codigo}/precio-venta", "/productos/{codigo}/extras",
         "/productos/{codigo}/componentes", "/productos/{codigo}/cotizaciones", "/precios", "/dolar",

@@ -11,7 +11,7 @@ from decimal import Decimal
 from sqlalchemy import (
     BigInteger, Boolean, CHAR, CheckConstraint, Date, DateTime, ForeignKey,
     Identity, Index, Integer, LargeBinary, MetaData, Numeric, SmallInteger, Text,
-    UniqueConstraint, func, text,
+    UniqueConstraint, and_, func, text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -512,6 +512,16 @@ class OrdenItem(BusinessKey, Base):
     taller_precio_cotizado_por_unidad_ars: Mapped[Decimal | None] = mapped_column(money())
     taller_precio_pagado_por_unidad_ars: Mapped[Decimal | None] = mapped_column(money())
     nota: Mapped[str | None] = mapped_column(Text)
+
+
+# A removed lot line is never deleted (AGENTS rule 11): its quantity goes to 0 and its note gets this mark plus the
+# log line. No column for it: the migrations are outside this change. SUPUESTO: a real `quitado` column is cleaner.
+RENGLON_QUITADO = "[QUITADO]"
+
+
+def renglon_quitado():
+    """SQL condition: the line was removed from its lot (zero units and the removal mark in its note)."""
+    return and_(OrdenItem.cantidad == 0, func.coalesce(OrdenItem.nota, "").contains(RENGLON_QUITADO, autoescape=True))
 
 
 class OrdenEstado(IdentityAndCreatedAt, Base):

@@ -37,6 +37,7 @@ import type {
   ProductoResumen,
   Referencia,
 } from "@/lib/types";
+import { RenglonEditor, RenglonesQuitados } from "./editar-renglones";
 import { EstadoForm, ItemForm, PreciosForm } from "./forms";
 
 export const metadata: Metadata = { title: "Lote" };
@@ -352,6 +353,7 @@ async function WriterSections({ orden }: { orden: OrdenDetalle }) {
           </Card>
         )}
       </section>
+      <EditarRenglones orden={orden} />
       <section>
         <SectionTitle>Cambiar el estado</SectionTitle>
         {orden.estado === "CERRADA" ? (
@@ -551,6 +553,41 @@ function QueHayQueHacer({ orden }: { orden: OrdenDetalle }) {
           </ul>
         </>
       )}
+    </section>
+  );
+}
+
+/**
+ * Admin only: change the units of a line or take it out of an open lot. The same product can be several lines, each
+ * with any quantity. A closed lot is read only. Removing asks for confirmation and keeps the row (see the quitados list).
+ */
+function EditarRenglones({ orden }: { orden: OrdenDetalle }) {
+  const quitados = orden.quitados ?? [];
+  return (
+    <section>
+      <SectionTitle>Cambiar o quitar productos</SectionTitle>
+      {orden.estado === "CERRADA" ? (
+        <Notice tone="info" title="Este lote está cerrado">
+          Los productos de un lote cerrado no se pueden cambiar ni quitar.
+        </Notice>
+      ) : orden.items.length === 0 ? (
+        <Notice tone="info" title="Este lote no tiene productos para editar." />
+      ) : (
+        <Card>
+          <ul className="divide-y divide-line/70">
+            {orden.items.map((item) => (
+              <RenglonEditor
+                key={item.codigo}
+                codigo={orden.codigo}
+                item={item.codigo}
+                producto={`${item.producto} · ${collapseSpaces(item.producto_nombre)}`}
+                cantidad={item.cantidad}
+              />
+            ))}
+          </ul>
+        </Card>
+      )}
+      <RenglonesQuitados quitados={quitados} />
     </section>
   );
 }

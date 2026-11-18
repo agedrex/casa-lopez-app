@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from backend.models import (
     Color, Etapa, Material, Modelo, MovimientoCuero, OrdenFabricacion, OrdenItem, Parametro,
-    Persona, PiezaCuero, PrecioMaterial, Producto, TipoCambio,
+    Persona, PiezaCuero, PrecioMaterial, Producto, TipoCambio, renglon_quitado,
 )
 from backend.servicios import (
     Conflicto, DatosInvalidos, NoEncontrado, _info_productos, _insertar, _rango_del_mes, _siguiente_numero, costos_fijos, mes_de,
@@ -130,6 +130,8 @@ def cortar(
     item = session.scalar(select(OrdenItem).where(OrdenItem.codigo == orden_item))
     if item is None:
         raise DatosInvalidos(f"No existe el renglón de lote {orden_item}.")
+    if session.scalar(select(renglon_quitado()).where(OrdenItem.id == item.id)):
+        raise DatosInvalidos(f"El renglón {orden_item} fue quitado del lote: no se puede cortar cuero para él.")
     producto = session.get(Producto, item.producto_id)
     if producto is None or (producto.cuero_id, producto.color_id) != (pieza.material_id, pieza.color_id):
         raise DatosInvalidos("El cuero y color de la pieza no coinciden con el producto del lote.")
@@ -339,7 +341,7 @@ def resumen_de_lote(session: Session, codigo: str) -> dict:
         select(OrdenItem, Producto, Modelo.cuero_m2_por_unidad)
         .join(Producto, Producto.id == OrdenItem.producto_id)
         .outerjoin(Modelo, Modelo.id == Producto.modelo_id)
-        .where(OrdenItem.orden_fabricacion_id == orden.id).order_by(OrdenItem.id)).all()
+        .where(OrdenItem.orden_fabricacion_id == orden.id, ~renglon_quitado()).order_by(OrdenItem.id)).all()
     cortado = dict(session.execute(
         select(MovimientoCuero.orden_item_id, -func.sum(MovimientoCuero.m2))
         .where(MovimientoCuero.tipo == "CORTE", MovimientoCuero.orden_item_id.in_([i.id for i, _, _ in items]))
