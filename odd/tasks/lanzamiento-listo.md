@@ -24,7 +24,7 @@ Dejar la app lista para usar mañana: altas inline, vista de lote del taller, me
 - [x] T4 (S4, S5) suite backend con Postgres local: 3127 passed; front tsc, biome, 107 tests, build OK. Recorrido manual por UI NO hecho
 
 - [ ] T5 (S7) worktree feat/lote-editar-items: admin edita cantidad / quita renglón
-- [ ] T6 (S8, S10) worktree feat/lote-costo-consumo: costo congelado a la fecha del lote + consumo por producto, por insumo y costo total
+- [x] T6 (S8, S10) worktree feat/lote-costo-consumo: costo congelado a la fecha del lote + consumo por producto, por insumo y costo total (GET /ordenes/{codigo}/consumo; L5-L6)
 - [ ] T7 (S11, S12) worktree feat/taller-estados: el taller ve sus lotes por estado y actualiza el estado; el admin ve el seguimiento de creación a fin
 - [ ] T8 (S9) simulación end to end con las funciones del código
 - [ ] T9 (S13) merge a main y llegada a staging
@@ -34,3 +34,5 @@ L1: pedido original del usuario (ver mensaje 2026-11-17: "Tengo que tomar una du
 L2: bloquear duplicados en un lote NO se hizo: test_items_can_be_added_to_an_existing_lot agrega el mismo producto dos veces a propósito; decisión de producto pendiente.
 L3: respuesta del usuario 2026-11-17 a los pendientes (ver S6-S13, verbatim arriba). Duplicados: NO se bloquean (cierra el L2).
 L4: SUPUESTO mío para S8: el costo de un lote usa precios y dólar vigentes en la fecha de creación del lote (fecha_de_envio, automática), por lo que no cambia después. Validar con el usuario.
+L5: T6 (S8) hecho: `_armar_lotes` cotiza cada renglón con `cotizar_datos` a la `fecha_de_envio` del lote (mismos precios y dólar que una cotización guardada); sin fecha de envío sigue con el costo de hoy. También lo toma `casa_vs_taller`, que usa `_armar_lotes`. Límite: un precio cargado después con `vigente_desde` anterior a la fecha del lote sí lo mueve (los precios con historia se buscan por `vigente_desde`).
+L6: T6 (S10) hecho: `GET /ordenes/{codigo}/consumo` (admin y taller, solo cantidades, sin plata). SUPUESTO: validar. No suma desperdicio (igual que el resumen de cuero); los renglones en USD (herrajes) no son cantidad y no aparecen; un kit cuenta por sus componentes. El costo total lo ve solo el admin (el `costo_total` del detalle, congelado).

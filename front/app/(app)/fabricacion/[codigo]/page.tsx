@@ -37,6 +37,7 @@ import type {
   ProductoResumen,
   Referencia,
 } from "@/lib/types";
+import { ConsumoDelLote } from "./consumo-lote";
 import { EstadoForm, ItemForm, PreciosForm } from "./forms";
 
 export const metadata: Metadata = { title: "Lote" };
@@ -111,6 +112,12 @@ export default async function LotePage({
       <div className="space-y-10">
         <CueroDelLote orden={orden} />
         <QueHayQueHacer orden={orden} />
+        <ConsumoDelLote
+          codigo={orden.codigo}
+          vacio={orden.items.length === 0}
+          costoTotal={orden.costo_total}
+          fecha={orden.fecha_de_envio}
+        />
         <Summary orden={orden} />
         {orden.avisos.length > 0 ? (
           <Notice title="Para revisar en este lote">
@@ -170,7 +177,7 @@ function Summary({ orden }: { orden: OrdenDetalle }) {
         <Metric
           label="Costo del lote"
           value={formatArs(orden.costo_total)}
-          hint="Materiales de hoy más confección"
+          hint="Materiales a la fecha del lote más confección"
         />
         <Metric
           label="Costo por unidad"
@@ -202,7 +209,9 @@ function Items({ orden }: { orden: OrdenDetalle }) {
                 <th className={`${thClass} ${numClass}`}>Cotizado</th>
                 <th className={`${thClass} ${numClass}`}>Pagado</th>
                 <th className={`${thClass} ${numClass}`}>Confección</th>
-                <th className={`${thClass} ${numClass}`}>Materiales (hoy)</th>
+                <th className={`${thClass} ${numClass}`}>
+                  Materiales (fecha del lote)
+                </th>
                 <th className={`${thClass} ${numClass}`}>Costo por unidad</th>
                 <th className={`${thClass} ${numClass}`}>Total</th>
                 <th className={thClass}>Avisos</th>
@@ -421,6 +430,10 @@ function TallerLote({ orden }: { orden: OrdenDetalle }) {
         </section>
         <CueroDelLote orden={orden} />
         <QueHayQueHacer orden={orden} />
+        <ConsumoDelLote
+          codigo={orden.codigo}
+          vacio={orden.items.length === 0}
+        />
         <Timeline orden={orden} />
       </div>
     </>

@@ -23,6 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.orm import Session
 
 from backend import cueros, formulario, modelos_foto, ocr_llm, proveedores, reventa, servicios, sheets_client, voz, voz_llm
+from backend import consumo_lote
 from backend import materiales as grilla_materiales  # `materiales` is the name of the GET /materiales route below
 from backend.auth import (
     CORTE, CUALQUIER_ROL, FORMULARIO_LEER, FORMULARIO_TRABAJAR, PRODUCTOS, SOLO_ADMIN, Usuario, require_user,
@@ -197,6 +198,40 @@ class LoteCueroOut(Salida):
     lote: str
     estado: str
     cueros: list[LoteCueroGrupoOut]
+    sin_consumo: list[LoteCueroSinConsumoOut]
+
+
+class ConsumoInsumoOut(Salida):
+    material: str
+    material_nombre: str
+    color: str | None
+    unidad: str
+    por_unidad: Decimal
+    total: Decimal
+
+
+class ConsumoProductoOut(Salida):
+    item: str
+    producto: str
+    producto_nombre: str
+    cantidad: Decimal
+    insumos: list[ConsumoInsumoOut]
+
+
+class ConsumoTotalOut(Salida):
+    material: str
+    material_nombre: str
+    color: str | None
+    unidad: str
+    total: Decimal
+    productos: list[str]
+
+
+class ConsumoLoteOut(Salida):
+    lote: str
+    estado: str
+    productos: list[ConsumoProductoOut]
+    totales: list[ConsumoTotalOut]
     sin_consumo: list[LoteCueroSinConsumoOut]
 
 
@@ -1763,6 +1798,12 @@ def orden(codigo: str, session: Sesion):
 def cuero_de_la_orden(codigo: str, session: Sesion):
     """Leather the lot needs by leather against its stock (square meters only, no money: the taller reads it)."""
     return cueros.resumen_de_lote(session, codigo)
+
+
+@router.get("/ordenes/{codigo}/consumo", dependencies=LECTURA_CORTE, response_model=ConsumoLoteOut)
+def consumo_de_la_orden(codigo: str, session: Sesion):
+    """What each product of the lot consumes of each supply and the total per supply (quantities only, no money: the taller reads it)."""
+    return consumo_lote.consumo_de_lote(session, codigo)
 
 
 @router.get("/fabricacion/casa-vs-taller", dependencies=LECTURA_ADMIN, response_model=CasaVsTallerOut)

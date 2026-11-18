@@ -100,6 +100,7 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
     ("GET", "/ordenes"): CORTE,
     ("GET", "/ordenes/{codigo}"): CORTE,
     ("GET", "/ordenes/{codigo}/cuero"): CORTE,
+    ("GET", "/ordenes/{codigo}/consumo"): CORTE,
     ("GET", "/ordenes/unidades-por-producto"): ADMIN,
     ("GET", "/voz/estado"): CORTE,
     # Admin only reads.
@@ -245,7 +246,7 @@ def test_admin_only_routes_refuse_everyone_else_without_calling_the_service(monk
                  ("GET", "/cvu/periodo"), ("POST", "/cvu/escenario")]),
     ("taller", [("GET", "/productos"), ("GET", "/productos/conteo"), ("GET", "/materiales"), ("GET", "/cueros"), ("GET", "/cueros/PZC-1"),
                 ("GET", "/cueros/alcanza?producto=P&cantidad=1"), ("GET", "/colores"), ("GET", "/ordenes"),
-                ("GET", "/ordenes/LOT-1"), ("GET", "/voz/estado"),
+                ("GET", "/ordenes/LOT-1"), ("GET", "/ordenes/LOT-1/consumo"), ("GET", "/voz/estado"),
                 ("GET", "/productos/X-1"),
                 ("GET", "/modelos"), ("GET", "/modelos/MOD-1"), ("GET", "/precios"), ("GET", "/categorias"), ("GET", "/catalogos"), ("GET", "/dolar"),
                 ("POST", "/cueros/PZC-1/cortes"), ("POST", "/cueros/PZC-1/sobrante"), ("POST", "/voz/interpretar"),
@@ -292,7 +293,7 @@ def test_taller_cannot_run_the_scenario_simulator(monkeypatch):
 
 CERRADO_PARA_GERENTE = {
     "panel": [("GET", "/calidad"), ("GET", "/panel/tendencia"), ("GET", "/costos-fijos"), ("GET", "/costos-fijos/periodos")],
-    "lotes": [("GET", "/ordenes"), ("GET", "/ordenes/LOT-1"), ("GET", "/fabricacion/casa-vs-taller"),
+    "lotes": [("GET", "/ordenes"), ("GET", "/ordenes/LOT-1"), ("GET", "/ordenes/LOT-1/consumo"), ("GET", "/fabricacion/casa-vs-taller"),
               ("GET", "/ordenes/unidades-por-producto"), ("POST", "/ordenes")],
     "formularios": [("GET", "/formularios"), ("GET", "/formularios/FCO-0001"), ("PUT", "/formularios/FCO-0001"),
                     ("POST", "/formularios"), ("POST", "/formularios/FCO-0001/completar"), ("POST", "/formularios/FCO-0001/validar"),

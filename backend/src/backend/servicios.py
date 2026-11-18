@@ -1093,7 +1093,7 @@ def crear_orden(
 
 # --- Fabricación: lots, workshops, house vs workshop ---------------------------------------------------------
 # Plantilla sheets Lotes, Lote_Productos, Lote_Estados, Talleres, Casa_vs_Taller and Precios_Talleres. A lot's money is
-# never stored: it is derived on every read from the item prices and the product cost of today.
+# never stored: it is derived on every read from the item prices and the product cost at the lot's creation date.
 
 AVISO_SIN_TALLER = "Falta el taller"
 AVISO_SIN_ENVIO = "Falta la fecha de envío"
@@ -1104,7 +1104,7 @@ AVISO_SIN_CANTIDAD = "Falta la cantidad"
 AVISO_SIN_PRECIO_TALLER = "Falta el precio del taller"
 AVISO_SIN_FECHA = "El lote no tiene fecha"
 # Not in the sheet: its blank cost would silently drop the line from the lot total, so the app says it.
-AVISO_SIN_COSTO = "No se puede calcular el costo de hoy del producto"
+AVISO_SIN_COSTO = "No se puede calcular el costo del producto"
 SEVERIDAD_DE_AVISO_DE_LOTE = {
     AVISO_SIN_TALLER: "alta", AVISO_SIN_ENTREGA: "alta", AVISO_SIN_ENVIO: "media", AVISO_SIN_PRODUCTOS: "media",
     AVISO_SIN_CANTIDAD: "media", AVISO_SIN_PRECIO_TALLER: "media", AVISO_SIN_COSTO: "media",
@@ -1440,14 +1440,58 @@ def _armar_lote(lote: LoteDatos, items: list[ItemDatos], info: dict[str, InfoPro
     }
 
 
+def _materiales_por_unidad(
+    session: Session, pares: set[tuple[str, date | None]],
+) -> dict[tuple[str, date | None], Decimal | None]:
+    """Materials per unit (total cost minus its sewing stage) of each (product, date) pair.
+
+    Quoted by the engine at that date: the prices and the dollar in force then (`cotizar_datos`, the same lookup as
+    a saved quote), so a later price or dollar never moves it. A None date is "today" (`_costo_hoy_seguro`).
+    None when the engine cannot price the product at that date (no dollar yet, a price missing, a broken kit).
+    """
+    if not pares:
+        return {}
+    base = cargar_productos(session, sorted({codigo for codigo, _ in pares}))
+    catalogo = expandir_kits(session, base)
+    ctx = cargar_contexto(session)
+    por_codigo = {datos.codigo: datos for datos in base}
+    resultado: dict[tuple[str, date | None], Decimal | None] = {}
+    for codigo, fecha in pares:
+        datos = por_codigo.get(codigo)
+        if datos is None:
+            resultado[(codigo, fecha)] = None
+            continue
+        if fecha is None:
+            costo = _desglose_a_dict(_costo_hoy_seguro(datos, ctx, catalogo)[0])
+        else:
+            try:
+                costo = _desglose_a_dict(cotizar_datos(datos, ctx, fecha, catalogo))
+            except DatosInvalidos:
+                costo = None
+        resultado[(codigo, fecha)] = None if costo is None else costo["total_ars"] - costo["etapas"]["CONFECCION"]
+    return resultado
+
+
 def _armar_lotes(session: Session, **filtros) -> list[dict]:
+    """Lots with their costs. A lot dated on its creation (`fecha_de_envio`) costs its products at that date, frozen;
+    one without a send date keeps costing at today's prices."""
     lotes = _cargar_lotes(session, **filtros)
     items = _cargar_items(session, [lote.id for lote in lotes])
-    info = _info_productos(session, {item.producto for item in items})
+    info = _info_productos(session, {item.producto for item in items}, con_costo=False)
     por_lote: dict[str, list[ItemDatos]] = {}
     for item in items:
         por_lote.setdefault(item.lote, []).append(item)
-    return [_armar_lote(lote, por_lote.get(lote.codigo, []), info) for lote in lotes]
+    envio_de = {lote.codigo: lote.envio for lote in lotes}
+    materiales = _materiales_por_unidad(session, {(item.producto, envio_de[item.lote]) for item in items})
+    resultado = []
+    for lote in lotes:
+        renglones = por_lote.get(lote.codigo, [])
+        info_del_lote = {
+            codigo: replace(info[codigo], materiales=materiales.get((codigo, lote.envio)))
+            for codigo in {item.producto for item in renglones} if codigo in info
+        }
+        resultado.append(_armar_lote(lote, renglones, info_del_lote))
+    return resultado
 
 
 def listar_ordenes(

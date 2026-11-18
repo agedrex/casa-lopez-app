@@ -678,6 +678,46 @@ export type LoteCuero = {
   sin_consumo: { producto: string; producto_nombre: string }[];
 };
 
+/** One supply a product of a lot consumes (GET /ordenes/{codigo}/consumo). Quantities only: no money, the taller reads it. */
+export type ConsumoInsumo = {
+  material: string;
+  material_nombre: string;
+  color: string | null;
+  /** Consumption unit of the material (`m2`, `juego`, `unidad`, ...). */
+  unidad: string;
+  /** Quantity for ONE unit of the product. */
+  por_unidad: string;
+  /** `por_unidad` times the lot quantity, calculated by the API. */
+  total: string;
+};
+
+export type ConsumoProducto = {
+  item: string;
+  producto: string;
+  producto_nombre: string;
+  cantidad: string;
+  insumos: ConsumoInsumo[];
+};
+
+/** Total of one supply across every product of the lot. */
+export type ConsumoTotal = {
+  material: string;
+  material_nombre: string;
+  color: string | null;
+  unidad: string;
+  total: string;
+  productos: string[];
+};
+
+export type ConsumoLote = {
+  lote: string;
+  estado: string;
+  productos: ConsumoProducto[];
+  totales: ConsumoTotal[];
+  /** Products of the lot with no supply loaded: their consumption cannot be counted. */
+  sin_consumo: { producto: string; producto_nombre: string }[];
+};
+
 // Cost panel (GET /panel/costos). Every amount is computed by the API; the front only displays it.
 
 export type MotivoEquilibrio =
