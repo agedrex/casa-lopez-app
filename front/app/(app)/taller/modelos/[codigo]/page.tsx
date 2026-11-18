@@ -12,7 +12,12 @@ import {
 } from "@/components/ui";
 import { apiGet } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
-import { ESTADO_TONE, estadoLabel, modoDeHoja } from "@/lib/formularios";
+import {
+  accionesDeHoja,
+  ESTADO_TONE,
+  estadoLabel,
+  modoDeHoja,
+} from "@/lib/formularios";
 import { sizeLabel } from "@/lib/modelos";
 import { canFillFormularios, hasRole } from "@/lib/permissions";
 import { requireSession } from "@/lib/session";
@@ -166,10 +171,38 @@ export default async function HojaDelModeloPage({
               codigo={hoja.codigo}
               lineas={hoja.lineas}
               modo={modo}
+              acciones={accionesDeHoja(user.role, hoja.estado)}
             />
           </Card>
         </section>
 
+        {hoja.estado === "BORRADOR" ? (
+          <Notice
+            tone="info"
+            title="Esta hoja es un borrador: el taller todavía no la ve"
+          >
+            Es la plantilla de siempre. Cambiala como quieras (agregá, quitá o
+            renombrá filas) y, cuando esté lista, tocá «Enviar al taller».
+          </Notice>
+        ) : null}
+        {hoja.estado === "ENVIADO" && esAdmin ? (
+          <Notice tone="info" title="La hoja está en el taller">
+            Podés seguir cambiando filas mientras el taller la completa.
+          </Notice>
+        ) : null}
+        {hoja.estado === "VALIDADO" &&
+        esAdmin &&
+        (hoja.no_aplicadas ?? []).length > 0 ? (
+          <Notice title="Estas filas no pasaron al modelo">
+            <ul className="mt-1 list-disc space-y-1 pl-5">
+              {(hoja.no_aplicadas ?? []).map((fila) => (
+                <li key={fila.nombre}>
+                  <strong>{fila.nombre}</strong>: {fila.motivo}
+                </li>
+              ))}
+            </ul>
+          </Notice>
+        ) : null}
         {modo === "revisar" ? (
           <section>
             <SectionTitle>Revisión</SectionTitle>

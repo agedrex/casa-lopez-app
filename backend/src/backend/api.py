@@ -19,7 +19,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, Path, Query, Request, UploadFile
 from fastapi.responses import JSONResponse, Response
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 from sqlalchemy.orm import Session
 
 from backend import consumo_lote, cueros, formulario, lote_estados, modelos_foto, ocr_llm, proveedores, reventa, servicios, sheets_client, voz, voz_llm
@@ -38,7 +38,7 @@ router = APIRouter(dependencies=[Depends(require_user)])
 # Access matrix, deny by default: EVERY endpoint carries one of these gates (test_roles.py fails otherwise).
 # `require_role` builds on `require_user`, so no session still answers 401, not 403. SUPUESTO: validar.
 #   admin    everything.
-#   gerente  read only, and only Productos, Modelos and the scenario simulator: product and quote data
+#   gerente  read only (but for saving the sale price of a product), and only Productos, Modelos and the scenario simulator: product and quote data
 #            (LECTURA_PRODUCTOS, which also holds GET /cvu/periodo and the POST /cvu/escenario calculation: it saves
 #            nothing) and what those pages read (LECTURA_GENERAL: products, models, materials, catalogs). Exactly that:
 #            Panel, grid, prices, dollar, colors, categories, lots, workshops, suppliers, leather stock and consumption
@@ -47,7 +47,8 @@ router = APIRouter(dependencies=[Depends(require_user)])
 #            assemble a new product: products and their sheet, models, materials, catalogs (LECTURA_GENERAL) and prices,
 #            dollar, colors, categories (LECTURA_CORTE, which the gerente does not read), but not profitability / sale
 #            prices (gerente + admin) nor the workshop history (admin only).
-# Every write is admin only (ESCRITURA) except cutting and the voice interpreter (CORTES).
+# Every write is admin only (ESCRITURA) except cutting and the voice interpreter (CORTES) and the sale price of a product,
+# which the gerente saves too (POST /productos/{codigo}/precio-venta, gate PRODUCTOS).
 ESCRITURA = [Depends(SOLO_ADMIN)]
 CORTES = [Depends(CORTE)]
 # The admin area (the front also hides it, and re-checks the role in every server action).
@@ -197,6 +198,13 @@ class LoteCueroGrupoOut(Salida):
 class LoteCueroSinConsumoOut(Salida):
     producto: str
     producto_nombre: str
+
+
+class AlcanzaLoteOut(Salida):
+    """Leather check of a lot being created: the same groups as the detail of a lot, without its code or state."""
+
+    cueros: list[LoteCueroGrupoOut]
+    sin_consumo: list[LoteCueroSinConsumoOut]
 
 
 class LoteCueroOut(Salida):
@@ -1017,6 +1025,33 @@ class PrecioVentaOut(Salida):
     precio_final: Decimal | None = None
 
 
+class LoteDelPrecioOut(Salida):
+    codigo: str
+    estado: str
+    fecha: date | None
+    unidades: Decimal
+    costo_por_unidad: Decimal
+    # True for the lot whose cost per unit is the cost basis of the price.
+    usado: bool
+
+
+class PrecioDesdeLotesOut(Salida):
+    """Cost basis (newest finished lot, else today's estimate), net price at a margin and the taxes on top of it."""
+    producto: str
+    fuente_costo: Literal["LOTE", "ESTIMADO"] | None
+    costo_por_unidad: Decimal | None
+    lote_base: str | None
+    lotes: list[LoteDelPrecioOut]
+    margen_pct: Decimal | None
+    precio_neto: Decimal | None
+    impuestos: list[ImpuestoDelPrecioOut]
+    total_impuestos: Decimal | None
+    precio_final: Decimal | None
+    # No active tax with a percentage is loaded: the final price equals the net one and the screen says so.
+    sin_impuestos: bool
+    avisos: list[str]
+
+
 class RentabilidadOut(Salida):
     producto: str
     fuente_precio: Literal["INGRESADO", "GUARDADO", "TRANSFERENCIA"] | None
@@ -1364,6 +1399,9 @@ class RenglonQuitadoOut(Salida):
 
 
 class OrdenDetalleOut(OrdenResumenOut):
+    # S5: the lot adds its cost and units to the variable cost of its month once it is finished (from `cuenta_desde_estado`).
+    cuenta_en_costo_variable: bool
+    cuenta_desde_estado: str
     items: list[RenglonOut]
     estados: list[EstadoOut]
     quitados: list[RenglonQuitadoOut] = []
@@ -1652,6 +1690,21 @@ def listar_cueros(session: Sesion, material: str | None = None, color: str | Non
     return cueros.listar_cueros(session, material, color)
 
 
+class AlcanzaLineaIn(Entrada):
+    producto: Annotated[str, Field(min_length=1)]
+    cantidad: Annotated[Decimal, Field(gt=0, max_digits=12, decimal_places=6)]
+
+
+class AlcanzaLoteIn(Entrada):
+    lineas: Annotated[list[AlcanzaLineaIn], Field(min_length=1)]
+
+
+@router.post("/cueros/alcanza-lote", dependencies=LECTURA_ADMIN, response_model=AlcanzaLoteOut)
+def alcanza_cuero_de_lote(cuerpo: AlcanzaLoteIn, session: Sesion):
+    """Leather check of a lot that is being created: stock minus what the other open lots reserve. Reads only."""
+    return cueros.alcanza_de_lineas(session, [(linea.producto, linea.cantidad) for linea in cuerpo.lineas])
+
+
 @router.get("/cueros/alcanza", dependencies=LECTURA_CORTE, response_model=AlcanzaCueroOut)
 def alcanza_cuero(
     session: Sesion, producto: str, cantidad: Annotated[Decimal, Query(gt=0, max_digits=12, decimal_places=6)],
@@ -1765,6 +1818,16 @@ def historial_de_precio_de_venta(codigo: str, session: Sesion):
     return servicios.listar_precios_de_venta(session, codigo)
 
 
+@router.get("/productos/{codigo}/precio-desde-lotes", dependencies=LECTURA_PRODUCTOS, response_model=PrecioDesdeLotesOut)
+def precio_desde_lotes(
+    codigo: str, session: Sesion,
+    margen: Annotated[Decimal | None, Query(ge=0, lt=100, max_digits=4, decimal_places=1)] = None,
+):
+    """Cost per unit of the newest finished lot (else today's estimate) and, with `margen` (% over the price), the net
+    price = cost / (1 - margin) and the active taxes on top of it; saves nothing."""
+    return servicios.precio_desde_lotes(session, codigo, margen)
+
+
 @router.get("/productos/{codigo}/rentabilidad", dependencies=LECTURA_PRODUCTOS, response_model=RentabilidadOut)
 def rentabilidad_de_producto(
     codigo: str, session: Sesion,
@@ -1855,9 +1918,12 @@ def cambiar_color_de_producto(codigo: str, cuerpo: ProductoColorIn, session: Ses
     return servicios.cambiar_color_de_producto(session, codigo, cuerpo.color)
 
 
-@router.post("/productos/{codigo}/precio-venta", dependencies=ESCRITURA, response_model=PrecioVentaOut, status_code=201)
-def guardar_precio_de_venta(codigo: str, cuerpo: PrecioVentaIn, session: Sesion, usuario: Escritor):
-    """Appends a dated sale price; history is never edited or deleted."""
+@router.post("/productos/{codigo}/precio-venta", response_model=PrecioVentaOut, status_code=201)
+def guardar_precio_de_venta(
+    codigo: str, cuerpo: PrecioVentaIn, session: Sesion, usuario: Annotated[Usuario, Depends(PRODUCTOS)],
+):
+    """Appends a dated sale price; history is never edited or deleted. The only write the gerente has (S4 of
+    flujo-modelos-lotes-precio): the person who chooses the margin saves the price. SUPUESTO: validar con Robert."""
     return servicios.guardar_precio_de_venta(
         session, codigo, precio_ars=cuerpo.precio_ars, vigente_desde=cuerpo.vigente_desde, nota=cuerpo.nota,
         margen=cuerpo.margen, quien=usuario.id,
@@ -2797,6 +2863,16 @@ class FormularioLineaOut(Salida):
     cantidad: Decimal | None
     comentario: str | None
 
+    @computed_field  # the unit of the row (m², horas, $, unidades): one rule, `formulario.unidad_de_fila`
+    @property
+    def unidad(self) -> str:
+        return formulario.unidad_de_fila(self.seccion, self.nombre)
+
+
+class FormularioNoAplicadaOut(Salida):
+    nombre: str
+    motivo: str
+
 
 class FormularioResumenOut(Salida):
     codigo: str
@@ -2820,6 +2896,8 @@ class FormularioOut(FormularioResumenOut):
     lineas: list[FormularioLineaOut]
     # Only the answer of `validar` fills it: the rows with a quantity that matched no material (not saved as supplies).
     sin_material: list[str] | None = None
+    # The answer of `validar`, and the sheet of a VALIDADO form for the admin: every row with a quantity that did not reach the model.
+    no_aplicadas: list[FormularioNoAplicadaOut] | None = None
 
 
 @router.post("/formularios", response_model=FormularioOut, status_code=201)
@@ -2844,9 +2922,9 @@ class ProductoNuevoOut(BaseModel):
 
 @router.post("/productos/nuevo", response_model=ProductoNuevoOut, status_code=201)
 def crear_producto_solo_con_nombre(cuerpo: ProductoNuevoIn, session: Sesion, usuario: SoloAdmin):
-    """New model (name, category, size and notes; no consumption): the app makes the model code and its consumption form,
-    already sent to the workshop, which reads the notes there. Admin only: the taller receives the sent sheet and fills
-    it, but cannot create models (403). The product comes after the admin validates the form.
+    """New model (name, category, size and notes; no consumption): the app makes the model code and its consumption form as a
+    BORRADOR (the admin edits it and sends it with `POST /formularios/{codigo}/enviar`; the workshop reads the notes there).
+    Admin only: the taller receives the sheet once it is sent and fills it, but cannot create models (403). The product comes after the admin validates the form.
     The category must already exist: only the admin creates categories (`POST /categorias`)."""
     return formulario.alta_rapida(session, quien=usuario.id, **cuerpo.model_dump())
 

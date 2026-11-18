@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { consumoRows, fichaSubtitle } from "./ficha-consumo";
+import { consumoRows, fichaSubtitle, parseMargenParam } from "./ficha-consumo";
 import type { Ficha, ModeloDetalle } from "./types";
 
 const ficha = {
@@ -124,4 +124,48 @@ test("the other rows keep their quantities", () => {
   assert.equal(row(rows, "Flex").porUnidad, "Falta el dato");
   assert.equal(row(rows, "Goma EVA").porUnidad, "0 m²");
   assert.equal(row(rows, "Herrajes").porUnidad, "4 USD");
+});
+
+test("S4: herrajes and hilo y cemento do not say the data is missing when the model has supplies of that stage", () => {
+  const conInsumos = {
+    ...modelo,
+    herrajes_usd_por_unidad: null,
+    hilo_y_cemento: null,
+    insumos: [
+      { etapa: "HERRAJES", nombre: "Cierre N5", material: "MAT-HE01" },
+      { etapa: "HILO_CEMENTO", nombre: "Hilo", material: "MAT-HC02" },
+    ],
+  } as unknown as ModeloDetalle;
+  const rows = consumoRows(ficha, conInsumos);
+  assert.equal(row(rows, "Herrajes").porUnidad, "Según los insumos");
+  assert.equal(row(rows, "Hilo y cemento").porUnidad, "Según los insumos");
+  assert.equal(row(rows, "Herrajes").material, "Cierre N5");
+  // Supplies of another stage do not cover the missing amount.
+  const otraEtapa = {
+    ...conInsumos,
+    insumos: [{ etapa: "FLEX", nombre: "Flex", material: "MAT-FX01" }],
+  } as unknown as ModeloDetalle;
+  assert.equal(
+    row(consumoRows(ficha, otraEtapa), "Herrajes").porUnidad,
+    "Falta el dato",
+  );
+});
+
+test("S4: with an amount loaded the model keeps showing it even if it also has supplies", () => {
+  const ambos = {
+    ...modelo,
+    insumos: [{ etapa: "HERRAJES", nombre: "Cierre N5", material: "MAT-HE01" }],
+  } as unknown as ModeloDetalle;
+  assert.equal(row(consumoRows(ficha, ambos), "Herrajes").porUnidad, "4 USD");
+});
+
+test("S4: the margin of the price block takes one decimal at most and stays below 100", () => {
+  assert.equal(parseMargenParam("30"), "30");
+  assert.equal(parseMargenParam(" 30,5 "), "30.5");
+  assert.equal(parseMargenParam("32.5"), "32.5");
+  assert.equal(parseMargenParam("0"), "0");
+  assert.equal(parseMargenParam("99,9"), "99.9");
+  for (const bad of ["", "100", "30,55", "-5", "abc", "3 0", null, undefined]) {
+    assert.equal(parseMargenParam(bad), null, String(bad));
+  }
 });

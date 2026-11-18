@@ -124,9 +124,10 @@ def precio(api, codigo, valor, moneda, unidad):
 
 
 def completar_hoja(api, cantidades, nombre="Zz Cartera insumos"):
-    """Quick-create a model, let the taller fill `cantidades` ({row name: quantity}) and complete it; return (model, form)."""
+    """Quick-create a model, send its sheet, let the taller fill `cantidades` ({row name: quantity}) and complete it; return (model, form)."""
     como("admin")
     datos = api.post("/productos/nuevo", json={"nombre": nombre, "categoria": "Billeteras"}).json()
+    assert api.post(f"/formularios/{datos['formulario']}/enviar").status_code == 200  # the new model's sheet starts as BORRADOR
     como("taller")
     hoja = api.get(f"/formularios/{datos['formulario']}").json()
     for l in hoja["lineas"]:

@@ -3,7 +3,7 @@
 
 import { grupoTitulo, isPositive } from "./cueros";
 import { formatQuantity } from "./format";
-import type { LoteCuero, LoteCueroGrupo } from "./types";
+import type { AlcanzaLote, LoteCueroGrupo } from "./types";
 
 export type EstadoDeCuero = "FALTA" | "ALCANZA" | "YA_CORTADO";
 
@@ -27,7 +27,7 @@ export type ResumenDeCuero = {
   faltan: number;
   /** One line for the top of the section. */
   titular: string;
-  sinConsumo: LoteCuero["sin_consumo"];
+  sinConsumo: AlcanzaLote["sin_consumo"];
 };
 
 function m2(value: string): string {
@@ -63,7 +63,7 @@ function titularDe(faltan: number, total: number): string {
 }
 
 /** Cards for the phone: leathers that are short first, then the ones that fit, then the ones already cut. */
-export function resumenDeCuero(datos: LoteCuero): ResumenDeCuero {
+export function resumenDeCuero(datos: AlcanzaLote): ResumenDeCuero {
   const tarjetas = datos.cueros
     .map((grupo, index): [TarjetaDeCuero, number] => {
       const estado = estadoDeCuero(grupo);

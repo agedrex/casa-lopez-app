@@ -23,14 +23,7 @@ import { type PanelState, UltimoLotePanel } from "./ultimo-lote-panel";
 
 export type Option = { codigo: string; label: string };
 
-export function LoteForm({
-  talleres,
-  nombresCuero,
-}: {
-  talleres: Option[];
-  /** Material code -> name, to label the alternative leathers of the availability panel. */
-  nombresCuero: Record<string, string>;
-}) {
+export function LoteForm({ talleres }: { talleres: Option[] }) {
   const { state, pending, onSubmit } = useActionForm(createOrden);
   // One choice: the factory (a lot made at home) or one workshop. The API takes it as place + workshop.
   const [responsable, setResponsable] = useState("");
@@ -153,7 +146,7 @@ export function LoteForm({
           }
         />
       </fieldset>
-      <CueroPanel filas={filas} nombres={nombresCuero} />
+      <CueroPanel filas={filas} />
       <FormFeedback state={state} />
       <PrimaryButton pending={pending}>
         {pending ? "Guardando…" : "Crear lote"}

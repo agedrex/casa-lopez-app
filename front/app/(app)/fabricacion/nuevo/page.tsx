@@ -5,7 +5,7 @@ import { Card, ErrorNotice, PageHeader } from "@/components/ui";
 import { apiGet } from "@/lib/api";
 import { canWrite } from "@/lib/permissions";
 import { requireSession } from "@/lib/session";
-import type { Material, Taller } from "@/lib/types";
+import type { Taller } from "@/lib/types";
 import { LoteForm } from "./lote-form";
 
 export const metadata: Metadata = { title: "Nuevo lote" };
@@ -43,10 +43,7 @@ export default async function NuevoLotePage() {
   }
 
   // Products are not loaded here: the form searches the whole catalog while the person types.
-  const [talleres, materiales] = await Promise.all([
-    apiGet<Taller[]>("/talleres"),
-    apiGet<Material[]>("/materiales"),
-  ]);
+  const talleres = await apiGet<Taller[]>("/talleres");
   if (!talleres.ok) {
     return (
       <>
@@ -55,12 +52,6 @@ export default async function NuevoLotePage() {
       </>
     );
   }
-
-  // Leather data is a nice-to-have: if it fails the lot can still be created.
-  const todosLosMateriales = materiales.ok ? materiales.data : [];
-  const nombresCuero: Record<string, string> = Object.fromEntries(
-    todosLosMateriales.map((item) => [item.codigo, item.nombre]),
-  );
 
   return (
     <>
@@ -73,7 +64,6 @@ export default async function NuevoLotePage() {
               codigo: t.codigo,
               label: t.nombre,
             }))}
-          nombresCuero={nombresCuero}
         />
       </Card>
     </>

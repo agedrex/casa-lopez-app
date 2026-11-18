@@ -18,6 +18,7 @@ import {
 } from "@/components/ui";
 import { apiGet } from "@/lib/api";
 import { formatArs, formatDate, formatQuantity, todayIso } from "@/lib/format";
+import { costoVariableDelLote } from "@/lib/lote-costo-variable";
 import { nombreDeLote } from "@/lib/lotes";
 import { canWrite, isTallerOnly } from "@/lib/permissions";
 import { collapseSpaces } from "@/lib/productos";
@@ -114,6 +115,7 @@ export default async function LotePage({
           fecha={orden.fecha_de_envio}
         />
         <Summary orden={orden} />
+        <CostoVariable orden={orden} />
         {orden.avisos.length > 0 ? (
           <Notice title="Para revisar en este lote">
             <ul className="list-disc space-y-1 pl-5">
@@ -184,6 +186,18 @@ function Summary({ orden }: { orden: OrdenDetalle }) {
         {formatDate(orden.fecha_de_entrega)}
         {orden.nota ? ` · ${orden.nota}` : ""}
       </p>
+    </section>
+  );
+}
+
+/** How this lot moves the variable cost of its month: its cost and units, and whether it counts already or once finished. */
+function CostoVariable({ orden }: { orden: OrdenDetalle }) {
+  const costo = costoVariableDelLote(orden);
+  return (
+    <section aria-label="Costo variable del mes">
+      <Notice tone="info" title={costo.titulo}>
+        {costo.texto}
+      </Notice>
     </section>
   );
 }

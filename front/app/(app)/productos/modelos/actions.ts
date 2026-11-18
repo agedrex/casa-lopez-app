@@ -56,7 +56,7 @@ function isFailure(value: Consumptions | FormState): value is FormState {
 }
 
 // /productos/nuevo also answers with a consumption form code; this front no longer uses it.
-type AltaModelo = { modelo: string; nombre: string };
+type AltaModelo = { modelo: string; formulario: string; nombre: string };
 
 /**
  * The one way to create a model: name, category, size, an optional photo and notes (no consumptions). We land on the new model, where
@@ -105,7 +105,8 @@ export async function createModelo(
       409: "Ya hay un modelo con ese nombre: agregue algo que lo distinga.",
     });
   }
-  const destino = `/productos/modelos/${encodeURIComponent(result.data.modelo)}`;
+  // The new sheet is a draft: land on it so the admin edits the template and sends it to the workshop.
+  const destino = `/taller/modelos/${encodeURIComponent(result.data.formulario)}`;
   if (archivo) {
     const body = new FormData();
     body.append("archivo", archivo, archivo.name);

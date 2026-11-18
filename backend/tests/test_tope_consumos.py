@@ -94,6 +94,7 @@ def test_the_grid_save_refuses_the_whole_batch_naming_the_model_and_saves_nothin
 def hoja_del_taller(api, nombre):
     como("admin")
     datos = api.post("/productos/nuevo", json={"nombre": nombre, "categoria": "Billeteras"}).json()
+    assert api.post(f"/formularios/{datos['formulario']}/enviar").status_code == 200  # the new model's sheet starts as BORRADOR
     como("taller", "taller-1")
     return datos["formulario"], api.get(f"/formularios/{datos['formulario']}").json()
 

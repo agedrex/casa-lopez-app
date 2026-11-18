@@ -109,8 +109,8 @@ def test_r2_the_model_starts_without_validation_the_name_is_normalized_and_the_s
     assert (modelo.nombre_del_modelo, modelo.validado, modelo.tamano, modelo.categoria_id, modelo.nota) == (
         "CARTERA LUCÍA", False, "CHICO", 3, "con fuelle")
     assert modelo.cuero_m2_por_unidad is None  # consumptions stay missing data until the sheet is validated
-    assert (hoja.creado_por, hoja.estado, hoja.modelo_id, hoja.articulo) == ("taller-1", "ENVIADO", modelo.id, "CARTERA LUCÍA")
-    assert hoja.enviado_en is not None
+    assert (hoja.creado_por, hoja.estado, hoja.modelo_id, hoja.articulo) == ("taller-1", "BORRADOR", modelo.id, "CARTERA LUCÍA")
+    assert hoja.enviado_en is None  # the admin sends it explicitly ("Enviar al taller")
     assert resultado == {"modelo": modelo.codigo, "formulario": hoja.codigo, "nombre": "CARTERA LUCÍA"}
     session.commit.assert_called_once()
 

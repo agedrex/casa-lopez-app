@@ -10,6 +10,8 @@ import { desktopNavForRole, mobileTabs, navForRole } from "./nav";
 import {
   canAccessPath,
   canFillFormularios,
+  canSetPrice,
+  canWrite,
   homePath,
   isTallerOnly,
 } from "./permissions";
@@ -310,7 +312,7 @@ test("admin and gerente matrices hold; taller cannot reach admin-only product pa
 
 // --- The sheet screens (lib/formularios.ts) ---------------------------------------------------------------------------
 
-test("the taller edits a sheet only while it is ENVIADO; the admin reviews a COMPLETADO one; everything else is read only", () => {
+test("the taller edits a sheet only while it is ENVIADO; the admin edits it until it is validated (and reviews a COMPLETADO one); everything else is read only", () => {
   const estados = ["BORRADOR", "ENVIADO", "COMPLETADO", "VALIDADO"] as const;
   assert.deepEqual(
     estados.map((estado) => modoDeHoja("taller", estado)),
@@ -318,10 +320,10 @@ test("the taller edits a sheet only while it is ENVIADO; the admin reviews a COM
   );
   assert.deepEqual(
     estados.map((estado) => modoDeHoja("admin", estado)),
-    ["leer", "leer", "revisar", "leer"],
+    ["editar", "editar", "revisar", "leer"],
   );
   // Admin wins when a user holds both roles; a gerente never edits.
-  assert.equal(modoDeHoja("taller,admin", "ENVIADO"), "leer");
+  assert.equal(modoDeHoja("taller,admin", "ENVIADO"), "editar");
   assert.equal(modoDeHoja("gerente", "ENVIADO"), "leer");
 });
 
@@ -335,10 +337,12 @@ test("a taller may add a photo while the sheet is ENVIADO or when it created it;
 
 test("the rows go to the API as typed: empty is null, comma and dot are the same, a bad number is refused with its row", () => {
   const fila = (cantidad: string, extra = {}) => ({
+    id: "CONSUMO-0",
     seccion: "CONSUMO" as const,
     nombre: "CUERO",
     cantidad,
     comentario: "",
+    unidad: "m²",
     ...extra,
   });
   assert.deepEqual(
@@ -389,13 +393,16 @@ test("the API quantities come back to the editor as a person types them", () => 
       nombre: "CIERRE N5",
       cantidad: "2.000000",
       comentario: null,
+      unidad: "unidades",
     },
   ]);
   assert.deepEqual(fila, {
+    id: "HERRAJE-0",
     seccion: "HERRAJE",
     nombre: "CIERRE N5",
     cantidad: "2",
     comentario: "",
+    unidad: "unidades",
   });
   assert.equal(
     filasDeHoja([
@@ -405,6 +412,7 @@ test("the API quantities come back to the editor as a person types them", () => 
         nombre: "CUERO",
         cantidad: "0.250000",
         comentario: "x",
+        unidad: "m²",
       },
     ])[0].cantidad,
     "0,25",
@@ -429,4 +437,16 @@ test("the mobile menu uses the same groups and order as the desktop sidebar", ()
     tabs.map((tab) => tab.href),
     ["/admin/panel", "/productos", "/fabricacion"],
   );
+});
+
+test("S4: admin and gerente choose the margin and save the sale price, nobody else", () => {
+  assert.equal(canSetPrice("admin"), true);
+  assert.equal(canSetPrice("gerente"), true);
+  assert.equal(canSetPrice("consulta"), true); // legacy name of the gerente
+  assert.equal(canSetPrice("taller"), false);
+  assert.equal(canSetPrice("corte"), false);
+  assert.equal(canSetPrice(null), false);
+  assert.equal(canSetPrice("otro"), false);
+  // The gerente is still read-only for every other write.
+  assert.equal(canWrite("gerente"), false);
 });

@@ -332,6 +332,10 @@ export type RenglonQuitado = {
 };
 
 export type OrdenDetalle = OrdenResumen & {
+  /** The lot already adds its cost and units to the variable cost of its month (it is finished: Lista or Cerrada). */
+  cuenta_en_costo_variable: boolean;
+  /** The state from which a lot counts (`LISTA`). */
+  cuenta_desde_estado: string;
   items: Renglon[];
   estados: EstadoDeOrden[];
   quitados: RenglonQuitado[];
@@ -690,12 +694,16 @@ export type LoteCueroGrupo = {
   productos: string[];
 };
 
-export type LoteCuero = {
+/** The leathers of a lot, against the stock and what the other open lots reserve; no code or state yet while it is being created. */
+export type AlcanzaLote = {
+  cueros: LoteCueroGrupo[];
+  /** Products without a model, a leather or a leather consumption: they cannot be counted. */
+  sin_consumo: { producto: string; producto_nombre: string }[];
+};
+
+export type LoteCuero = AlcanzaLote & {
   lote: string;
   estado: string;
-  cueros: LoteCueroGrupo[];
-  /** Products of the lot without a model, a leather or a leather consumption: they cannot be counted. */
-  sin_consumo: { producto: string; producto_nombre: string }[];
 };
 
 /** One supply a product of a lot consumes (GET /ordenes/{codigo}/consumo). Quantities only: no money, the taller reads it. */
@@ -871,6 +879,34 @@ export type PrecioVenta = {
   impuestos?: ImpuestoDelPrecio[];
   total_impuestos?: string | null;
   precio_final?: string | null;
+};
+
+// A finished lot that made the product, with its cost per unit; `usado` marks the one the price starts from.
+// Mirrors LoteDelPrecioOut and PrecioDesdeLotesOut in api.py (GET /productos/{codigo}/precio-desde-lotes).
+export type LoteDelPrecio = {
+  codigo: string;
+  estado: string;
+  fecha: string | null;
+  unidades: string;
+  costo_por_unidad: string;
+  usado: boolean;
+};
+
+export type PrecioDesdeLotes = {
+  producto: string;
+  // LOTE: the cost per unit of the newest finished lot; ESTIMADO: today's computed cost (no finished lot yet).
+  fuente_costo: "LOTE" | "ESTIMADO" | null;
+  costo_por_unidad: string | null;
+  lote_base: string | null;
+  lotes: LoteDelPrecio[];
+  // Percentage over the price ("30" = 30 %); null when no margin was asked for.
+  margen_pct: string | null;
+  precio_neto: string | null;
+  impuestos: ImpuestoDelPrecio[];
+  total_impuestos: string | null;
+  precio_final: string | null;
+  sin_impuestos: boolean;
+  avisos: string[];
 };
 
 export type VeredictoCvu = "NO_CUBRE_VARIABLE" | "MC_BAJO" | "SALUDABLE";
@@ -1347,7 +1383,12 @@ export type FormularioLinea = {
   nombre: string;
   cantidad: string | null;
   comentario: string | null;
+  /** Unit of the row (m², horas, $, unidades): decided by the API from the row name and section. */
+  unidad: string;
 };
+
+/** A row with a quantity that validating did not copy to the model, and why. */
+export type FormularioNoAplicada = { nombre: string; motivo: string };
 
 export type FormularioDetalle = FormularioResumen & {
   nota: string | null;
@@ -1357,6 +1398,8 @@ export type FormularioDetalle = FormularioResumen & {
   lineas: FormularioLinea[];
   /** Only the answer of "validar": rows with a quantity that matched no material. */
   sin_material?: string[] | null;
+  /** The answer of "validar" and the sheet of a VALIDADO form (admin only): every row that did not reach the model. */
+  no_aplicadas?: FormularioNoAplicada[] | null;
 };
 
 /** What `POST /productos/nuevo` answers: the codes of the new model and of its sheet. */

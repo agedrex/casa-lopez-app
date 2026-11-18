@@ -4,7 +4,7 @@ from collections import defaultdict
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, true
 from sqlalchemy.orm import Session
 
 from backend.models import (
@@ -331,19 +331,21 @@ def _m2_texto(valor: Decimal) -> str:
     return (texto.rstrip("0").rstrip(".") if "." in texto else texto).replace(".", ",")
 
 
-def _reservado_por_otros(session: Session, lote_id: int) -> dict[tuple[int, int | None], dict[str, Decimal]]:
+def _reservado_por_otros(session: Session, lote_id: int | None) -> dict[tuple[int, int | None], dict[str, Decimal]]:
     """Leather still to cut for the OTHER open lots, by (material id, color id) and lot code (a derived reservation).
 
     Same criteria as the summary of the lot: live lines only, no waste, a line needs `consumption x quantity`. What was already
     cut against a line has left the stock through its CORTE movements, so it is taken out here (per line, never below 0).
     Closed lots (CERRADA) reserve nothing. SUPUESTO: validar con Robert: it reserves from the creation of the lot, and it only informs.
+    With `lote_id=None` (a lot that is still being created) every open lot reserves.
     """
     filas = session.execute(
         select(OrdenItem, OrdenFabricacion.codigo, Producto, Modelo.cuero_m2_por_unidad)
         .join(OrdenFabricacion, OrdenFabricacion.id == OrdenItem.orden_fabricacion_id)
         .join(Producto, Producto.id == OrdenItem.producto_id)
         .join(Modelo, Modelo.id == Producto.modelo_id)
-        .where(OrdenFabricacion.id != lote_id, OrdenFabricacion.estado != "CERRADA", ~renglon_quitado(),
+        .where(OrdenFabricacion.id != lote_id if lote_id is not None else true(),
+               OrdenFabricacion.estado != "CERRADA", ~renglon_quitado(),
                Producto.cuero_id.is_not(None), Modelo.cuero_m2_por_unidad > ZERO)
         .order_by(OrdenFabricacion.id, OrdenItem.id)).all()
     cortado = dict(session.execute(
@@ -396,21 +398,40 @@ def resumen_de_lote(session: Session, codigo: str) -> dict:
     grupos: dict[tuple[int, int | None], dict] = {}
     sin_consumo: list[str] = []
     for item, producto, consumo in items:
-        if consumo is None or consumo <= ZERO or producto.cuero_id is None:
-            if producto.codigo not in sin_consumo:
-                sin_consumo.append(producto.codigo)
-            continue
-        necesario = consumo * item.cantidad
-        ya_cortado = min(cortado.get(item.id, ZERO), necesario)
-        grupo = grupos.setdefault((producto.cuero_id, producto.color_id), {
-            "necesario": ZERO, "ya_cortado": ZERO, "productos": [],
-        })
-        grupo["necesario"] += necesario
-        grupo["ya_cortado"] += ya_cortado
-        if producto.codigo not in grupo["productos"]:
-            grupo["productos"].append(producto.codigo)
+        _sumar_necesidad(grupos, sin_consumo, producto, consumo, item.cantidad, cortado.get(item.id, ZERO))
+    return {
+        "lote": orden.codigo, "estado": orden.estado,
+        **_cueros_contra_el_stock(session, grupos, sin_consumo, _reservado_por_otros(session, orden.id)),
+    }
+
+
+def _sumar_necesidad(
+    grupos: dict[tuple[int, int | None], dict], sin_consumo: list[str], producto: Producto, consumo: Decimal | None,
+    cantidad: Decimal, ya_cortado: Decimal,
+) -> None:
+    """Add one line to its leather group (`consumption x quantity`, less what was already cut, never below 0)."""
+    if consumo is None or consumo <= ZERO or producto.cuero_id is None:
+        if producto.codigo not in sin_consumo:
+            sin_consumo.append(producto.codigo)
+        return
+    necesario = consumo * cantidad
+    grupo = grupos.setdefault((producto.cuero_id, producto.color_id), {"necesario": ZERO, "ya_cortado": ZERO, "productos": []})
+    grupo["necesario"] += necesario
+    grupo["ya_cortado"] += min(ya_cortado, necesario)
+    if producto.codigo not in grupo["productos"]:
+        grupo["productos"].append(producto.codigo)
+
+
+def _cueros_contra_el_stock(
+    session: Session, grupos: dict[tuple[int, int | None], dict], sin_consumo: list[str],
+    reservas: dict[tuple[int, int | None], dict[str, Decimal]],
+) -> dict:
+    """The leathers of a lot (existing or being created) against the stock and what the other open lots reserve.
+
+    The one place that decides `libre`, `alcanza`, `faltante` and `mensaje`: the lot detail (`resumen_de_lote`) and the
+    check while creating a lot (`alcanza_de_lineas`) both end here, so they cannot disagree.
+    """
     opciones = _opciones_disponibles(session)
-    reservas = _reservado_por_otros(session, orden.id)
     nombres_de_materiales = {m.id: m for m in session.scalars(
         select(Material).where(Material.id.in_([cuero for cuero, _ in grupos])))}
     nombres_de_colores = {c.id: c.nombre for c in session.scalars(
@@ -440,6 +461,28 @@ def resumen_de_lote(session: Session, codigo: str) -> dict:
     nombres = _info_productos(session, set(sin_consumo), con_costo=False)
     resultado.sort(key=lambda g: (g["material_nombre"], g["color"] or "", g["material"]))
     return {
-        "lote": orden.codigo, "estado": orden.estado, "cueros": resultado,
+        "cueros": resultado,
         "sin_consumo": [{"producto": c, "producto_nombre": nombres[c].nombre if c in nombres else c} for c in sin_consumo],
     }
+
+
+def alcanza_de_lineas(session: Session, lineas: list[tuple[str, Decimal]]) -> dict:
+    """The leather check of a lot that is still being created: (product code, units) lines, nothing is saved.
+
+    S6 of flujo-modelos-lotes-precio. It ends in the same `_cueros_contra_el_stock` as the detail of a created lot: lines
+    sharing a leather are added up and the stock is discounted by what EVERY open lot still has to cut (the lot does not
+    exist yet, so none is excluded). So "Sí, alcanza" here means the same as the detail the lot will show. Informative only.
+    """
+    codigos = sorted({codigo for codigo, _ in lineas})
+    filas = {producto.codigo: (producto, consumo) for producto, consumo in session.execute(
+        select(Producto, Modelo.cuero_m2_por_unidad).outerjoin(Modelo, Modelo.id == Producto.modelo_id)
+        .where(Producto.codigo.in_(codigos))).all()}
+    for codigo in codigos:
+        if codigo not in filas:
+            raise NoEncontrado(f"No existe el producto {codigo}.")
+    grupos: dict[tuple[int, int | None], dict] = {}
+    sin_consumo: list[str] = []
+    for codigo, cantidad in lineas:
+        producto, consumo = filas[codigo]
+        _sumar_necesidad(grupos, sin_consumo, producto, consumo, cantidad, ZERO)
+    return _cueros_contra_el_stock(session, grupos, sin_consumo, _reservado_por_otros(session, None))

@@ -10,6 +10,27 @@ Pantalla `/admin/panel` (solo `admin`). Tiene tres vistas, en el parámetro `?vi
 
 Un `?vista=` desconocido (por ejemplo el viejo `gastos`) cae en **Costos**.
 
+## Unidades producidas y costo variable del mes
+
+SUPUESTO: validar con Robert (QA 2026-11-18, S5). El panel de **Costos** divide los costos fijos por las unidades producidas del mes y
+promedia el costo variable de esas mismas unidades. Una unidad cuenta como producida **solo cuando su lote está terminado**
+(estado `LISTA` o `CERRADA`; "desde que se termina y el taller ya terminó"). Un lote `PLANIFICADA`, `EN_CORTE`, `CORTADA` o
+`EN_CONFECCION` no suma unidades ni costo variable. Antes el panel contaba todos los lotes y `/unidades` todos menos los planificados
+(21,5 contra 13 en el QA), y crear un lote subía el costo variable al instante.
+
+- **Un solo criterio** (`servicios.lotes_que_cuentan`) para el panel, la tendencia, el CVU del mes (`cvu`, `equilibrio`, `fijo_por_unidad`,
+  `costo_variable_total`), la pantalla `/unidades` y el stock de fábrica. No hay otro lugar donde se cuenten unidades de lotes.
+- **Costo variable del mes = el mismo conjunto de lotes.** `costo_variable_total` y `costo_variable_por_unidad` suman solo renglones de
+  lotes terminados del mes. Elección no obvia: no hay un costo variable "en curso" aparte; se podría mostrar el costo de los lotes
+  abiertos como adelanto, pero se dejó afuera para que unidades y costo no puedan discrepar.
+- **Mes del lote:** el de su entrega o, si no tiene, el de su envío (sin cambios). No es el mes en que pasó a `LISTA`: un lote enviado
+  en octubre y terminado en noviembre cuenta en octubre, y octubre cambia cuando se termina. Alternativa si molesta: contar en el mes del
+  cambio de estado a `LISTA` (pide leer `orden_estado`).
+- **Avisos:** `SIN_UNIDADES` dice "No hay lotes terminados en este mes…" y `VOLUMEN_PRODUCIDO` aclara que el volumen es lo producido en
+  lotes terminados, no lo vendido.
+- **En cada lote** (`/fabricacion/[codigo]`, solo admin) aparece cuánto mueve el costo variable: su costo, sus unidades y si ya suma al
+  mes o suma cuando llegue a Lista.
+
 ## La grilla de costos de cada área
 
 - Es la grilla de costos fijos que antes estaba en "Gastos del negocio" / Costos fijos, movida a cada área. Lee `GET /costos-fijos?periodo=` y filtra por `fabrica_o_tienda`.

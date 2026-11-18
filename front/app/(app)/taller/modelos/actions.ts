@@ -12,7 +12,8 @@ import { denyUnlessAdmin, fromFailure } from "@/lib/write-guard";
 
 /**
  * Admin and taller work on the sheet of a model (only the admin creates models). The page already hides the screens from the other roles, but anyone can
- * post to a server action, so the role is checked again here; the backend checks it a third time (403).
+ * post to a server action, so the role is checked again here; the backend checks it a third time (403). The article and the note
+ * are read fresh and sent back as they are: this screen edits rows only.
  */
 async function denyUnlessFiller(): Promise<FormState | null> {
   const session = await getSession();
@@ -97,6 +98,29 @@ export async function completarHoja(
   return ok("Hoja completada: quedó en revisión del administrador.");
 }
 
+/** Admin only: saves what is on screen and sends the sheet (a draft) to the workshop: "Enviar al taller". */
+export async function enviarHojaAlTaller(
+  codigo: string,
+  filas: FilaHoja[],
+): Promise<FormState> {
+  const check = await denyUnlessAdmin();
+  if (check.denied) return check.denied;
+  const guardado = await guardarFilas(codigo, filas);
+  if (!guardado.ok) return guardado.state;
+
+  const enviada = await apiPost<FormularioDetalle>(
+    `/formularios/${encodeURIComponent(codigo)}/enviar`,
+    {},
+  );
+  if (!enviada.ok) {
+    return fromFailure(enviada, {
+      409: "La hoja ya no se puede enviar. Actualizá la página.",
+    });
+  }
+  refresh();
+  return ok("Hoja enviada al taller.");
+}
+
 /** Admin only: the measures and supplies of the sheet become the recipe of the model. */
 export async function validarHoja(codigo: string): Promise<FormState> {
   const check = await denyUnlessAdmin();
@@ -107,15 +131,13 @@ export async function validarHoja(codigo: string): Promise<FormState> {
   );
   if (!validada.ok) return fromFailure(validada);
   refresh();
-  const sinMaterial = validada.data.sin_material ?? [];
+  // The page lists the same rows for good (it reads them again from the validated sheet); this is the message of the moment.
+  const noAplicadas = validada.data.no_aplicadas ?? [];
   return {
-    ...ok("Hoja validada: las medidas pasaron al modelo."),
-    avisos:
-      sinMaterial.length > 0
-        ? [
-            `No se guardaron como insumos porque no coinciden con ningún material: ${sinMaterial.join(", ")}.`,
-          ]
-        : [],
+    ...ok("Hoja validada."),
+    avisos: noAplicadas.map(
+      (fila) => `No se aplicó al modelo «${fila.nombre}»: ${fila.motivo}`,
+    ),
   };
 }
 

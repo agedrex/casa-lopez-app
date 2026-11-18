@@ -48,6 +48,7 @@ def hoja_enviada(api, nombre, cantidades=None):
     como("admin")
     datos = api.post("/productos/nuevo", json={"nombre": nombre, "categoria": "Billeteras"}).json()
     codigo = datos["formulario"]
+    assert api.post(f"/formularios/{codigo}/enviar").status_code == 200  # the new model's sheet starts as BORRADOR
     como("taller", "taller-1")
     hoja = api.get(f"/formularios/{codigo}").json()
     guardar(api, codigo, hoja, cantidades or {})

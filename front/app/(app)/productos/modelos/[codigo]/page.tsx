@@ -186,6 +186,11 @@ export default async function ModeloPage({
                       <span className="text-muted">
                         Creada el {formatInstantDate(hoja.created_at)}
                       </span>
+                      {hoja.estado === "BORRADOR" ? (
+                        <span className="text-muted">
+                          Borrador: editala y enviala al taller desde la hoja.
+                        </span>
+                      ) : null}
                     </li>
                   ))}
                 </ul>

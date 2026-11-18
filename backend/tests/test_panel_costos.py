@@ -20,7 +20,7 @@ ANTERIOR = "2026-10"
 
 def lote(codigo, entrega, envio=None, id=1):
     return LoteDatos(id=id, codigo=codigo, donde="TALLER", taller=None, taller_nombre=None, persona=None,
-                     persona_nombre=None, envio=envio, entrega=entrega, estado="CERRADO", nota=None)
+                     persona_nombre=None, envio=envio, entrega=entrega, estado="CERRADA", nota=None)
 
 
 def item(lote_codigo, producto, cantidad, id=1):
@@ -173,7 +173,7 @@ def test_pending_and_fictitious_fixed_costs_warn_that_the_break_even_is_not_reli
 def test_a_clean_panel_only_carries_the_volume_notice():
     resultado = panel()
     assert codigos(resultado) == ["VOLUMEN_PRODUCIDO"]
-    assert resultado["avisos"][0]["texto"] == "El volumen es lo producido en lotes, no lo vendido."
+    assert resultado["avisos"][0]["texto"] == "El volumen es lo producido en lotes terminados (Lista o Cerrada), no lo vendido."
 
 
 def test_the_volume_notice_is_always_present():
