@@ -24,7 +24,7 @@ from backend.costeo import (
 )
 from backend.models import (
     Categoria, Color, CompraReventa, Cotizacion, Etapa, FormularioConsumo, GastoPeriodo, Impuesto, KitComponente, Material, Modelo,
-    ModeloFoto, ModeloInsumo, MovimientoCuero, OrdenEstado, OrdenFabricacion, OrdenItem, Parametro, Persona, PrecioMaterial, PrecioVenta, Producto,
+    ModeloFoto, ModeloInsumo, MovimientoCuero, OrdenEstado, OrdenFabricacion, OrdenItem, Parametro, PedidoLinea, PedidoProveedor, Persona, PiezaCuero, PrecioMaterial, PrecioVenta, Producto,
     ProductoReventa, Proveedor, RecetaLinea, Taller, TipoCambio, Transferencia, Venta, RENGLON_QUITADO, renglon_quitado,
 )
 from backend.receta import (
@@ -959,6 +959,33 @@ def agregar_componente(session: Session, codigo_kit: str, *, componente: str, ca
     return ficha_producto(session, codigo_kit)
 
 
+def _precio_repetido(session: Session, material: Material, color_id: int | None, dia: date) -> str:
+    """Says what is already there for that material, colour and date (the rule is the same: only one), so the person
+    sees which price, which order and which leather pieces to look at instead of a generic refusal."""
+    mismo_color = PrecioMaterial.color_id.is_(None) if color_id is None else PrecioMaterial.color_id == color_id
+    existente = session.execute(
+        select(PrecioMaterial.id, PrecioMaterial.codigo).where(
+            PrecioMaterial.material_id == material.id, PrecioMaterial.vigente_desde == dia, mismo_color)
+    ).first()
+    texto = f"{material.nombre} para el {dia.strftime('%d/%m/%Y')}"
+    if color_id is not None:
+        texto += f" en el color {session.scalar(select(Color.nombre).where(Color.id == color_id))}"
+    detalle = []
+    if existente is not None:
+        pedido = session.scalar(
+            select(PedidoProveedor.codigo).join(PedidoLinea, PedidoLinea.pedido_id == PedidoProveedor.id)
+            .where(PedidoLinea.precio_material_id == existente.id).limit(1))
+        detalle.append(f"{existente.codigo}" + (f" (del pedido {pedido})" if pedido else ""))
+    piezas = session.scalars(
+        select(PiezaCuero.codigo).where(PiezaCuero.material_id == material.id, PiezaCuero.fecha_de_compra == dia)
+        .order_by(PiezaCuero.codigo).limit(6)).all()
+    if piezas:
+        detalle.append("las piezas " + ", ".join(piezas[:5]) + (" y otras" if len(piezas) > 5 else ""))
+    ya_existe = f": {' y '.join(detalle)}" if detalle else ""
+    return (f"Ya hay un precio de {texto}{ya_existe}. Un material admite un solo precio (y un solo pedido) por fecha: "
+            "usá otra fecha, o sumá lo nuevo al pedido que ya está cargado.")
+
+
 def crear_precio(
     session: Session, *, material: str, color: str | None, proveedor: str | None, precio: Decimal, moneda: str,
     unidad_del_precio: str, iva_incluido: bool, vigente_desde: date, nota_fuente: str | None = None,
@@ -987,7 +1014,10 @@ def crear_precio(
         unidad_del_precio=unidad_del_precio, iva_incluido=iva_incluido, vigente_desde=vigente_desde,
         nota_fuente=nota_fuente,
     )
-    _insertar(session, fila, "Ya hay un precio de ese material y color para esa fecha; cargá uno con otra fecha.")
+    try:
+        _insertar(session, fila, "")
+    except Conflicto:
+        raise Conflicto(_precio_repetido(session, material_fila, fila.color_id, vigente_desde)) from None
     if commit:
         session.commit()
     return next(p for p in listar_precios(session, material, vigente_desde) if p["codigo"] == fila.codigo)
