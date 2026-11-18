@@ -18,7 +18,7 @@ HASTA = "2026-11"
 
 def lote(codigo, entrega, id=1):
     return LoteDatos(id=id, codigo=codigo, donde="TALLER", taller=None, taller_nombre=None, persona=None,
-                     persona_nombre=None, envio=None, entrega=entrega, estado="CERRADO", nota=None)
+                     persona_nombre=None, envio=None, entrega=entrega, estado="CERRADA", nota=None)
 
 
 def item(lote_codigo, producto, cantidad, id=1):

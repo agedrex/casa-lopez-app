@@ -246,7 +246,7 @@ def _planificar_lotes(
         if periodo > servicios.mes_de(hoy):
             meta = 0  # a future month: planned only
         elif actual:
-            meta = (3, 2, 1, 4)[j % 4]  # in progress: how many steps of CAMINO are done; never closed this month
+            meta = (4, 3, 2, 1)[j % 4]  # in progress: steps of CAMINO done; the first lot is LISTA (it counts as produced), none closed
         else:
             meta = len(CAMINO)
         pasos = tuple((estado, min(envio + timedelta(days=dias), hoy)) for estado, dias in zip(CAMINO[:meta], OFFSETS))

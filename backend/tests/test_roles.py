@@ -146,7 +146,9 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
         "/personas", "/personas/{codigo}/activo", "/colores", "/categorias", "/modelos", "/modelos/{codigo}/validado",
         "/impuestos", "/impuestos/{codigo}/alicuota", "/impuestos/{codigo}/activo",
         "/modelos/{codigo}/consumos", "/sync/sheets", "/costos-fijos/lote", "/modelos/consumos/lote",
-        "/productos/precios-lote", "/materiales/lote")},
+        "/productos/precios-lote", "/materiales/lote",
+        # Leather check of a lot being created: a POST only because of its body, it saves nothing (test_cueros_creacion.py).
+        "/cueros/alcanza-lote")},
     # The scenario simulator: a POST only because of its body, it computes and saves nothing (test_escenarios_gerente.py).
     ("POST", "/cvu/escenario"): PRODUCTOS,
     # CVU of the factory and of the store and the fixed-cost summary: admin only (they show the whole business spending).
@@ -261,7 +263,7 @@ def test_admin_only_routes_refuse_everyone_else_without_calling_the_service(monk
     ("admin", [("GET", "/panel/costos"), ("GET", "/grilla"), ("GET", "/precios"), ("GET", "/dolar"), ("GET", "/colores"),
                ("GET", "/categorias"), ("GET", "/cvu/periodo"), ("GET", "/costos-fijos"), ("GET", "/ordenes"), ("GET", "/productos"),
                ("GET", "/cueros"), ("GET", "/voz/estado"), ("POST", "/cvu/escenario"), ("POST", "/ordenes"),
-               ("POST", "/productos"), ("POST", "/cueros/PZC-1/cortes"), ("POST", "/formularios"),
+               ("POST", "/productos"), ("POST", "/cueros/PZC-1/cortes"), ("POST", "/cueros/alcanza-lote"), ("POST", "/formularios"),
                ("POST", "/proveedores/PRV-1/pedidos"), ("GET", "/proveedores/PRV-1/pedidos"),
                ("GET", "/proveedores/PRV-1/productos"), ("POST", "/proveedores/PRV-1/productos"), ("PUT", "/formularios/FCO-0001"), ("POST", "/formularios/FCO-0001/validar")]),
 ])

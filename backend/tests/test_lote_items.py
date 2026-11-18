@@ -165,7 +165,7 @@ def test_removing_a_line_keeps_the_row_logs_it_and_takes_it_out_of_the_lot(api):
 def test_a_removed_line_no_longer_counts_anywhere_else(api):
     client, role, _ = api
     a = producto(client)
-    codigo, (uno,) = lote(client, [(a, "4")], estado="EN_CORTE")  # a PLANIFICADA lot does not count as produced
+    codigo, (uno,) = lote(client, [(a, "4")], estado="LISTA")  # only a finished lot (LISTA, CERRADA) counts as produced
     antes = {f["producto"]: f for f in client.get("/ordenes/unidades-por-producto").json()["productos"]}
     assert D(antes[a]["unidades"]) == 4 and antes[a]["lotes"] == 1
     assert client.delete(f"/ordenes/{codigo}/items/{uno}").status_code == 200

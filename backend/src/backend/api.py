@@ -199,6 +199,13 @@ class LoteCueroSinConsumoOut(Salida):
     producto_nombre: str
 
 
+class AlcanzaLoteOut(Salida):
+    """Leather check of a lot being created: the same groups as the detail of a lot, without its code or state."""
+
+    cueros: list[LoteCueroGrupoOut]
+    sin_consumo: list[LoteCueroSinConsumoOut]
+
+
 class LoteCueroOut(Salida):
     lote: str
     estado: str
@@ -1364,6 +1371,9 @@ class RenglonQuitadoOut(Salida):
 
 
 class OrdenDetalleOut(OrdenResumenOut):
+    # S5: the lot adds its cost and units to the variable cost of its month once it is finished (from `cuenta_desde_estado`).
+    cuenta_en_costo_variable: bool
+    cuenta_desde_estado: str
     items: list[RenglonOut]
     estados: list[EstadoOut]
     quitados: list[RenglonQuitadoOut] = []
@@ -1650,6 +1660,21 @@ def historial_de_material(codigo: str, session: Sesion):
 @router.get("/cueros", dependencies=LECTURA_CORTE, response_model=list[GrupoCueroOut])
 def listar_cueros(session: Sesion, material: str | None = None, color: str | None = None):
     return cueros.listar_cueros(session, material, color)
+
+
+class AlcanzaLineaIn(Entrada):
+    producto: Annotated[str, Field(min_length=1)]
+    cantidad: Annotated[Decimal, Field(gt=0, max_digits=12, decimal_places=6)]
+
+
+class AlcanzaLoteIn(Entrada):
+    lineas: Annotated[list[AlcanzaLineaIn], Field(min_length=1)]
+
+
+@router.post("/cueros/alcanza-lote", dependencies=LECTURA_ADMIN, response_model=AlcanzaLoteOut)
+def alcanza_cuero_de_lote(cuerpo: AlcanzaLoteIn, session: Sesion):
+    """Leather check of a lot that is being created: stock minus what the other open lots reserve. Reads only."""
+    return cueros.alcanza_de_lineas(session, [(linea.producto, linea.cantidad) for linea in cuerpo.lineas])
 
 
 @router.get("/cueros/alcanza", dependencies=LECTURA_CORTE, response_model=AlcanzaCueroOut)

@@ -154,7 +154,9 @@ SOLO_ADMIN = {"/parametros/{codigo}", "/personas", "/personas/{codigo}/activo", 
               "/formularios", "/formularios/{codigo}/enviar", "/formularios/{codigo}/devolver",
               "/formularios/{codigo}/validar", "/formularios/{codigo}/duplicar",
               # New model (admin only; the taller only receives its sheet): see test_taller_modelos.py and test_roles.py.
-              "/productos/nuevo"}
+              "/productos/nuevo",
+              # Leather check of a lot being created: reads only, a POST because of its body (see test_cueros_creacion.py).
+              "/cueros/alcanza-lote"}
 # Admin and taller: cutting, the voice interpreter and the workshop price a taller loads by voice.
 SOLO_CORTE = {"/cueros/{codigo}/cortes", "/cueros/{codigo}/sobrante", "/voz/interpretar",
               "/ordenes/{codigo}/items/{item}/precios", "/formularios/{codigo}/completar",

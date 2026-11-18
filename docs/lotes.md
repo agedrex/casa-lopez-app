@@ -61,6 +61,37 @@ es simétrica: cada lote ve lo que necesitan todos los otros, sin orden de llega
 dice "alcanza". Alternativa: reservar solo lo de lotes más viejos (el primero alcanza, el segundo no). (3) La reserva solo informa, no
 bloquea crear ni avanzar. (4) El texto del mensaje.
 
+### El chequeo al crear el lote usa la misma disponibilidad (S6, QA 2026-11-18)
+
+Antes, "Nuevo lote" preguntaba por cada renglón a `GET /cueros/alcanza` (solo stock) y decía "Sí, alcanza. Disponible 3 m²"; el lote
+recién creado decía "Falta 1,25 m² · Reservado por LOT-0001, …: 17,9 m²". Ahora el alta usa `POST /cueros/alcanza-lote`
+(`cueros.alcanza_de_lineas`, solo `admin`, no guarda nada):
+
+- Recibe todos los renglones del lote (`{"lineas": [{"producto", "cantidad"}]}`), los suma por cuero (material + color) y devuelve los
+  mismos grupos que `GET /ordenes/{codigo}/cuero` (`necesario`, `disponible`, `reservado_por_otros`, `reservado_por`, `libre`,
+  `alcanza`, `faltante`, `sobrante`, `mensaje`), sin `lote` ni `estado`.
+- Los dos caminos terminan en `cueros._cueros_contra_el_stock`: es el único lugar que decide `libre`, `alcanza`, `faltante` y
+  `mensaje`, así que el alta y el detalle no pueden discrepar. Como el lote todavía no existe, reservan **todos** los lotes abiertos
+  (en el detalle se excluye el propio lote).
+- Dos renglones que comparten cuero se suman (antes cada uno se comparaba solo contra el stock).
+- El mensaje del alta explica la reserva: "No alcanza: faltan X m² de … Hay Y m² en stock y LOT-0001 tiene reservados Z m²", y la
+  tarjeta muestra "Hay", "Reservado por …" y "Libre para este lote". Sigue siendo solo informativo.
+- `GET /cueros/alcanza` (pantalla Corte) **no cambió**: responde solo con el stock.
+
+## Unidades producidas y costo variable (S5, QA 2026-11-18)
+
+SUPUESTO: validar con Robert. Decisión del usuario: una unidad cuenta como producida "desde que se termina y el taller ya terminó".
+Se traduce a **lote terminado = estado `LISTA` o `CERRADA`** (`servicios.ESTADOS_TERMINADOS`). `PLANIFICADA`, `EN_CORTE`, `CORTADA` y
+`EN_CONFECCION` no cuentan, ni en unidades ni en costo variable.
+
+- Un solo criterio, `servicios.lotes_que_cuentan(lotes, periodo)`: lo leen el panel de costos (`/admin/panel`, incluido el CVU del
+  mes), la tendencia, la pantalla `/unidades` y el stock de fábrica (`ESTADOS_PRODUCIDOS` es la misma constante).
+- El mes de un lote es el de su entrega y, si no tiene, el de su envío (como ya hacía el panel). Antes `/unidades` filtraba solo por
+  envío; ahora coincide. Un lote sin ninguna fecha no cuenta en ningún mes (con "Ver todo" de `/unidades` sí aparece).
+- El detalle de cada lote (`GET /ordenes/{codigo}`) trae `cuenta_en_costo_variable` y `cuenta_desde_estado` (`LISTA`); la pantalla
+  muestra su costo y sus unidades y si ya suma al mes o suma cuando llegue a Lista. La lista de lotes no cambia.
+- Efecto buscado: crear un lote ya no mueve el costo variable ni las unidades del panel; recién lo hace al pasar a `LISTA`.
+
 ## Front
 
 La pantalla del lote (`/fabricacion/[codigo]`) ofrece en "Cambiar el estado" solo el estado siguiente, y los botones de cambio de

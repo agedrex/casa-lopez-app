@@ -1430,6 +1430,37 @@ def referencia_de_precio(
     return respuesta("SIN_DATOS", [])
 
 
+# --- What counts as produced ---------------------------------------------------------------------------------
+# SUPUESTO: validar con Robert (QA 2026-11-18, "desde que se termina y el taller ya terminó"). A unit counts as produced,
+# and its cost as variable cost of the month, only once its lot is finished: LISTA (the workshop is done) or CERRADA.
+# This is the ONE criterion: the cost panel, the monthly trend (and the cost-volumen figures that consume units), the
+# /unidades screen and the factory stock all read it. The month a lot counts in is `LoteDatos.fecha` (delivery, else
+# sending); a lot with no date counts in no month.
+ESTADOS_TERMINADOS = ("LISTA", "CERRADA")
+# First state in which a lot counts (the one the screens name when they say "cuenta cuando esté terminado").
+ESTADO_DESDE_EL_QUE_CUENTA = "LISTA"
+
+
+def lote_terminado(estado: str) -> bool:
+    return estado in ESTADOS_TERMINADOS
+
+
+def lotes_que_cuentan(lotes: list["LoteDatos"], periodo: str | None = None) -> set[str]:
+    """Codes of the finished lots, and (with `periodo`, AAAA-MM) dated in that month. Without `periodo` every finished
+    lot counts, dated or not. The single source of "produced units" for the panel, the trend and the /unidades screen."""
+    return {
+        lote.codigo for lote in lotes
+        if lote_terminado(lote.estado)
+        and (periodo is None or (lote.fecha is not None and mes_de(lote.fecha) == periodo))
+    }
+
+
+def _ids_de_lotes_que_cuentan(lotes: list["LoteDatos"], periodos: list[str]) -> list[int]:
+    """Ids of the lots that count in any of `periodos` (what the panel and the trend need to load items for)."""
+    cuentan = set().union(*(lotes_que_cuentan(lotes, periodo) for periodo in periodos)) if periodos else set()
+    return [lote.id for lote in lotes if lote.codigo in cuentan]
+
+
 # --- Lots: loading and costing -----------------------------------------------------------------------------
 
 def _dia_del_lote():
@@ -1513,6 +1544,8 @@ def _armar_lote(lote: LoteDatos, items: list[ItemDatos], info: dict[str, InfoPro
         "taller_nombre": lote.taller_nombre, "persona": lote.persona, "persona_nombre": lote.persona_nombre,
         "fecha_de_envio": lote.envio, "fecha_de_entrega": lote.entrega, "periodo": mes_de(lote.fecha) if lote.fecha else None,
         "estado": lote.estado, "nota": lote.nota, "productos": len(renglones), "unidades": unidades,
+        # How the lot moves the variable cost of its month: it counts once finished (`lotes_que_cuentan`).
+        "cuenta_en_costo_variable": lote_terminado(lote.estado), "cuenta_desde_estado": ESTADO_DESDE_EL_QUE_CUENTA,
         "total_cotizado": sum((r["cantidad"] * (r["cotizado"] or ZERO) for r in renglones), ZERO),
         "total_cobrado": sum((r["cantidad"] * (r["pagado"] or ZERO) for r in renglones), ZERO),
         "costo_total": costo_total,
@@ -1584,28 +1617,27 @@ def listar_ordenes(
 
 
 def unidades_por_producto(session: Session, periodo: str | None = None) -> dict:
-    """Units sent to production per product, from the lots' items.
+    """Units produced per product: the lines of the FINISHED lots (`lotes_que_cuentan`, the criterion of the cost panel).
 
-    SUPUESTO: validar. A planned lot (PLANIFICADA) has not started, so it does not count as produced.
-    With `periodo` (AAAA-MM) only the lots sent that month count; a lot with no send date is left out then.
+    SUPUESTO: validar. A lot is produced once it is LISTA or CERRADA; before that its units are not counted here nor in the
+    panel. With `periodo` (AAAA-MM) only the lots dated in that month count (delivery, else sending, like the panel); a lot
+    with no date is left out then.
     """
-    consulta = (
-        select(Producto.codigo, func.sum(OrdenItem.cantidad), func.count(func.distinct(OrdenFabricacion.id)))
-        .join(OrdenItem, OrdenItem.producto_id == Producto.id)
-        .join(OrdenFabricacion, OrdenFabricacion.id == OrdenItem.orden_fabricacion_id)
-        .where(OrdenFabricacion.estado != "PLANIFICADA", ~renglon_quitado())
-        .group_by(Producto.codigo)
-    )
-    if periodo:
-        consulta = consulta.where(func.to_char(OrdenFabricacion.fecha_de_envio, "YYYY-MM") == periodo)
-    filas = session.execute(consulta).all()
-    info = _info_productos(session, {codigo for codigo, _, _ in filas}, con_costo=False)
+    lotes = _cargar_lotes(session)
+    cuentan = lotes_que_cuentan(lotes, periodo)
+    items = _cargar_items(session, [lote.id for lote in lotes if lote.codigo in cuentan])
+    unidades_de: dict[str, Decimal] = {}
+    lotes_de: dict[str, set[str]] = {}
+    for item in items:
+        unidades_de[item.producto] = unidades_de.get(item.producto, ZERO) + item.cantidad
+        lotes_de.setdefault(item.producto, set()).add(item.lote)
+    info = _info_productos(session, set(unidades_de), con_costo=False)
     productos = sorted(
         ({
             "producto": codigo, "producto_nombre": info[codigo].nombre if codigo in info else codigo,
             "categoria": info[codigo].categoria if codigo in info else None,
-            "unidades": unidades, "lotes": lotes,
-        } for codigo, unidades, lotes in filas),
+            "unidades": unidades, "lotes": len(lotes_de[codigo]),
+        } for codigo, unidades in unidades_de.items()),
         key=lambda fila: (-fila["unidades"], fila["producto_nombre"]),
     )
     return {"periodo": periodo, "productos": productos, "total_unidades": sum((f["unidades"] for f in productos), ZERO)}
@@ -1795,7 +1827,7 @@ PRECIO_VIEJO_DIAS = 90
 # SUPUESTO: validar. The dollar on record is stale after this many days.
 DOLAR_VIEJO_DIAS = 7
 MAX_FILAS_DEL_PANEL = 5
-AVISO_VOLUMEN_PRODUCIDO = "El volumen es lo producido en lotes, no lo vendido."
+AVISO_VOLUMEN_PRODUCIDO = "El volumen es lo producido en lotes terminados (Lista o Cerrada), no lo vendido."
 
 
 @dataclass(frozen=True)
@@ -1815,7 +1847,7 @@ def _bloque_del_panel(
     periodo: str, precio: Decimal | None, lotes: list[LoteDatos], items: list[ItemDatos],
     costos: dict[str, Decimal | None], fijos: FijosDelMes,
 ) -> dict:
-    del_mes = {lote.codigo for lote in lotes if lote.fecha is not None and mes_de(lote.fecha) == periodo}
+    del_mes = lotes_que_cuentan(lotes, periodo)
     unidades = sin_costo = con_costo = total_variable = ZERO
     for item in items:
         if item.lote not in del_mes:
@@ -1908,9 +1940,9 @@ def armar_panel_de_costos(
     if actual["fijos_ficticios"]:
         avisos.append(("FIJOS_FICTICIOS", "Algunos costos fijos son de ejemplo: el punto de equilibrio no es confiable."))
     if actual["unidades"] == 0:
-        avisos.append(("SIN_UNIDADES", "No hay lotes en este mes, así que no se puede repartir el costo fijo por unidad."))
+        avisos.append(("SIN_UNIDADES", "No hay lotes terminados en este mes, así que no se puede repartir el costo fijo por unidad."))
     if actual["unidades_sin_costo"] > 0:
-        avisos.append(("PRODUCTOS_SIN_COSTO", "Hay productos de los lotes del mes cuyo costo no se pudo calcular y quedan fuera del promedio."))
+        avisos.append(("PRODUCTOS_SIN_COSTO", "Hay productos de los lotes terminados del mes cuyo costo no se pudo calcular y quedan fuera del promedio."))
     if dolar is None:
         avisos.append(("DOLAR_VIEJO", "No hay ningún dólar cargado."))
     elif dolar_viejo:
@@ -1972,7 +2004,7 @@ def panel_de_costos(session: Session, periodo: str | None = None, precio: Decima
     periodo = periodo or mes_de(hoy)
     periodos = ultimos_meses(periodo, 2)
     lotes = _cargar_lotes(session)
-    items = _cargar_items(session, [lote.id for lote in lotes if lote.fecha is not None and mes_de(lote.fecha) in periodos])
+    items = _cargar_items(session, _ids_de_lotes_que_cuentan(lotes, periodos))
     dolares = listar_dolar(session)
     return armar_panel_de_costos(
         periodo=periodo, precio=precio, hoy=hoy, lotes=lotes, items=items,
@@ -1985,7 +2017,7 @@ def panel_de_costos(session: Session, periodo: str | None = None, precio: Decima
 # SUPUESTO: validar con Gerardo. The trend spreads the fixed costs over what was produced in lots, and the variable cost
 # of every month is computed once with today's prices (no price history per month yet).
 NOTA_DE_TENDENCIA = (
-    "El volumen es lo producido en lotes, no lo vendido. El costo variable de todos los meses se calcula con los "
+    "El volumen es lo producido en lotes terminados (Lista o Cerrada), no lo vendido. El costo variable de todos los meses se calcula con los "
     "precios de hoy, no con los que regían en cada mes (limitación conocida, supuesto a validar)."
 )
 MESES_DE_TENDENCIA = 6
@@ -2044,7 +2076,7 @@ def tendencia_de_costos(
     hasta = hasta or mes_de(hoy or date.today())
     periodos = ultimos_meses(hasta, meses)
     lotes = _cargar_lotes(session)
-    items = _cargar_items(session, [lote.id for lote in lotes if lote.fecha is not None and mes_de(lote.fecha) in periodos])
+    items = _cargar_items(session, _ids_de_lotes_que_cuentan(lotes, periodos))
     return armar_tendencia_de_costos(
         hasta=hasta, meses=meses, lotes=lotes, items=items,
         costos=_costos_totales_de_hoy(session, {item.producto for item in items}),
@@ -3706,7 +3738,7 @@ def resumen_de_gastos(session: Session, periodo: str | None = None, meses: int =
 # Two append-only tables (`transferencia`, `venta`) freeze the cost of the moment; stock and margin are computed on read
 # and never stored. Nothing here edits or deletes a row. SUPUESTO: validar con Robert (every rule of this section).
 
-ESTADOS_PRODUCIDOS = ("LISTA", "CERRADA")
+ESTADOS_PRODUCIDOS = ESTADOS_TERMINADOS  # the same criterion as the panel (see "What counts as produced")
 CODIGO_MERCADERIA = "MER-"
 AVISO_STOCK_NEGATIVO_FABRICA = (
     "Se transfirió más de lo que se produjo (lotes en LISTA o CERRADA): falta terminar un lote o hay una transferencia de más."
@@ -3897,7 +3929,7 @@ def armar_stock(
     Factory stock = produced (lots LISTA or CERRADA) - transferred; store stock = transferred - sold; resale stock =
     bought - sold. Only the codes with some movement come back. A negative quantity is never hidden or clamped: the row
     is flagged `inconsistente` with a short `aviso`. SUPUESTO: validar con Robert. "Producido" here means finished lots,
-    unlike `unidades_por_producto`, which counts every lot except the planned ones.
+    the same criterion as `unidades_por_producto` and the cost panel (`lotes_que_cuentan`).
     """
     cero = Decimal(0)
     codigos = set(producidos) | set(transferidos) | set(comprados) | set(vendidos)

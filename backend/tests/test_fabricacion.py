@@ -581,14 +581,18 @@ def test_people_are_listed_and_fixed_costs_carry_their_own_grand_total(api):
     assert D(mes["total"]) == D(mes["total_fabrica"]) + D(mes["total_tienda"]) and isinstance(mes["total"], str)
 
 
-def test_units_produced_are_summed_per_product_and_planned_lots_do_not_count(api):
+def test_units_produced_are_summed_per_product_and_only_finished_lots_count(api):
     codigo = producto(api, quien_lo_confecciona="EXTERNA")["codigo"]
     dolar_nuevo(api)
     taller_nuevo(api)
     lote_nuevo(api, codigo, taller="TAL-0004")  # LOT-0001, stays PLANIFICADA
     assert api.get("/ordenes/unidades-por-producto").json()["productos"] == []
     lote_nuevo(api, codigo, taller="TAL-0004", fecha_de_envio="2026-11-03")  # LOT-0002
-    assert api.post("/ordenes/LOT-0002/estado", json={"estado": "EN_CORTE", "fecha": "2026-11-04"}).status_code == 201
+    # A lot that is started but not finished (EN_CORTE up to EN_CONFECCION) does not count either.
+    for dia, estado in (("04", "EN_CORTE"), ("05", "CORTADA"), ("06", "EN_CONFECCION")):
+        assert api.post("/ordenes/LOT-0002/estado", json={"estado": estado, "fecha": f"2026-11-{dia}"}).status_code == 201
+        assert api.get("/ordenes/unidades-por-producto").json()["productos"] == []
+    assert api.post("/ordenes/LOT-0002/estado", json={"estado": "LISTA", "fecha": "2026-11-07"}).status_code == 201
     todo = api.get("/ordenes/unidades-por-producto").json()
     assert [(f["producto"], f["lotes"]) for f in todo["productos"]] == [(codigo, 1)]
     assert D(todo["productos"][0]["unidades"]) == 10 and D(todo["total_unidades"]) == 10
