@@ -31,10 +31,10 @@ import type {
   ProductoResumen,
   Referencia,
 } from "@/lib/types";
-import { ConsumoDelLote } from "./consumo-lote";
-import { RenglonEditor, RenglonesQuitados } from "./editar-renglones";
 import { AvanzarEstado } from "../avanzar-estado";
 import { LineaDeTiempo } from "../linea-de-tiempo";
+import { ConsumoDelLote } from "./consumo-lote";
+import { RenglonEditor, RenglonesQuitados } from "./editar-renglones";
 import { EstadoForm, ItemForm, PreciosForm } from "./forms";
 
 export const metadata: Metadata = { title: "Lote" };

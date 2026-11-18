@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.costeo import ZERO
-from backend.models import Material, OrdenFabricacion, OrdenItem, Producto
+from backend.models import Material, OrdenFabricacion, OrdenItem, Producto, renglon_quitado
 from backend.receta import generar_receta
 from backend.servicios import DatosProducto, NoEncontrado, cargar_productos, expandir_kits
 
@@ -55,7 +55,7 @@ def consumo_de_lote(session: Session, codigo: str) -> dict:
         raise NoEncontrado(f"No existe el lote {codigo}.")
     items = session.execute(
         select(OrdenItem, Producto.codigo).join(Producto, Producto.id == OrdenItem.producto_id)
-        .where(OrdenItem.orden_fabricacion_id == orden.id).order_by(OrdenItem.id)
+        .where(OrdenItem.orden_fabricacion_id == orden.id, ~renglon_quitado()).order_by(OrdenItem.id)
     ).all()
     base = cargar_productos(session, sorted({producto for _, producto in items}))
     catalogo = expandir_kits(session, base)

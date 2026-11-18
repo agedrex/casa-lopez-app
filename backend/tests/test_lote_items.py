@@ -220,3 +220,13 @@ def test_a_line_created_with_zero_units_still_shows_up_with_its_warning_and_the_
     rol["value"] = "taller"
     precio = client.post(f"/ordenes/{codigo}/items/{normal}/precios", json={"pagado": "100"})
     assert precio.status_code == 200 and D(precio.json()["items"][1]["pagado"]) == 100
+
+
+def test_a_removed_line_is_left_out_of_the_lot_consumption(api):
+    client, _, _ = api
+    a, b = producto(client), producto(client)
+    codigo, (uno, dos) = lote(client, [(a, "4"), (b, "6")])
+    assert len(client.get(f"/ordenes/{codigo}/consumo").json()["productos"]) == 2
+    assert client.delete(f"/ordenes/{codigo}/items/{uno}").status_code == 200
+    consumo = client.get(f"/ordenes/{codigo}/consumo").json()
+    assert [fila["item"] for fila in consumo["productos"]] == [dos]

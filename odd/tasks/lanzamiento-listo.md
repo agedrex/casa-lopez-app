@@ -26,7 +26,7 @@ Dejar la app lista para usar mañana: altas inline, vista de lote del taller, me
 - [x] T5 (S6, S7) worktree feat/lote-editar-items: admin edita cantidad / quita renglón (PUT y DELETE /ordenes/{codigo}/items/{item}; L7-L9)
 - [x] T6 (S8, S10) worktree feat/lote-costo-consumo: costo congelado + consumo (GET /ordenes/{codigo}/consumo; L5-L6)
 - [x] T7 (S11, S12) worktree feat/taller-estados: el taller ve sus lotes por estado y actualiza el estado (POST /ordenes/{codigo}/avanzar); el admin ve el seguimiento de creación a fin. Recorrido manual por UI NO hecho
-- [ ] T8 (S9) simulación end to end con las funciones del código
+- [x] T8 (S9) simulación end to end por la API real (proveedor, pedido de pieles, cuero nuevo, lote con duplicados, edición, congelado, taller avanzando, cierre): OK. Backend 3178 passed; front 125 tests, tsc, biome
 - [ ] T9 (S13) merge a main y llegada a staging
 
 ## Log
@@ -40,3 +40,4 @@ L7: T5 decisión: "quitar" NO borra (regla de oro 11). El renglón queda con can
 L8: SUPUESTO (validar con Robert): editar cantidad y quitar se permiten en todos los estados menos CERRADA (409), aunque el corte ya haya empezado; un renglón con cortes de cuero registrados (`movimiento_cuero` CORTE) no se puede quitar (409) pero sí cambiar su cantidad. Repetir la misma cantidad es 409 (doble clic = una sola línea de historial). Cantidad > 0 (422); no se bloquean repetidos (S6). Quitar el último renglón se permite (queda un lote vacío).
 L9: solo admin (`ESCRITURA`/`SoloAdmin`; en la matriz de `test_roles.py`); el taller y el gerente reciben 403. La pantalla del lote (admin) tiene "Cambiar o quitar productos": campo de cantidad + Guardar, y Quitar pide confirmación en línea; controles de 44 px de alto; lista plegable "Productos quitados" con su historial.
 L10: SUPUESTO mío para S11 (validar): el taller solo avanza al estado SIGUIENTE (nueva ruta POST /ordenes/{codigo}/avanzar, fecha = hoy en Buenos Aires) y se detiene en LISTA; cerrar (fecha de entrega, cotización final) queda del administrador y POST /ordenes/{codigo}/estado sigue solo admin. Migración 0026 agrega orden_estado.cambiado_por (id de usuario, texto, sin FK): quien_id es una persona y el taller no lo es.
+L11: integración: consumo_lote.py no filtraba renglones quitados (RED en test_lote_items.py); corregido. Slices: ~3700 líneas en una sola PR por pedido del usuario ("marches todo a main"); los commits están separados por tema.
