@@ -14,8 +14,14 @@ Rama feat/flujo-modelos-lotes-precio. Origen: QA con ego-browser en staging (202
 - T1 S1,S2,S3 — worker — commit: abacf67, a6b70d9
 - T2 S4 — worker — commit: feat(precio) + feat(front) (ver git log)
 - T3 S5,S6 — worker — commit: feat(lotes) + feat(front) (ver git log)
-- T4 S7 — inline — commit: fix(front) alta de modelo y selector; limpieza de datos QA en staging pendiente
-- T5 deploy a staging y verificación con ego-browser — inline — pendiente
+- T4 S7 — inline — commit: fix(front) alta de modelo y selector; datos QA de staging limpiados con script transaccional
+- T5 deploy a staging y verificación con ego-browser — inline — hecho (PR #55 mergeado, staging verificado, lote externo recorrido hasta Cerrada, IVA 21 % cargado)
+- T6 S8 estado del ciclo derivado de precio y lotes — worker — commit: 975d07d
+
+- S8 (QA demo) El estado del ciclo del producto (En definición/Cotizado/En producción/Producido) se deriva al leer de precio de venta y lotes, nunca se escribe.
+
+## Slices
+La rama superó ~400 líneas por tratarse de 6 unidades de trabajo con tests y docs; cada tarea quedó en su propio commit (backend y front separados) y se entregó en un único PR (#55) más uno de seguimiento (T6).
 
 ## Log
 L1 (usuario, original): ver conversación: "Quiero que trabajemos lo siguiente: ... pruebes el caso ... precio ... desperdicio del 30% ... hasta dejarlo todo en staging".
