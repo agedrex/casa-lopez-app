@@ -15,7 +15,7 @@ import {
   thClass,
 } from "@/components/ui";
 import { apiGet } from "@/lib/api";
-import { formatDate } from "@/lib/format";
+import { formatInstantDate } from "@/lib/format";
 import {
   ESTADO_TONE,
   ESTADOS_FILTRO,
@@ -132,7 +132,7 @@ function Lista({ hojas }: { hojas: FormularioResumen[] }) {
                 <p className="mt-0.5 text-base">{hoja.articulo}</p>
                 <p className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted">
                   <EstadoBadge hoja={hoja} />
-                  <span>{formatDate(hoja.created_at)}</span>
+                  <span>{formatInstantDate(hoja.created_at)}</span>
                 </p>
               </Link>
             </CardItem>
@@ -169,7 +169,9 @@ function Lista({ hojas }: { hojas: FormularioResumen[] }) {
                   <td className={tdClass}>
                     <EstadoBadge hoja={hoja} />
                   </td>
-                  <td className={tdClass}>{formatDate(hoja.created_at)}</td>
+                  <td className={tdClass}>
+                    {formatInstantDate(hoja.created_at)}
+                  </td>
                 </tr>
               ))}
             </tbody>

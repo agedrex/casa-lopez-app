@@ -71,11 +71,55 @@ export function daysAgoText(days: number): string {
   return days === 1 ? "hace 1 día" : `hace ${days} días`;
 }
 
-/** `2026-10-28T15:30:05.123-03:00` -> `28/10/2026 15:30:05`, read as written (no timezone shifts). */
+// Every instant the API sends (`created_at`, `registrado_en`, `creado_en`...) is a moment stored in UTC: it is shown in
+// the time of the shop, not the one of the server (UTC) or of the browser. This is the only place that converts.
+const SHOP_TIME_ZONE = "America/Argentina/Buenos_Aires";
+
+const shopClock = new Intl.DateTimeFormat("en-GB", {
+  timeZone: SHOP_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+type ShopMoment = { day: string; time: string };
+
+/** An ISO datetime as the day and the time of Buenos Aires; `null` when it is not an instant (a plain date, text). */
+function toShopMoment(value: string): ShopMoment | null {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(value)) return null;
+  // SUPUESTO: validar. A datetime without offset comes from the server clock, which is UTC.
+  const hasOffset = /(Z|[+-]\d{2}(:?\d{2})?)$/i.test(value.slice(10));
+  const date = new Date(hasOffset ? value : `${value}Z`);
+  if (Number.isNaN(date.getTime())) return null;
+  const parts = Object.fromEntries(
+    shopClock.formatToParts(date).map((part) => [part.type, part.value]),
+  );
+  return {
+    day: `${parts.day}/${parts.month}/${parts.year}`,
+    time: `${parts.hour}:${parts.minute}`,
+  };
+}
+
+/** `2026-11-18T02:11:00Z` -> `17/11/2026` (the day in Buenos Aires). A plain date `2026-11-18` keeps its day. */
+export function formatInstantDate(value: string | null | undefined): string {
+  if (!value) return NONE;
+  return toShopMoment(value)?.day ?? formatDate(value);
+}
+
+/** `2026-11-18T02:11:00Z` -> `23:11` (the time in Buenos Aires). */
+export function formatInstantTime(value: string | null | undefined): string {
+  if (!value) return NONE;
+  return toShopMoment(value)?.time ?? value;
+}
+
+/** `2026-11-18T02:11:00Z` -> `17/11/2026 23:11`, in Buenos Aires time whatever the offset the API wrote. */
 export function formatDateTime(value: string | null | undefined): string {
   if (!value) return NONE;
-  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}:\d{2}:\d{2})/.exec(value);
-  return match ? `${match[3]}/${match[2]}/${match[1]} ${match[4]}` : value;
+  const moment = toShopMoment(value);
+  return moment ? `${moment.day} ${moment.time}` : value;
 }
 
 const percent = new Intl.NumberFormat("es-AR", {

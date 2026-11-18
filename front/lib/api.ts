@@ -1,6 +1,7 @@
 import "server-only";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { readErrorBody } from "@/lib/errores-campos";
 
 export type ApiFailure = {
   ok: false;
@@ -32,35 +33,11 @@ function failure(
 
 type Method = "GET" | "POST" | "PUT" | "DELETE";
 
-function describeInvalidBody(detail: unknown[]): string {
-  // FastAPI sends a list of {loc, msg} when the body does not validate.
-  const fields = detail
-    .map((item) => {
-      const loc = (item as { loc?: unknown })?.loc;
-      return Array.isArray(loc) ? String(loc[loc.length - 1]) : null;
-    })
-    .filter((field): field is string => field !== null);
-  return fields.length > 0
-    ? `Revise los datos ingresados (${[...new Set(fields)].join(", ")}).`
-    : "Revise los datos ingresados.";
-}
-
 async function readFailure(response: Response): Promise<ApiFailure> {
   let detail = "";
   let avisos: string[] = [];
   try {
-    const body: unknown = await response.json();
-    if (body && typeof body === "object") {
-      const record = body as { detail?: unknown; avisos?: unknown };
-      if (typeof record.detail === "string") detail = record.detail;
-      else if (Array.isArray(record.detail))
-        detail = describeInvalidBody(record.detail);
-      if (Array.isArray(record.avisos)) {
-        avisos = record.avisos.filter(
-          (item): item is string => typeof item === "string",
-        );
-      }
-    }
+    ({ detail, avisos } = readErrorBody(await response.json()));
   } catch {
     // Non-JSON error body: fall back to the generic message below.
   }
