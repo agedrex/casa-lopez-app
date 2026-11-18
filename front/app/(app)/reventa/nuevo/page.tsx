@@ -28,7 +28,7 @@ export default async function NuevoReventaPage() {
       <PageHeader
         eyebrow="Mercadería"
         title="Nuevo producto de mercadería"
-        description="El código lo asigna la aplicación. Después de crearlo registrás la primera compra, con su costo por unidad."
+        description="Después de crearlo, registrás la primera compra."
       />
       {catalogos === null ? (
         <ReadOnlyNote />

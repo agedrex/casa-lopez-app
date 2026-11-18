@@ -70,7 +70,7 @@ export default async function TallerPage({
         <BackLink />
         {result.status === 404 ? (
           <Notice tone="info" title="No encontramos ese taller">
-            Revise el código o vuelva al listado de talleres.
+            Revisá el código o volvé al listado de talleres.
           </Notice>
         ) : (
           <ErrorNotice message={result.message} />

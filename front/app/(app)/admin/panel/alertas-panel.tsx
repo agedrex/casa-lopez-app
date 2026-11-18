@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { inputClass } from "@/components/form";
 import { Badge, Card, Notice } from "@/components/ui";
+import { agruparAlertas } from "@/lib/alertas-grupos";
 import { safeNext } from "@/lib/redirect";
-import type { Calidad, Hallazgo, Severidad } from "@/lib/types";
+import type { Calidad, Severidad } from "@/lib/types";
 
 const SEVERIDADES: Severidad[] = ["alta", "media", "baja"];
 const SEVERITY_LABELS: Record<Severidad, string> = {
@@ -10,23 +11,15 @@ const SEVERITY_LABELS: Record<Severidad, string> = {
   media: "Media",
   baja: "Baja",
 };
-const SEVERITY_ORDER: Record<Severidad, number> = {
-  alta: 0,
-  media: 1,
-  baja: 2,
-};
 const SEVERITY_TONES = {
   alta: "alert",
   media: "warn",
   baja: "neutral",
 } as const;
-// The list shows this many findings until "Ver todas" is pressed.
-const PREVIEW = 15;
 
 export type AlertasSearch = {
   severidad?: string | string[];
   grupo?: string | string[];
-  todas?: string | string[];
 };
 
 function first(value: string | string[] | undefined): string {
@@ -38,48 +31,23 @@ export function alertasFilters(params: AlertasSearch) {
   return {
     severidad: SEVERIDADES.find((s) => s === first(params.severidad)) ?? "",
     grupo: first(params.grupo),
-    todas: first(params.todas) === "1",
   };
 }
 
-function href(filter: { severidad?: string; grupo?: string; todas?: boolean }) {
-  const query = new URLSearchParams();
-  if (filter.severidad) query.set("severidad", filter.severidad);
-  if (filter.grupo) query.set("grupo", filter.grupo);
-  if (filter.todas) query.set("todas", "1");
-  const text = query.toString();
-  return text ? `/admin/panel?${text}#alertas` : "/admin/panel#alertas";
-}
-
-type Fila = { tema: string; hallazgo: Hallazgo };
-
 /**
- * One compact list for everything that needs attention: data that is missing, contradictory
- * or unconfirmed (including parameters), filtered by severity and topic.
+ * Everything that needs attention, grouped by type. Groups start collapsed (<details>) so 300+
+ * alerts do not push the page down; the filters narrow the groups and their counters.
  */
 export function Alertas({
   data,
   severidad,
   grupo,
-  todas,
 }: {
   data: Calidad;
   severidad: string;
   grupo: string;
-  todas: boolean;
 }) {
-  const filas: Fila[] = data.grupos
-    .filter((g) => !grupo || g.clave === grupo)
-    .flatMap((g) =>
-      g.hallazgos.map((hallazgo) => ({ tema: g.titulo, hallazgo })),
-    )
-    .filter(({ hallazgo }) => !severidad || hallazgo.severidad === severidad);
-  filas.sort(
-    (a, b) =>
-      SEVERITY_ORDER[a.hallazgo.severidad] -
-      SEVERITY_ORDER[b.hallazgo.severidad],
-  );
-  const shown = todas ? filas : filas.slice(0, PREVIEW);
+  const grupos = agruparAlertas(data.grupos, severidad, grupo);
   const filtered = Boolean(severidad || grupo);
   const { resumen } = data;
 
@@ -90,8 +58,8 @@ export function Alertas({
           Alertas
         </h2>
         <p className="text-sm text-muted">
-          {resumen.total} en total · {resumen.alta} altas · {resumen.media}{" "}
-          medias · {resumen.baja} bajas
+          {resumen.total} · {resumen.alta} altas · {resumen.media} medias ·{" "}
+          {resumen.baja} bajas
         </p>
       </div>
 
@@ -127,7 +95,7 @@ export function Alertas({
               htmlFor="filtro-grupo"
               className="mb-1.5 block text-xs uppercase tracking-caps-sm text-muted"
             >
-              Qué falta o qué revisar
+              Tipo
             </label>
             <select
               id="filtro-grupo"
@@ -135,7 +103,7 @@ export function Alertas({
               defaultValue={grupo}
               className={inputClass}
             >
-              <option value="">Todo</option>
+              <option value="">Todos</option>
               {data.grupos
                 .filter((g) => g.total > 0)
                 .map((g) => (
@@ -153,7 +121,7 @@ export function Alertas({
           </button>
           {filtered ? (
             <Link
-              href={href({})}
+              href="/admin/panel#alertas"
               className="py-2.5 text-sm text-muted underline decoration-gold underline-offset-4"
             >
               Limpiar
@@ -162,60 +130,62 @@ export function Alertas({
         </form>
       </search>
 
-      {filas.length === 0 ? (
+      {grupos.length === 0 ? (
         <Notice
           tone="info"
-          title={
-            filtered
-              ? "Ninguna alerta coincide con el filtro."
-              : "No hay alertas: los datos están en orden."
-          }
+          title={filtered ? "Sin alertas con ese filtro." : "Sin alertas."}
         />
       ) : (
-        <>
-          <ul>
-            {shown.map(({ tema, hallazgo }, index) => (
-              <li
-                key={`${hallazgo.entidad}-${hallazgo.mensaje}-${index}`}
-                className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-line/70 py-2.5 text-sm last:border-0"
-              >
-                <Badge tone={SEVERITY_TONES[hallazgo.severidad]}>
-                  {SEVERITY_LABELS[hallazgo.severidad]}
-                </Badge>
-                <span className="font-semibold">{hallazgo.entidad}</span>
-                <span className="min-w-0 flex-1 basis-64">
-                  {hallazgo.mensaje}
-                  <span className="text-muted"> · {tema}</span>
+        <div className="border-t border-line/70">
+          {grupos.map((g) => (
+            <details key={g.clave} className="group border-b border-line/70">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center gap-3 py-2.5 text-sm [&::-webkit-details-marker]:hidden">
+                <span
+                  aria-hidden="true"
+                  className="text-muted transition-transform group-open:rotate-90"
+                >
+                  ▸
                 </span>
-                {hallazgo.ruta ? (
-                  <Link
-                    href={safeNext(hallazgo.ruta)}
-                    className="underline decoration-gold underline-offset-4"
+                <span className="flex-1 font-semibold">{g.titulo}</span>
+                <Badge tone={SEVERITY_TONES[g.maxima]}>{g.total}</Badge>
+              </summary>
+              <ul className="pb-2 pl-6">
+                {g.items.map((item, index) => (
+                  <li
+                    key={`${item.codigo}-${item.detalle}-${index}`}
+                    className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-line/50 py-2 text-sm"
                   >
-                    Corregir
-                    <span className="sr-only"> {hallazgo.entidad}</span>
-                  </Link>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-          {shown.length < filas.length ? (
-            <p className="mt-3 text-sm text-muted">
-              Se muestran {shown.length} de {filas.length}.{" "}
-              <Link
-                href={href({ severidad, grupo, todas: true })}
-                className="underline decoration-gold underline-offset-4"
-              >
-                Ver todas
-              </Link>
-            </p>
-          ) : null}
-        </>
+                    <Badge tone={SEVERITY_TONES[item.severidad]}>
+                      {SEVERITY_LABELS[item.severidad]}
+                    </Badge>
+                    <span className="min-w-0 flex-1 basis-64">
+                      <span className="font-semibold">
+                        {item.nombre ?? item.codigo}
+                      </span>
+                      {item.nombre ? (
+                        <span className="text-muted"> · {item.codigo}</span>
+                      ) : null}
+                      <span className="text-muted"> · {item.detalle}</span>
+                    </span>
+                    {item.ruta ? (
+                      <Link
+                        href={safeNext(item.ruta)}
+                        className="underline decoration-gold underline-offset-4"
+                      >
+                        Corregir
+                        <span className="sr-only">
+                          {" "}
+                          {item.nombre ?? item.codigo}
+                        </span>
+                      </Link>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ))}
+        </div>
       )}
-      <p className="mt-4 text-xs text-muted">
-        Gravedad (propuesta): alta = no se puede cotizar o cerrar; media = se
-        puede, pero hay algo raro; baja = informativo.
-      </p>
     </Card>
   );
 }

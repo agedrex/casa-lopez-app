@@ -9,9 +9,9 @@ import { safeNext } from "@/lib/redirect";
 // emails exist.
 const INVALID_CREDENTIALS = "El correo o la contraseña no son correctos.";
 const TOO_MANY_ATTEMPTS =
-  "Hubo demasiados intentos. Espere unos instantes y vuelva a probar.";
+  "Hubo demasiados intentos. Esperá unos instantes y volvé a probar.";
 const UNAVAILABLE =
-  "No pudimos iniciar sesión. Intente nuevamente en unos minutos.";
+  "No pudimos iniciar sesión. Intentá de nuevo en unos minutos.";
 
 export function LoginForm() {
   const router = useRouter();
@@ -25,7 +25,7 @@ export function LoginForm() {
     const email = String(form.get("email") ?? "").trim();
     const password = String(form.get("password") ?? "");
     if (!email || !password) {
-      setError("Ingrese su correo y su contraseña.");
+      setError("Ingresá tu correo y tu contraseña.");
       return;
     }
 

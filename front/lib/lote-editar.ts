@@ -13,7 +13,7 @@ export function readCantidad(formData: FormData): string | FormState {
   const cantidad = parseDecimalInput(raw);
   if (cantidad === null || !/[1-9]/.test(cantidad)) {
     return error(
-      "Ingrese una cantidad mayor que cero. Para sacar el producto del lote usá «Quitar».",
+      "Ingresá una cantidad mayor que cero. Para sacar el producto del lote usá «Quitar».",
     );
   }
   return cantidad;

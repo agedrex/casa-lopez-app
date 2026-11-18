@@ -25,7 +25,7 @@ export async function setMonto(
 
   const monto = parseDecimalInput(text(formData, "monto"));
   if (monto === null) {
-    return error("Ingrese el monto en pesos, por ejemplo 250000 o 250000,50.");
+    return error("Ingresá el monto en pesos, por ejemplo 250000 o 250000,50.");
   }
   const result = await apiPost<CostosFijos>(
     `/costos-fijos/${encodeURIComponent(codigo)}/monto`,
@@ -33,7 +33,7 @@ export async function setMonto(
   );
   if (!result.ok) {
     return fromFailure(result, {
-      409: "Ese gasto ya tiene monto. Para cambiarlo, use «Corregir monto» en su fila.",
+      409: "Ese gasto ya tiene monto. Para cambiarlo, usá «Corregir monto» en su fila.",
     });
   }
   refresh();
@@ -52,7 +52,7 @@ export async function corregirGasto(
   const monto = parseDecimalInput(text(formData, "monto"));
   if (monto === null) {
     return error(
-      "Ingrese el monto nuevo en pesos, por ejemplo 250000 o 250000,50.",
+      "Ingresá el monto nuevo en pesos, por ejemplo 250000 o 250000,50.",
     );
   }
   const result = await apiPost<CostosFijos>(
@@ -72,7 +72,7 @@ export async function corregirGasto(
     }
     return fromFailure(result, {
       404: "No encontramos ese gasto. Recargue la página e intente de nuevo.",
-      422: "Revise el monto: tiene que ser un número de cero o más.",
+      422: "Revisá el monto: tiene que ser un número de cero o más.",
     });
   }
   refresh();
@@ -142,7 +142,7 @@ export async function guardarGastosLote(
     if ("categoria" in valores) {
       const categoria = String(valores.categoria ?? "").trim();
       if (!EXPENSE_CATEGORIES.includes(categoria)) {
-        return error(`${codigo}: elija la categoría del gasto.`);
+        return error(`${codigo}: elegí la categoría del gasto.`);
       }
       body.categoria = categoria;
     }
@@ -173,7 +173,7 @@ export async function guardarGastosLote(
       return error(`${name}: indique si es de la fábrica o de la tienda.`);
     }
     if (!EXPENSE_CATEGORIES.includes(categoria)) {
-      return error(`${name}: elija la categoría del gasto.`);
+      return error(`${name}: elegí la categoría del gasto.`);
     }
     if (rawMonto && monto === null) return error(`${name}: ${montoError}`);
     nuevosBody.push({

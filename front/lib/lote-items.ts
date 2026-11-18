@@ -47,6 +47,6 @@ export function readItems(formData: FormData): ItemBody[] | FormState {
       taller_precio_cotizado_por_unidad_ars: cotizado,
     });
   }
-  if (items.length === 0) return error("Agregue al menos un producto al lote.");
+  if (items.length === 0) return error("Agregá al menos un producto al lote.");
   return items;
 }

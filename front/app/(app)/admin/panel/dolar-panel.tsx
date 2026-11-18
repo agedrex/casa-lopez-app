@@ -41,9 +41,7 @@ export async function DolarPanel({ canWrite }: { canWrite: boolean }) {
               </p>
             </>
           ) : (
-            <p className="mt-3 text-sm text-muted">
-              Todavía no hay cotización cargada.
-            </p>
+            <p className="mt-3 text-sm text-muted">Sin cotización cargada.</p>
           )}
           {canWrite ? (
             <DolarAlDia today={today} stale={!latest || latest.fecha < today} />

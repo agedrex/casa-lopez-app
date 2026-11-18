@@ -36,11 +36,14 @@ export function Field({
 export function PrimaryButton({
   children,
   pending,
+  pendingLabel,
   name,
   value,
 }: {
   children: ReactNode;
   pending: boolean;
+  /** Replaces the label while `pending` (e.g. "Guardando…"); without it the caller's children stay as they are. */
+  pendingLabel?: string;
   name?: string;
   value?: string;
 }) {
@@ -50,9 +53,10 @@ export function PrimaryButton({
       name={name}
       value={value}
       disabled={pending}
+      aria-busy={pending}
       className="min-h-12 w-full rounded-card bg-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm text-white transition-colors hover:bg-ink-soft disabled:opacity-60 sm:min-h-0 sm:w-auto"
     >
-      {children}
+      {pending && pendingLabel ? pendingLabel : children}
     </button>
   );
 }
@@ -60,11 +64,14 @@ export function PrimaryButton({
 export function SecondaryButton({
   children,
   pending,
+  pendingLabel,
   name,
   value,
 }: {
   children: ReactNode;
   pending: boolean;
+  /** Replaces the label while `pending` (e.g. "Guardando…"); without it the caller's children stay as they are. */
+  pendingLabel?: string;
   name?: string;
   value?: string;
 }) {
@@ -74,9 +81,10 @@ export function SecondaryButton({
       name={name}
       value={value}
       disabled={pending}
+      aria-busy={pending}
       className="min-h-12 w-full rounded-card border border-ink px-5 py-2.5 text-sm uppercase tracking-caps-sm hover:bg-ink hover:text-white disabled:opacity-60 sm:min-h-0 sm:w-auto"
     >
-      {children}
+      {pending && pendingLabel ? pendingLabel : children}
     </button>
   );
 }

@@ -60,7 +60,7 @@ function Ficha({ material }: { material: MaterialHistorial }) {
       <PageHeader
         eyebrow={material.codigo}
         title={material.nombre}
-        description="Cada pedido que trajo este material y a qué precio llegó. Ese es el costo real que se usa después en los productos y los lotes."
+        description="Pedidos que trajeron este material, con su precio."
       />
       <div className="mb-8 grid gap-4 sm:grid-cols-3">
         <Card>

@@ -23,7 +23,7 @@ export function FilasDeProductos({
   if (filas.length === 0) {
     return (
       <p className="rounded-card border border-dashed border-line px-4 py-3 text-sm text-muted">
-        Todavía no agregó productos al lote: búsquelos arriba.
+        Todavía no agregaste productos: buscalos arriba.
       </p>
     );
   }

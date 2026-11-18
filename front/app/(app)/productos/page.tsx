@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { Atajos } from "@/components/atajos";
 import { inputClass } from "@/components/form";
 import {
   CardItem,
@@ -85,6 +86,7 @@ export default async function ProductosPage({
   return (
     <>
       {canWrite(user.role) ? <ProductosNav /> : null}
+      <Atajos nuevo={canWrite(user.role) ? "/productos/nuevo" : undefined} />
       <PageHeader
         eyebrow="Catálogo"
         title="Productos"

@@ -23,7 +23,7 @@ export default async function EscenariosPage() {
       <PageHeader
         eyebrow="Simulador"
         title="Escenarios"
-        description="Probá un escenario de ventas y mirá cómo cambian el margen y el punto de equilibrio."
+        description="Simulá ventas y mirá margen y punto de equilibrio."
       />
       <div className="space-y-5">
         {panel.ok ? (

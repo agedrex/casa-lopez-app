@@ -9,8 +9,7 @@ import { interpretarVoz } from "./actions";
 import { ExampleList } from "./examples";
 import { PropuestaCard } from "./propuesta-card";
 
-const NOT_CONFIGURED =
-  "El módulo de voz no está configurado: falta la clave del modelo. Pídale a un administrador que cargue AI_GATEWAY_API_KEY en el servicio del backend.";
+const NOT_CONFIGURED = "Pedíselo a un administrador.";
 
 /**
  * Text box, local audio recorder, and the proposal that comes back.
@@ -47,9 +46,7 @@ export function VozPanel({
           role="alert"
           className="rounded-card border border-blush-deep bg-blush/30 px-5 py-4 text-sm"
         >
-          <p className="font-bold text-ink-soft">
-            Módulo de voz sin configurar
-          </p>
+          <p className="font-bold text-ink-soft">No disponible</p>
           <p className="mt-1 text-muted">{NOT_CONFIGURED}</p>
         </div>
       )}
@@ -115,8 +112,8 @@ export function VozPanel({
           </div>
         ) : null}
         <p className="mt-4 text-sm text-muted">
-          El audio no sale de tu teléfono. Todavía no se transcribe: escribí el
-          pedido abajo para interpretarlo.
+          El audio queda en tu teléfono. Para interpretar, escribí el pedido
+          abajo.
         </p>
       </Card>
 
@@ -126,7 +123,7 @@ export function VozPanel({
             htmlFor={textId}
             className="mb-1.5 block text-xs uppercase tracking-caps-sm text-muted"
           >
-            Qué quiere cargar
+            Qué querés cargar
           </label>
           <textarea
             id={textId}
@@ -141,8 +138,7 @@ export function VozPanel({
             className={inputClass}
           />
           <p id={countId} className="mt-1 text-xs text-muted">
-            {text.length} de {VOZ_MAX_CHARS} caracteres. Puede corregir el texto
-            antes de interpretarlo.
+            {text.length} de {VOZ_MAX_CHARS} caracteres.
           </p>
         </div>
 

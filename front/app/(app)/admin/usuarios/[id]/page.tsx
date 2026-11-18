@@ -25,7 +25,7 @@ export default async function EditarUsuarioPage({
   if (!user) notFound();
   const itself = user.id === me.id;
   const reason = itself
-    ? "Es su propio usuario: otro administrador debe hacer este cambio."
+    ? "Es tu propio usuario: otro administrador debe hacer este cambio."
     : null;
 
   return (

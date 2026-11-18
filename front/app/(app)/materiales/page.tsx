@@ -41,7 +41,7 @@ export default async function MaterialesPage() {
       <PageHeader
         eyebrow="Costos"
         title="Materiales"
-        description="Los materiales que se compran, por etapa. Los precios no se cargan acá: llegan con cada pedido de un proveedor. Entrá a un material para ver en qué pedido llegó y a qué precio. Un material nuevo se agrega al final de la grilla."
+        description="Materiales por etapa. Los precios llegan con cada pedido."
       />
       {!materiales.ok ? (
         <ErrorNotice message={materiales.message} />

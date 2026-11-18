@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Atajos } from "@/components/atajos";
 import { inputClass } from "@/components/form";
 import { ErrorNotice, Notice, PageHeader } from "@/components/ui";
 import { apiGet } from "@/lib/api";
@@ -53,6 +54,7 @@ export default async function FabricacionPage({
 
   return (
     <>
+      <Atajos nuevo={canWrite(user.role) ? "/fabricacion/nuevo" : undefined} />
       <PageHeader
         eyebrow="Producción"
         title="Lotes"

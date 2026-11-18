@@ -31,11 +31,14 @@ export function MobileNav({
   const [open, setOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   // With the center button, the bar is 2 tabs | + | 1 tab + "Más" (with only 2 tabs: 1 | + | 1).
-  const visibleTabs = canCreate ? tabs.slice(0, 3) : tabs;
-  const leftTabs = canCreate
+  // The taller has Voz as a tab, so its "+" would only repeat it: no "+" then.
+  const quickActions =
+    canCreate && !(restricted && tabs.some((item) => item.href === "/voz"));
+  const visibleTabs = quickActions ? tabs.slice(0, 3) : tabs;
+  const leftTabs = quickActions
     ? visibleTabs.slice(0, Math.ceil(visibleTabs.length / 2))
     : visibleTabs;
-  const rightTabs = canCreate
+  const rightTabs = quickActions
     ? visibleTabs.slice(Math.ceil(visibleTabs.length / 2))
     : [];
   const visibleItems = groups.flatMap((group) => group.items);
@@ -132,7 +135,7 @@ export function MobileNav({
           </div>
         </>
       ) : null}
-      {createOpen ? (
+      {quickActions && createOpen ? (
         <>
           <button
             type="button"
@@ -178,7 +181,7 @@ export function MobileNav({
         className="fixed inset-x-0 bottom-0 z-50 flex border-t border-line bg-surface pb-[env(safe-area-inset-bottom)]"
       >
         {leftTabs.map(renderTab)}
-        {canCreate ? (
+        {quickActions ? (
           <div className="flex flex-1 items-start justify-center">
             <button
               type="button"

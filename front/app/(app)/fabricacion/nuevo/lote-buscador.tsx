@@ -50,7 +50,7 @@ export function BuscadorDeProductos({
           if (vigente) {
             setBusqueda({
               status: "error",
-              message: "No se pudo buscar. Intente de nuevo.",
+              message: "No se pudo buscar. Probá de nuevo.",
             });
           }
         });
@@ -88,7 +88,7 @@ export function BuscadorDeProductos({
       <div aria-live="polite" className="text-sm">
         {busqueda.status === "idle" ? (
           <p className="text-muted">
-            Escriba al menos {MIN_QUERY} letras: se busca en todos los
+            Escribí al menos {MIN_QUERY} letras: se busca en todos los
             productos.
           </p>
         ) : null}
@@ -141,7 +141,7 @@ export function BuscadorDeProductos({
           </ul>
           {busqueda.hayMas ? (
             <p className="text-sm text-muted">
-              Hay más productos que coinciden: escriba algo más para acotar la
+              Hay más productos que coinciden: escribí algo más para acotar la
               búsqueda.
             </p>
           ) : null}

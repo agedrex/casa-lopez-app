@@ -43,7 +43,7 @@ export default async function UnidadesPage({
       <PageHeader
         eyebrow="Costos variables"
         title="Unidades producidas"
-        description="Unidades de cada producto que salieron a producción, sumando los lotes ya iniciados. Un lote planificado todavía no cuenta."
+        description="Unidades por producto en lotes ya iniciados."
       />
       <form className="mb-6 flex flex-wrap items-end gap-3" action="/unidades">
         <label className="text-sm text-ink-soft">

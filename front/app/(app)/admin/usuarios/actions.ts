@@ -25,7 +25,7 @@ function passwordFrom(formData: FormData): string | FormState {
   const password = formData.get("password");
   const confirm = formData.get("confirm");
   if (typeof password !== "string" || password === "") {
-    return error("Escriba la contraseña inicial.");
+    return error("Escribí la contraseña inicial.");
   }
   if (password !== confirm) return error("Las contraseñas no coinciden.");
   return password;
@@ -44,7 +44,7 @@ export async function createUser(
   if (!EMAIL.test(email)) return error("Indique un correo válido.");
   if (!name || name.length > 120)
     return error("Indique el nombre (hasta 120 letras).");
-  if (!role) return error("Elija el rol.");
+  if (!role) return error("Elegí el rol.");
   const password = passwordFrom(formData);
   if (typeof password !== "string") return password;
   const weak = passwordProblem(password, { email });
@@ -120,7 +120,7 @@ export async function changeRole(
   const check = await denyUnlessAdmin();
   if (check.denied) return check.denied;
   const role = chosenRole(formData);
-  if (!role) return error("Elija el rol.");
+  if (!role) return error("Elegí el rol.");
 
   try {
     // The guards (not oneself, never the last active admin) run inside Better Auth.

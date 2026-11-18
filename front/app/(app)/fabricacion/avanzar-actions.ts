@@ -14,6 +14,10 @@ import { fromFailure } from "@/lib/write-guard";
 /**
  * The taller moves a lot to its next state (one step, dated today by the API, which also records who did it).
  * Admin and taller only: anyone can post to a server action, so the role is checked here and the API checks it again.
+ *
+ * There is no "undo" on purpose (S3 of ux-heuristicas): the API has no way back for the taller. `/ordenes/{codigo}/estado`
+ * is admin only, `lote_estados` only moves forward and a lot state change also touches the leather stock, so a
+ * "Deshacer" needs its own endpoint and rules in the backend. The screen asks for confirmation before saving instead.
  */
 export async function avanzarEstado(
   codigo: string,

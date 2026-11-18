@@ -32,9 +32,7 @@ export function HistorialDelTaller({
       <section>
         <SectionTitle>Lo pagado, lote por lote</SectionTitle>
         <p className="mb-4 text-sm text-muted">
-          Unidades y total pagado de cada lote, del más nuevo al más viejo. El
-          promedio por unidad mezcla productos distintos: para ver si un precio
-          subió, mirá cada producto más abajo.
+          Unidades y total pagado por lote, del más nuevo al más viejo.
         </p>
         <TableWrap>
           <table className={tableClass}>

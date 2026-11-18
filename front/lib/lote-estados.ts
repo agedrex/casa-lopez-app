@@ -84,6 +84,20 @@ export type PasoDeLinea = {
   actual: boolean;
 };
 
+/**
+ * The "who and when" line of a step, or null when nobody was recorded (an empty "Sin responsable" says nothing).
+ * `formatearFecha` formats the save time as the screen shows it.
+ */
+export function textoDeResponsable(
+  paso: Pick<PasoDeLinea, "quien" | "registradoEn">,
+  formatearFecha: (valor: string) => string,
+): string | null {
+  if (!paso.quien) return null;
+  return paso.registradoEn
+    ? `Lo pasó ${paso.quien} · guardado ${formatearFecha(paso.registradoEn)}`
+    : `Lo pasó ${paso.quien}`;
+}
+
 export type LineaDeTiempo = {
   pasos: PasoDeLinea[];
   terminado: boolean;

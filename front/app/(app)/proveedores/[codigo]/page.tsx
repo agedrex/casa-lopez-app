@@ -86,7 +86,7 @@ export default async function ProveedorPage({
         <BackLink />
         {proveedor.status === 404 ? (
           <Notice tone="info" title="No encontramos ese proveedor">
-            Revise el código o vuelva al listado de proveedores.
+            Revisá el código o volvé al listado de proveedores.
           </Notice>
         ) : (
           <ErrorNotice message={proveedor.message} />
@@ -111,9 +111,7 @@ export default async function ProveedorPage({
           <SectionTitle>Productos que ofrece</SectionTitle>
           <div className="space-y-6">
             <p className="text-sm text-muted">
-              Elija el tipo (cuero, flex, herrajes…) y escriba el detalle, por
-              ejemplo &ldquo;Cuero de carpincho&rdquo;. Al guardar, el producto
-              queda también en Materiales. Un precio nuevo se suma y queda el
+              Elegí el tipo y escribí el detalle. Un precio nuevo se suma al
               anterior.
             </p>
             {productos.ok ? (

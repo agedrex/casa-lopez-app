@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Atajos } from "@/components/atajos";
 import { inputClass } from "@/components/form";
 import { ErrorNotice, Notice, PageHeader } from "@/components/ui";
 import { apiGet } from "@/lib/api";
@@ -73,6 +74,7 @@ export default async function ModelosPage({
   return (
     <>
       <ProductosNav />
+      <Atajos nuevo="/productos/modelos/nuevo" />
       <PageHeader
         eyebrow="Productos"
         title="Modelos"
@@ -115,7 +117,7 @@ export default async function ModelosPage({
                 ? ` · ${incompleteCount} con consumos incompletos`
                 : ""}
             </p>
-            <ModelosGrid modelos={modelos.data} />
+            <ModelosGrid key={filter.toString()} modelos={modelos.data} />
           </>
         )
       ) : (

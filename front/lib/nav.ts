@@ -80,8 +80,8 @@ export const NAV_ITEMS: NavGroup[] = [
 const MOBILE_TAB_HREFS: Record<Role, readonly string[]> = {
   admin: ["/admin/panel", "/productos", "/fabricacion"],
   gerente: ["/productos", "/escenarios"],
-  // One entry, Lotes y modelos; Voz stays one tap away in the "+" button's quick actions.
-  taller: ["/fabricacion"],
+  // Lotes y modelos and Voz: the two things the taller does from the phone.
+  taller: ["/fabricacion", "/voz"],
 };
 
 // Menus of the restricted roles. They match the paths of ROLE_ACCESS in permissions.ts.
@@ -99,7 +99,7 @@ const GERENTE_NAV: NavGroup[] = [
   },
 ];
 
-// Voz is not listed: on desktop it is the microphone button of the header, on mobile the "+" quick action.
+// Voz is not listed: on desktop it is the microphone button of the header; on mobile it is a bottom tab (TALLER_TAB_EXTRAS).
 // A single entry, no groups: the lots (the product sheet is opened from a lot) and the models the admin sent to the taller.
 const TALLER_NAV: NavGroup[] = [
   {
@@ -114,6 +114,9 @@ const TALLER_NAV: NavGroup[] = [
     ],
   },
 ];
+
+/** Tabs of the taller bottom bar that are not entries of its menu (/corte is closed to the role, see ROLE_ACCESS). */
+const TALLER_TAB_EXTRAS: NavItem[] = [{ href: "/voz", label: "Voz" }];
 
 /** Simpler, flatter menu for the desktop sidebar. Mobile keeps NAV_ITEMS. */
 const DESKTOP_NAV: NavGroup[] = [
@@ -222,7 +225,14 @@ export function navForRole(roles: Role[]): NavGroup[] {
 }
 
 export function mobileTabs(groups: NavGroup[], roles: Role[]): NavItem[] {
-  const items = groups.flatMap((group) => group.items);
+  const menu = groups.flatMap((group) => group.items);
+  const extras =
+    !roles.includes("admin") && roles.includes("taller")
+      ? TALLER_TAB_EXTRAS.filter(
+          (extra) => !menu.some((item) => item.href === extra.href),
+        )
+      : [];
+  const items = [...menu, ...extras];
   const hrefs = roles.includes("admin")
     ? MOBILE_TAB_HREFS.admin
     : [

@@ -23,7 +23,7 @@ export default async function NuevoTallerPage() {
       <PageHeader
         eyebrow="Talleres"
         title="Nuevo taller"
-        description="El código lo asigna la aplicación. Nada se borra: un taller que ya no se usa se desactiva."
+        description="El código lo asigna la aplicación."
       />
       {canWrite(user.role) ? (
         <Card>
