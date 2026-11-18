@@ -71,3 +71,5 @@ Menú: el taller ve "Mis modelos" (en la barra de abajo del celular también); e
 Un formulario `VALIDADO` es de solo lectura para todos: para cambiarlo se duplica (por API).
 
 SUPUESTOS (validar): el rol `taller` no está atado a un taller concreto: cualquier usuario `taller` ve las hojas `ENVIADO` y `COMPLETADO`, y además las que creó él (`creado_por`), en cualquier estado, para seguirlas hasta `VALIDADO` (solo lectura). La foto: el taller puede subirla a un modelo con una hoja `ENVIADO` (o creada por él, caso histórico); el admin a cualquiera (`POST /modelos/<MOD>/foto`, 403 si no).
+
+Al validar, la fila `HS. DE TRABAJO` pasa a `horas_de_confeccion` del modelo (dato informativo, fuera del costo). SUPUESTO: validar con Robert.

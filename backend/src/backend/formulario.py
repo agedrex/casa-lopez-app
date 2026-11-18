@@ -334,7 +334,11 @@ def comprobar_foto_de_modelo(session: Session, modelo_id: int, *, roles: frozens
 
 # Rows of the form whose measure goes to the model when the admin validates (m2 per unit). The `FORRO / <material>` row is handled
 # apart (measure + the lining material). HERRAJES are quantities saved as supplies, not the USD amount the model keeps.
-MEDIDAS_AL_VALIDAR = {"CUERO": "cuero_m2_por_unidad", "FLEX": "flex_m2_por_unidad", "GOMA EVA": "goma_eva_m2_por_unidad"}
+# SUPUESTO: validar con Robert. The hours row feeds the informative `horas_de_confeccion` (outside the cost).
+MEDIDAS_AL_VALIDAR = {
+    "CUERO": "cuero_m2_por_unidad", "FLEX": "flex_m2_por_unidad", "GOMA EVA": "goma_eva_m2_por_unidad",
+    "HS. DE TRABAJO": "horas_de_confeccion",
+}
 
 
 def normalizar_nombre(nombre: str | None) -> str:
