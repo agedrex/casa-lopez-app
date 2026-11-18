@@ -52,10 +52,11 @@ def test_the_color_filter_keeps_the_products_without_a_color():
 
 
 @pytest.mark.parametrize("estado", ESTADOS)
-def test_the_state_filter_compares_the_lifecycle_state_with_a_bound_value(estado):
+def test_the_state_filter_compares_the_derived_lifecycle_state_with_a_bound_value(estado):
+    # S8: the filter is the derived state (stored value or facts), see test_ciclo_derivado.py; the wanted state is bound.
     sql, params = _sql(q=None, categoria=None, estado=estado)
-    assert "producto.estado_del_ciclo =" in sql and "IS NULL" not in sql
-    assert list(params.values()) == [estado]
+    assert "CASE" in sql and "producto.estado_del_ciclo" in sql and "IS NULL" not in sql
+    assert params.values() and list(params.values()).count(estado) >= 1
 
 
 def test_without_the_new_filters_the_query_does_not_change():
@@ -68,7 +69,7 @@ def test_without_the_new_filters_the_query_does_not_change():
 
 def test_the_new_filters_add_up_with_the_search_the_category_and_the_review_mark():
     sql, params = _sql(q="cartera", categoria="Carteras", revisar=True, sin_cuero=True, sin_color=True, estado="COTIZADO")
-    for trozo in ("producto.nota ~", "producto.cuero_id IS NULL", "producto.color_id IS NULL", "producto.estado_del_ciclo ="):
+    for trozo in ("producto.nota ~", "producto.cuero_id IS NULL", "producto.color_id IS NULL", "producto.estado_del_ciclo"):
         assert trozo in sql
     valores = list(params.values())
     assert "%cartera%" in valores and "Carteras" in valores and "COTIZADO" in valores and servicios.PATRON_REVISAR_SQL in valores
