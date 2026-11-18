@@ -25,6 +25,8 @@ export function AvanzarEstado({
   const siguiente = siguienteEstadoDelTaller(estado);
   const [avanzadoEn, setAvanzadoEn] = useState<number | null>(null);
   const [deshecho, setDeshecho] = useState<FormState>(IDLE);
+  // Bumped after an undo so the advance form remounts and drops its own "Listo" message (only one message at a time).
+  const [vuelta, setVuelta] = useState(0);
   const [pending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -51,6 +53,7 @@ export function AvanzarEstado({
       const result = await deshacerEstado(codigo);
       setAvanzadoEn(null);
       setDeshecho(result);
+      if (result.status === "ok") setVuelta((n) => n + 1);
     });
   }
 
@@ -61,6 +64,7 @@ export function AvanzarEstado({
       <Card>
         {siguiente ? (
           <ConfirmForm
+            key={vuelta}
             action={avanzar}
             summary={() => (
               <p className="text-base">
