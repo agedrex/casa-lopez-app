@@ -928,8 +928,8 @@ def test_flujo_s3_rows_with_a_quantity_that_have_no_field_in_the_model_are_repor
         ("CONSUMO", "HS. DE TRABAJO", D("3.5")), ("CONSUMO", "EMPAQUE", D("1")), ("CONSUMO", "CORTE MANO DE OBRA", None),
         ("CONSUMO", "FRISELINA", D("0")), ("CONSUMO", "CUERO", D("0")),
     ])
-    assert [f["nombre"] for f in resultado["no_aplicadas"]] == ["HS. DE TRABAJO", "EMPAQUE"]
-    assert resultado["medidas"] == {"cuero_m2_por_unidad": D("0")}  # a typed zero still means "no lleva"
+    assert [f["nombre"] for f in resultado["no_aplicadas"]] == ["EMPAQUE"]  # the hours row now reaches the model
+    assert resultado["medidas"] == {"horas_de_confeccion": D("3.5"), "cuero_m2_por_unidad": D("0")}  # a typed zero still means "no lleva"
 
 
 def test_flujo_s3_the_row_names_are_matched_without_case_or_repeated_spaces():
@@ -1053,3 +1053,10 @@ def test_pg_flujo_s1_the_api_lines_carry_their_unit(api):
     unidades = {l["nombre"]: l["unidad"] for l in hoja["lineas"]}
     assert (unidades["CUERO"], unidades["HS. DE TRABAJO"], unidades["Y/O MANO DE OBRA TALLER"], unidades["EMPAQUE"],
             unidades["CIERRE N5"]) == ("m²", "horas", "$", "unidades", "unidades")
+
+
+def test_the_hours_row_of_the_sheet_reaches_the_informative_hours_of_the_model():
+    from decimal import Decimal as D
+    plan = formulario.planificar_aplicacion([("CONSUMO", "HS. DE TRABAJO", D("3"))], [], [])
+    assert plan["medidas"] == {"horas_de_confeccion": D("3")}
+    assert plan["no_aplicadas"] == []
