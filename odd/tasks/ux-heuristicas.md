@@ -14,10 +14,13 @@ Aplicar el plan de mejoras de la auditoría UX (Engram topic `ux/auditoria-heuri
 - S10: "quiero que empieces a trabajra en esos puntos ... hasta dejar todos los cambios en staging" (merge a main solo con CI verde; production no se toca).
 
 ## Tasks
-- T1 (S1,S2,S4,S8): textos, voz única, env vars, login, 404 — ruta: writer W1 — commit: pendiente
-- T2 (S3,S5,S6,S9-guardando): lotes/taller — ruta: writer W2 — commit: pendiente
-- T3 (S7,S9-atajos): panel alertas, modelos — ruta: writer W3 — commit: pendiente
+- T1 (S1,S2,S4,S8): textos, voz única, env vars, login, 404 — ruta: writer W1 — commit: hecho (rama feat/ux-heuristicas)
+- T2 (S3,S5,S6,S9-guardando): lotes/taller — ruta: writer W2 — commit: hecho (rama feat/ux-heuristicas)
+- T3 (S7,S9-atajos): panel alertas, modelos — ruta: writer W3 — commit: hecho (rama feat/ux-heuristicas)
 - T4: lint+build+tests, merge y staging — ruta: inline — commit: pendiente
 
 ## Log
 L1: "quiero que empieces a trabajra en esos puntos que idetificaste hasta dejar todos los cambios en staging"
+
+L2: T2 sin 'Deshacer' (S3 parcial): requiere endpoint de retroceso en backend y choca con el carril de estados de mejoras-qa-staging.md. Queda pendiente aparte.
+L3: Slices: T1 (6566a50), T2 (3a44252), T3 (último commit); la rama supera ~400 líneas, se entrega como una sola rama porque son cambios de front independientes y verificados.
