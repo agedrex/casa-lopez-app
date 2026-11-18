@@ -164,14 +164,16 @@ SOLO_CORTE = {"/cueros/{codigo}/cortes", "/cueros/{codigo}/sobrante", "/voz/inte
               "/ordenes/{codigo}/avanzar", "/ordenes/{codigo}/estado/deshacer",
               # Photo of a model (see test_modelo_foto.py and test_roles.py): the same pair that fills the consumption sheet.
               "/modelos/{codigo}/foto"}
-ESCRITURAS = [(m, r) for m, r in RUTAS if m == "POST" and r not in SOLO_ADMIN | SOLO_CORTE]
+# Admin and gerente: the sale price of a product (S4 of flujo-modelos-lotes-precio; see test_roles.py and test_precio_desde_lotes*.py).
+ADMIN_Y_GERENTE = {"/productos/{codigo}/precio-venta"}
+ESCRITURAS = [(m, r) for m, r in RUTAS if m == "POST" and r not in SOLO_ADMIN | SOLO_CORTE | ADMIN_Y_GERENTE]
 LECTURAS = [(m, r) for m, r in RUTAS if m == "GET"]
 SIN_PERMISO = {"detail": "No tenés permiso para esta acción."}
 
 
 def test_every_write_route_is_covered_by_the_role_tests():
-    assert len(ESCRITURAS) == 23 and {r for _, r in ESCRITURAS} >= {"/modelos", "/modelos/{codigo}/validado",
-        "/productos", "/productos/{codigo}/precio-venta", "/precios", "/cueros", "/dolar", "/dolar/actualizar-bna", "/ordenes", "/talleres", "/talleres/{codigo}/activo",
+    assert len(ESCRITURAS) == 22 and {r for _, r in ESCRITURAS} >= {"/modelos", "/modelos/{codigo}/validado",
+        "/productos", "/precios", "/cueros", "/dolar", "/dolar/actualizar-bna", "/ordenes", "/talleres", "/talleres/{codigo}/activo",
         "/ordenes/{codigo}/estado", "/ordenes/{codigo}/items",
         "/costos-fijos/{codigo}/monto", "/costos-fijos/{codigo}/corregir", "/costos-fijos/{codigo}/anular", "/costos-fijos/copiar",
         "/costos-fijos/lote", "/modelos/consumos/lote"}

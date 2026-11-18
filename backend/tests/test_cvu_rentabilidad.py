@@ -478,7 +478,7 @@ def test_an_unknown_product_is_a_404_on_every_new_product_route(client, monkeypa
     assert respuestas[0].json() == {"detail": "No existe el producto PRD-9999."}
 
 
-@pytest.mark.parametrize("role", ["gerente", "taller", None])
+@pytest.mark.parametrize("role", ["taller", None])
 def test_a_user_without_a_writing_role_cannot_store_a_price(role, monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
     try:

@@ -73,6 +73,6 @@ def test_the_scenario_without_a_session_is_401():
 def test_the_gerente_still_cannot_write_through_any_other_post(monkeypatch):
     monkeypatch.setattr(servicios, "crear_producto", lambda *a, **k: pytest.fail("the service must not be called"))
     http, _ = cliente("gerente")
-    for ruta in ("/productos", "/productos/PRD-0001/precio-venta", "/productos/precios-lote", "/modelos", "/precios", "/dolar"):
+    for ruta in ("/productos", "/productos/precios-lote", "/modelos", "/precios", "/dolar"):
         respuesta = http.post(ruta, json={})
         assert respuesta.status_code == 403 and respuesta.json() == SIN_PERMISO, ruta

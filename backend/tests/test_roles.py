@@ -89,6 +89,9 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
     ("GET", "/productos/{codigo}/rentabilidad"): PRODUCTOS,
     ("GET", "/productos/{codigo}/precio-sugerido"): PRODUCTOS,
     ("GET", "/productos/{codigo}/precio-venta"): PRODUCTOS,
+    # S4 (flujo-modelos-lotes-precio): the gerente picks the margin and saves the sale price; it is the only write it has.
+    ("GET", "/productos/{codigo}/precio-desde-lotes"): PRODUCTOS,
+    ("POST", "/productos/{codigo}/precio-venta"): PRODUCTOS,
     ("GET", "/grilla"): ADMIN,  # no page of the gerente reads it
     ("GET", "/catalogos"): TODOS,
     ("GET", "/materiales"): TODOS,
@@ -138,7 +141,7 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
     ("POST", "/ordenes/{codigo}/avanzar"): CORTE,
     ("POST", "/ordenes/{codigo}/estado/deshacer"): CORTE,
     **{("POST", ruta): ADMIN for ruta in (
-        "/cueros", "/productos", "/productos/{codigo}/precio-venta", "/productos/{codigo}/extras",
+        "/cueros", "/productos", "/productos/{codigo}/extras",
         "/productos/{codigo}/componentes", "/productos/{codigo}/cotizaciones", "/precios", "/dolar",
         "/dolar/actualizar-bna", "/costos-fijos", "/costos-fijos/{codigo}/monto", "/costos-fijos/{codigo}/corregir",
         "/costos-fijos/{codigo}/anular", "/costos-fijos/copiar", "/ordenes", "/ordenes/{codigo}/estado", "/ordenes/{codigo}/items",
@@ -247,7 +250,8 @@ def test_admin_only_routes_refuse_everyone_else_without_calling_the_service(monk
     # Productos (list and sheet), Modelos and the scenario simulator, and what those pages read.
     ("gerente", [("GET", "/productos"), ("GET", "/productos/conteo"), ("GET", "/productos/X-1"),
                  ("GET", "/productos/X-1/rentabilidad"), ("GET", "/productos/X-1/precio-venta"),
-                 ("GET", "/productos/X-1/precio-sugerido"),
+                 ("GET", "/productos/X-1/precio-sugerido"), ("GET", "/productos/X-1/precio-desde-lotes"),
+                 ("POST", "/productos/X-1/precio-venta"),
                  ("GET", "/modelos"), ("GET", "/modelos/MOD-1"),
                  ("GET", "/catalogos"), ("GET", "/materiales"),
                  ("GET", "/cvu/periodo"), ("POST", "/cvu/escenario")]),
@@ -332,6 +336,7 @@ RUTAS_DEL_GERENTE = frozenset({
     ("GET", "/productos"), ("GET", "/productos/conteo"), ("GET", "/productos/{codigo}"),
     ("GET", "/productos/{codigo}/rentabilidad"), ("GET", "/productos/{codigo}/precio-venta"),
     ("GET", "/productos/{codigo}/precio-sugerido"),
+    ("GET", "/productos/{codigo}/precio-desde-lotes"), ("POST", "/productos/{codigo}/precio-venta"),
     ("GET", "/modelos"), ("GET", "/modelos/{codigo}"), ("GET", "/modelos/{codigo}/foto"),
     ("GET", "/materiales"), ("GET", "/catalogos"),
     ("GET", "/cvu/periodo"), ("POST", "/cvu/escenario"),
@@ -370,6 +375,7 @@ def test_s8_taller_keeps_reading_lots_leather_and_forms(ruta):
 @pytest.mark.parametrize("metodo, ruta", [
     ("GET", "/productos/X-1/precios-talleres"), ("GET", "/grilla"), ("POST", "/productos"),
     ("GET", "/productos/X-1/rentabilidad"), ("GET", "/productos/X-1/precio-venta"), ("GET", "/talleres/TAL-1/historial"),
+    ("GET", "/productos/X-1/precio-desde-lotes"), ("POST", "/productos/X-1/precio-venta"),
     ("POST", "/productos/X-1/cotizaciones"), ("POST", "/modelos"), ("GET", "/proveedores"), ("GET", "/talleres"),
 ])
 def test_taller_quotes_read_only_and_stays_out_of_the_rest_of_the_products(monkeypatch, metodo, ruta):

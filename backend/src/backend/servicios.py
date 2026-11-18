@@ -3458,6 +3458,90 @@ def listar_productos_por_codigo(session: Session, codigos: list[str]) -> list[di
     return [por_codigo[codigo] for codigo in codigos]
 
 
+# --- Sale price from the lots already made (S4 of flujo-modelos-lotes-precio) ----------------------------------------
+# SUPUESTO: validar con Robert y Alejandro. The cost basis is the cost per unit of the NEWEST finished lot (LISTA or CERRADA,
+# `ESTADOS_TERMINADOS`) that made the product, costed at the prices of that lot's date (`_armar_lote`, the same figure the
+# Lotes screen shows). Not an average of lots: it is the simplest rule and the latest lot is the one that reflects what the
+# workshop charges now. Without a finished lot it falls back to today's computed cost and says it is an estimate.
+# The margin is over the PRICE (net = cost / (1 - margin)); the active taxes (`_impuestos_activos`, the same ones the saved
+# price history shows) go on top of the net price, never on the cost. SUPUESTO: validar con el contador.
+MAX_LOTES_DEL_PRECIO = 5
+AVISO_PRECIO_SIN_LOTES = (
+    "Todavía no hay lotes terminados de este producto con costo calculable: el costo es una estimación con los precios de hoy, "
+    "no el costo real de un lote."
+)
+AVISO_PRECIO_SIN_COSTO = "No se puede calcular el costo de este producto (falta el dólar o algún precio), así que tampoco el precio."
+
+
+def armar_precio_desde_lotes(
+    *, codigo: str, lotes: list[dict], costo_estimado: Decimal | None, impuestos: list[dict], margen_pct: Decimal | None,
+) -> dict:
+    """Pure: cost basis, net price (cost / (1 - margin)) and taxes on top of it for one product.
+
+    `lotes` are the finished lots that made the product, newest first, as `{codigo, estado, fecha, unidades,
+    costo_por_unidad}`; a lot whose cost cannot be computed (None or 0) is neither used nor listed. `margen_pct` is the
+    percentage over the price (30 = 30 %) or None to get the cost basis only.
+    """
+    if margen_pct is not None and not ZERO <= margen_pct < 100:
+        raise DatosInvalidos("El margen tiene que estar entre 0 y 99,9 %.")
+    con_costo = [lote for lote in lotes if lote["costo_por_unidad"] is not None and lote["costo_por_unidad"] > 0]
+    avisos: list[str] = []
+    lote_base = con_costo[0]["codigo"] if con_costo else None
+    if con_costo:
+        fuente, costo = "LOTE", con_costo[0]["costo_por_unidad"]
+    elif costo_estimado is not None and costo_estimado > 0:
+        fuente, costo = "ESTIMADO", costo_estimado
+        avisos.append(AVISO_PRECIO_SIN_LOTES)
+    else:
+        fuente, costo = None, None
+        avisos.append(AVISO_PRECIO_SIN_COSTO)
+    resultado = {
+        "producto": codigo, "fuente_costo": fuente, "costo_por_unidad": costo, "lote_base": lote_base,
+        "lotes": [{**lote, "usado": lote["codigo"] == lote_base} for lote in con_costo[:MAX_LOTES_DEL_PRECIO]],
+        "margen_pct": margen_pct, "precio_neto": None, "impuestos": [], "total_impuestos": None, "precio_final": None,
+        "sin_impuestos": not impuestos, "avisos": avisos,
+    }
+    if margen_pct is None or costo is None:
+        return resultado
+    neto = precio_con_margen(costo, margen_pct)
+    return {**resultado, "precio_neto": neto, **armar_precio_con_impuestos(neto, impuestos)}
+
+
+def _lotes_terminados_del_producto(session: Session, codigo: str) -> list[dict]:
+    """The finished lots with a line of this product, newest first, each with its cost per unit (None if not computable)."""
+    terminados = [lote for lote in _cargar_lotes(session) if lote_terminado(lote.estado)]
+    por_lote: dict[str, list[ItemDatos]] = {}
+    for item in _cargar_items(session, [lote.id for lote in terminados]):
+        if item.producto == codigo:
+            por_lote.setdefault(item.lote, []).append(item)
+    del_producto = [lote for lote in terminados if lote.codigo in por_lote]
+    if not del_producto:
+        return []
+    info = _info_productos(session, {codigo}, con_costo=False)
+    materiales = _materiales_por_unidad(session, {(codigo, lote.envio) for lote in del_producto})
+    filas = []
+    for lote in del_producto:
+        armado = _armar_lote(lote, por_lote[lote.codigo], {
+            codigo: replace(info[codigo], materiales=materiales.get((codigo, lote.envio)))} if codigo in info else {})
+        con_costo = [r for r in armado["items"] if r["total_linea"] is not None]
+        unidades_con_costo = sum((r["cantidad"] for r in con_costo), ZERO)
+        filas.append({
+            "codigo": lote.codigo, "estado": lote.estado, "fecha": lote.fecha, "unidades": armado["unidades"],
+            "costo_por_unidad": sum((r["total_linea"] for r in con_costo), ZERO) / unidades_con_costo if unidades_con_costo > 0 else None,
+        })
+    return filas
+
+
+def precio_desde_lotes(session: Session, codigo: str, margen_pct: Decimal | None = None) -> dict:
+    """Price suggested from the lots already made at the margin `margen_pct` (percent over the price); reads only, saves nothing."""
+    _producto_o_404(session, codigo)
+    lotes = _lotes_terminados_del_producto(session, codigo)
+    hay_costo_de_lote = any(l["costo_por_unidad"] is not None and l["costo_por_unidad"] > 0 for l in lotes)
+    estimado = None if hay_costo_de_lote else _costos_totales_de_hoy(session, {codigo})[codigo]
+    return armar_precio_desde_lotes(
+        codigo=codigo, lotes=lotes, costo_estimado=estimado, impuestos=_impuestos_activos(session), margen_pct=margen_pct)
+
+
 def _precio_y_fuente(ingresado: Decimal | None, guardado: Decimal | None) -> tuple[Decimal | None, str | None]:
     if ingresado is not None:
         return ingresado, "INGRESADO"
