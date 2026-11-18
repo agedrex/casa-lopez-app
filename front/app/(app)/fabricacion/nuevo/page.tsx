@@ -25,7 +25,11 @@ export default async function NuevoLotePage() {
       <PageHeader
         eyebrow="Lotes"
         title="Nuevo lote"
-        description="Elegí quién lo hace y buscá los productos."
+        help={[
+          "Elegí quién lo hace: la fábrica o un taller.",
+          "Buscá los productos y poné las cantidades.",
+          "Al crearlo, se abre el lote.",
+        ].map((line) => <p key={line}>{line}</p>)}
       />
     </>
   );

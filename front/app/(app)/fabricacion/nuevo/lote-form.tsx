@@ -156,7 +156,7 @@ export function LoteForm({
       <CueroPanel filas={filas} nombres={nombresCuero} />
       <FormFeedback state={state} />
       <PrimaryButton pending={pending}>
-        {pending ? "Creando…" : "Crear lote"}
+        {pending ? "Guardando…" : "Crear lote"}
       </PrimaryButton>
     </form>
   );

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Ayuda } from "./ayuda";
 
 type Tone = "neutral" | "warn" | "good" | "alert";
 
@@ -35,12 +36,15 @@ export function PageHeader({
   eyebrow,
   title,
   description,
+  help,
   actions,
   clampTitle = false,
 }: {
   eyebrow?: string;
   title: string;
   description?: string;
+  /** What the screen is for, in 3 short lines at most: shown in a "?" popover next to the title. */
+  help?: ReactNode;
   actions?: ReactNode;
   /** For long, user-typed titles: two lines at most, the whole text in the tooltip. */
   clampTitle?: boolean;
@@ -53,12 +57,19 @@ export function PageHeader({
             {eyebrow}
           </p>
         ) : null}
-        <h1
-          className={`text-2xl sm:text-4xl ${clampTitle ? "line-clamp-2 break-words" : ""}`}
-          title={clampTitle ? title : undefined}
-        >
-          {title}
-        </h1>
+        {help ? (
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl sm:text-4xl">{title}</h1>
+            <Ayuda>{help}</Ayuda>
+          </div>
+        ) : (
+          <h1
+            className={`text-2xl sm:text-4xl ${clampTitle ? "line-clamp-2 break-words" : ""}`}
+            title={clampTitle ? title : undefined}
+          >
+            {title}
+          </h1>
+        )}
         {description ? (
           <p className="mt-3 max-w-2xl text-sm text-muted">{description}</p>
         ) : null}

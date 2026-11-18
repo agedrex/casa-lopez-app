@@ -41,7 +41,11 @@ export default async function MaterialesPage() {
       <PageHeader
         eyebrow="Costos"
         title="Materiales"
-        description="Materiales por etapa. Los precios llegan con cada pedido."
+        help={[
+          "Materiales por etapa.",
+          "Los precios llegan con cada pedido.",
+          "Cada precio guarda su fecha: el más nuevo es el vigente.",
+        ].map((line) => <p key={line}>{line}</p>)}
       />
       {!materiales.ok ? (
         <ErrorNotice message={materiales.message} />

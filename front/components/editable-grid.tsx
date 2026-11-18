@@ -16,7 +16,8 @@ import {
   useTransition,
 } from "react";
 import { error, type FormState, IDLE } from "@/lib/action-state";
-import { parseDecimalInput, sameDecimalText } from "@/lib/format";
+import { type CellError, cellError, mostrarErrorDeCelda } from "@/lib/celdas";
+import { sameDecimalText } from "@/lib/format";
 import { FormFeedback } from "./form";
 import { Notice } from "./ui";
 
@@ -83,7 +84,6 @@ export type GridSave = {
 type Values = Record<string, string>;
 type Edits = Record<string, Values>;
 type Draft = { id: string; cells: Values };
-type CellError = { message: string; immediate: boolean };
 type RowErrors = Record<string, CellError>;
 
 const NO_ERRORS: RowErrors = {};
@@ -95,26 +95,6 @@ function sameCell(column: GridColumn, a: string, b: string): boolean {
   return column.kind === "decimal"
     ? sameDecimalText(a, b)
     : a.trim() === b.trim();
-}
-
-function cellError(
-  column: GridColumn,
-  value: string,
-  original: string,
-  isNew: boolean,
-): CellError | null {
-  const text = value.trim();
-  if (text === "") {
-    if (column.required)
-      return { message: "Falta completar.", immediate: false };
-  } else if (column.kind === "decimal" && parseDecimalInput(text) === null) {
-    return {
-      message: "No es un número válido. Ejemplo: 0,25.",
-      immediate: true,
-    };
-  }
-  const custom = column.validate?.(text, { original, isNew });
-  return custom ? { message: custom, immediate: false } : null;
 }
 
 const inputBase =
@@ -136,6 +116,9 @@ type RowViewProps = {
   dirty: boolean;
   errors: RowErrors;
   showAllErrors: boolean;
+  /** Keys of the cells the person already left (blur): their errors show without a save. */
+  visited: Record<string, true> | undefined;
+  onVisit: (id: string, key: string) => void;
   onChange: (id: string, key: string, value: string, draft: boolean) => void;
   onRemove?: (id: string) => void;
   /** Present only with `allowDelete`: marks or unmarks a saved row for deletion. */
@@ -159,6 +142,8 @@ const RowView = memo(function RowView({
   dirty,
   errors,
   showAllErrors,
+  visited,
+  onVisit,
   onChange,
   onRemove,
   onToggleDelete,
@@ -272,7 +257,10 @@ const RowView = memo(function RowView({
             column.key in edit &&
             !sameCell(column, value, base);
         const found = errors[column.key];
-        const shownError = found && (showAllErrors || found.immediate);
+        const shownError = mostrarErrorDeCelda(found, {
+          visited: visited?.[column.key] === true,
+          attempted: showAllErrors,
+        });
         const label = `${column.header} de ${row.name}${modified ? " (modificado)" : ""}`;
         const common = {
           "data-grid-r": rowIndex,
@@ -282,6 +270,7 @@ const RowView = memo(function RowView({
           "aria-describedby": shownError
             ? `err-${row.id}-${column.key}`
             : undefined,
+          onBlur: () => onVisit(row.id, column.key),
         } as const;
         return (
           <td key={column.key} className={cellClass}>
@@ -320,7 +309,7 @@ const RowView = memo(function RowView({
                 className={`${inputBase} ${column.kind === "decimal" ? "text-right tabular-nums" : ""} ${inputState(modified, Boolean(shownError))}`}
               />
             )}
-            {shownError ? (
+            {shownError && found ? (
               <span
                 id={`err-${row.id}-${column.key}`}
                 className="mt-1 block text-sm text-bordeaux sm:text-xs"
@@ -386,7 +375,6 @@ export function EditableGrid({
   newRowDefaults,
   newRowLabel = "Fila nueva",
   warning,
-  note,
   footer,
   compact = false,
   fitContent = false,
@@ -420,7 +408,6 @@ export function EditableGrid({
   newRowLabel?: string;
   /** A notice shown while there are changes (for example, what saving will undo). */
   warning?: (save: GridSave) => string | null;
-  note?: ReactNode;
   footer?: ReactNode;
   /** Sin resumen vacío ni instrucciones: solo la grilla y lo que haya pendiente. */
   compact?: boolean;
@@ -450,6 +437,9 @@ export function EditableGrid({
   const [deleted, setDeleted] = useState<string[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [attempted, setAttempted] = useState(false);
+  const [visited, setVisited] = useState<Record<string, Record<string, true>>>(
+    {},
+  );
   const [result, setResult] = useState<FormState>(IDLE);
   const [pasteInfo, setPasteInfo] = useState("");
   const [saving, startSaving] = useTransition();
@@ -604,6 +594,14 @@ export function EditableGrid({
     );
   }, []);
 
+  const visit = useCallback((id: string, key: string) => {
+    setVisited((previous) =>
+      previous[id]?.[key]
+        ? previous
+        : { ...previous, [id]: { ...previous[id], [key]: true } },
+    );
+  }, []);
+
   const removeDraft = useCallback((id: string) => {
     setDrafts((previous) => previous.filter((item) => item.id !== id));
   }, []);
@@ -646,6 +644,7 @@ export function EditableGrid({
           setDeleted([]);
           setDrafts(allowNew && startWithDraft ? [makeDraft()] : []);
           setAttempted(false);
+          setVisited({});
         }
       } catch {
         setResult(error("No se pudo guardar. Intente de nuevo."));
@@ -990,6 +989,8 @@ export function EditableGrid({
                   dirty={analysis.dirtyIds.has(row.id)}
                   errors={analysis.errors[row.id] ?? NO_ERRORS}
                   showAllErrors={attempted}
+                  visited={visited[row.id]}
+                  onVisit={visit}
                   onChange={handleChange}
                   onToggleDelete={undefined}
                   deleting={deleted.includes(row.id)}
@@ -1032,6 +1033,8 @@ export function EditableGrid({
                 dirty={analysis.dirtyIds.has(draft.id)}
                 errors={analysis.errors[draft.id] ?? NO_ERRORS}
                 showAllErrors={attempted}
+                visited={visited[draft.id]}
+                onVisit={visit}
                 onChange={handleChange}
                 onRemove={removeDraft}
                 extraHeaders={extraHeaders}
