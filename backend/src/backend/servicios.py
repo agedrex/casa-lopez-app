@@ -10,7 +10,7 @@ import re
 import unicodedata
 from collections import Counter
 from dataclasses import asdict, dataclass, field, replace
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy import Integer, and_, bindparam, cast, exists, func, or_, select, text, update
@@ -25,7 +25,7 @@ from backend.costeo import (
 from backend.models import (
     Categoria, Color, CompraReventa, Cotizacion, Etapa, FormularioConsumo, GastoPeriodo, Impuesto, KitComponente, Material, Modelo,
     ModeloFoto, ModeloInsumo, MovimientoCuero, OrdenEstado, OrdenFabricacion, OrdenItem, Parametro, Persona, PrecioMaterial, PrecioVenta, Producto,
-    ProductoReventa, Proveedor, RecetaLinea, Taller, TipoCambio, Transferencia, Venta, RENGLON_QUITADO, renglon_quitado,
+    ProductoReventa, Proveedor, RecetaLinea, Taller, TipoCambio, Transferencia, Venta, LOT_STATES, RENGLON_QUITADO, renglon_quitado,
 )
 from backend.receta import (
     Cotizado, Extra, InsumoModelo, ModeloReceta, ProductoReceta, Receta, cotizar_producto, generar_receta,
@@ -48,6 +48,19 @@ UNIQUE_VIOLATION = "23505"
 # SUPUESTO: validar. A price more than this many percent away from the previous one of the same material,
 # color and currency is flagged (never blocked). The 50 comes from the task, not from the plantilla.
 SALTO_PRECIO_PCT = Decimal("50")
+
+
+# Names of the lot states as the people read them: error messages never show the internal codes.
+ETIQUETA_ESTADO_LOTE = {
+    "PLANIFICADA": "Planificada", "EN_CORTE": "En corte", "CORTADA": "Cortada", "EN_CONFECCION": "En confección",
+    "LISTA": "Lista", "CERRADA": "Cerrada",
+}
+
+
+# SUPUESTO: validar con Robert (QA 2026-11-17). The dates of a lot (shipping, delivery, the day of a state change) must be
+# from this day on and no more than this many days after today; the bounds are ours, nobody confirmed them.
+FECHA_MINIMA_DE_LOTE = date(2020, 1, 1)
+DIAS_HACIA_ADELANTE_DE_LOTE = 365
 
 
 class DatosInvalidos(ValueError):
@@ -1052,11 +1065,31 @@ def crear_gasto(
     return costos_fijos(session, periodo)
 
 
+def _fecha_razonable(valor: date | None, nombre: str) -> None:
+    """Refuse a lot date out of the reasonable range (422). `nombre` reads in a sentence: "de envío", "de entrega"."""
+    if valor is None:
+        return
+    tope = date.today() + timedelta(days=DIAS_HACIA_ADELANTE_DE_LOTE)
+    if not FECHA_MINIMA_DE_LOTE <= valor <= tope:
+        raise DatosInvalidos(
+            f"La fecha {nombre} ({valor:%d/%m/%Y}) no es válida: tiene que estar entre el "
+            f"{FECHA_MINIMA_DE_LOTE:%d/%m/%Y} y el {tope:%d/%m/%Y}.")
+
+
+def _entrega_no_anterior_al_envio(envio: date | None, entrega: date | None) -> None:
+    if envio is not None and entrega is not None and entrega < envio:
+        raise DatosInvalidos(
+            f"La fecha de entrega ({entrega:%d/%m/%Y}) no puede ser anterior a la fecha de envío ({envio:%d/%m/%Y}).")
+
+
 def crear_orden(
     session: Session, *, donde_se_hace: str, taller: str | None, persona: str | None, fecha_de_envio: date | None,
     fecha_de_entrega: date | None, estado: str, nota: str | None, items: list[dict],
 ) -> dict:
     """A lot with its items and the first row of its state history (costs are derived on read, never stored)."""
+    _fecha_razonable(fecha_de_envio, "de envío")
+    _fecha_razonable(fecha_de_entrega, "de entrega")
+    _entrega_no_anterior_al_envio(fecha_de_envio, fecha_de_entrega)
     taller_fila = _por_codigo(session, Taller, taller, "el taller")
     persona_fila = _por_codigo(session, Persona, persona, "la persona")
     productos = {}
@@ -1577,14 +1610,24 @@ def registrar_estado(
     orden = _orden_por_codigo(session, codigo, bloquear=True)
     if orden.estado == "CERRADA":
         raise Conflicto(f"El lote {codigo} ya está cerrado: no se puede cambiar su estado.")
+    etiqueta = ETIQUETA_ESTADO_LOTE
     if estado == orden.estado:
         # SUPUESTO: validar. Repeating the current state is refused so a double click leaves one history row.
-        raise Conflicto(f"El lote {codigo} ya está en estado {estado}.")
+        raise Conflicto(f"El lote {codigo} ya está en estado {etiqueta[estado]}.")
+    # SUPUESTO: validar con Robert. A lot only goes to the next state of the cycle, never skips one nor goes back (QA 2026-11-17).
+    siguiente = LOT_STATES[LOT_STATES.index(orden.estado) + 1]
+    if estado != siguiente:
+        raise Conflicto(
+            f"El lote {codigo} está en {etiqueta[orden.estado]}: el siguiente estado es {etiqueta[siguiente]}. "
+            f"No se puede pasar a {etiqueta[estado]}.")
+    _fecha_razonable(fecha, "del cambio de estado")
     quien_fila = _por_codigo(session, Persona, quien, "la persona")
     if estado == "CERRADA":
         entrega = fecha_de_entrega or orden.fecha_de_entrega
         if entrega is None:
             raise DatosInvalidos("Para cerrar el lote hace falta la fecha de entrega: es la que cierra la cotización final.")
+        _fecha_razonable(entrega, "de entrega")
+        _entrega_no_anterior_al_envio(orden.fecha_de_envio, entrega)
         orden.fecha_de_entrega = entrega
     _insertar(session, OrdenEstado(orden_fabricacion_id=orden.id, estado=estado, fecha=fecha,
                                    quien_id=quien_fila.id if quien_fila else None, cambiado_por=usuario_id),
@@ -1598,7 +1641,9 @@ def agregar_item_a_orden(
     session: Session, codigo: str, *, producto: str, cantidad: Decimal, cotizado: Decimal | None,
     pagado: Decimal | None, nota: str | None = None,
 ) -> dict:
-    orden = _orden_por_codigo(session, codigo)
+    orden = _orden_por_codigo(session, codigo, bloquear=True)
+    if orden.estado == "CERRADA":
+        raise Conflicto(f"El lote {codigo} está cerrado: no se puede agregar un producto.")
     producto_fila = session.scalar(select(Producto).where(Producto.codigo == producto))
     if producto_fila is None:
         raise DatosInvalidos(f"No existe el producto {producto}.")

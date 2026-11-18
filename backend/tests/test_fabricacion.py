@@ -337,18 +337,20 @@ def test_state_changes_append_history_and_closing_needs_the_delivery_date(api):
     assert avance.status_code == 201, avance.text
     assert avance.json()["estado"] == "EN_CORTE"
     assert [(e["estado"], e["fecha"], e["quien"]) for e in avance.json()["estados"]][-1] == ("EN_CORTE", "2026-10-06", "PER-0002")
+    for estado in ("CORTADA", "EN_CONFECCION", "LISTA"):  # one state at a time (S3 of mejoras-qa-staging)
+        assert api.post("/ordenes/LOT-0001/estado", json={"estado": estado, "fecha": "2026-10-07"}).status_code == 201
     sin_entrega = api.post("/ordenes/LOT-0001/estado", json={"estado": "CERRADA", "fecha": "2026-10-20"})
     assert sin_entrega.status_code == 422 and "entrega" in sin_entrega.json()["detail"]
-    assert api.get("/ordenes/LOT-0001").json()["estado"] == "EN_CORTE"  # nothing was stored
+    assert api.get("/ordenes/LOT-0001").json()["estado"] == "LISTA"  # nothing was stored
     cierre = api.post("/ordenes/LOT-0001/estado",
                       json={"estado": "CERRADA", "fecha": "2026-10-20", "fecha_de_entrega": "2026-10-19"})
     assert cierre.status_code == 201
     assert cierre.json()["estado"] == "CERRADA" and cierre.json()["fecha_de_entrega"] == "2026-10-19"
-    assert cierre.json()["periodo"] == "2026-10" and len(cierre.json()["estados"]) == 3
+    assert cierre.json()["periodo"] == "2026-10" and len(cierre.json()["estados"]) == 6
     for estado in ("EN_CONFECCION", "CERRADA"):
         reabrir = api.post("/ordenes/LOT-0001/estado", json={"estado": estado, "fecha": "2026-10-21"})
         assert reabrir.status_code == 409, estado
-    assert len(api.get("/ordenes/LOT-0001").json()["estados"]) == 3  # rejected changes leave no history
+    assert len(api.get("/ordenes/LOT-0001").json()["estados"]) == 6  # rejected changes leave no history
     assert api.post("/ordenes/LOT-9999/estado", json={"estado": "LISTA", "fecha": "2026-10-21"}).status_code == 404
 
 
@@ -357,10 +359,12 @@ def test_state_change_validation(api):
     lote_nuevo(api, codigo)
     assert api.post("/ordenes/LOT-0001/estado", json={"estado": "LISTA"}).status_code == 422  # date is required
     assert api.post("/ordenes/LOT-0001/estado", json={"estado": "INVENTADO", "fecha": "2026-10-06"}).status_code == 422
-    assert api.post("/ordenes/LOT-0001/estado", json={"estado": "LISTA", "fecha": "2026-10-06", "quien": "PER-9999"}).status_code == 422
+    assert api.post("/ordenes/LOT-0001/estado", json={"estado": "EN_CORTE", "fecha": "2026-10-06", "quien": "PER-9999"}).status_code == 422
     assert api.post("/ordenes/LOT-0001/estado", json={"estado": "LISTA", "fecha": "2026-10-06", "estado_anterior": "x"}).status_code == 422
     assert api.post("/ordenes/LOT-0001/estado", json={"estado": "PLANIFICADA", "fecha": "2026-10-06"}).status_code == 409  # already there
     cerrado_con_entrega = lote_nuevo(api, codigo, fecha_de_entrega="2026-10-12")  # LOT-0002 already has its delivery date
+    for estado in ("EN_CORTE", "CORTADA", "EN_CONFECCION", "LISTA"):
+        assert api.post(f"/ordenes/{cerrado_con_entrega['codigo']}/estado", json={"estado": estado, "fecha": "2026-10-12"}).status_code == 201
     ok = api.post(f"/ordenes/{cerrado_con_entrega['codigo']}/estado", json={"estado": "CERRADA", "fecha": "2026-10-13"})
     assert ok.status_code == 201 and ok.json()["fecha_de_entrega"] == "2026-10-12"
 
