@@ -27,7 +27,7 @@ export function CatalogoSelect({
   createLabel: string;
   /** Label of the revealed input, e.g. "Nombre del color nuevo". */
   newNameLabel: string;
-  options: string[];
+  options: (string | { value: string; label: string })[];
   /** Text of the empty option ("Sin color", "Elegir…"). */
   emptyLabel: string;
   required?: boolean;
@@ -52,11 +52,17 @@ export function CatalogoSelect({
         <option value="" disabled={required}>
           {emptyLabel}
         </option>
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
+        {options.map((option) => {
+          const { value: optionValue, label: optionLabel } =
+            typeof option === "string"
+              ? { value: option, label: option }
+              : option;
+          return (
+            <option key={optionValue} value={optionValue}>
+              {optionLabel}
+            </option>
+          );
+        })}
         <option value={NUEVO_CATALOGO}>{createLabel}</option>
       </select>
       {creating ? (

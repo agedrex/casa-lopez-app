@@ -318,11 +318,23 @@ export type EstadoDeOrden = {
   fecha: string;
   quien: string | null;
   quien_nombre: string | null;
+  // The logged-in user who saved the change (null on the creation row) and the moment it was saved.
+  cambiado_por?: string | null;
+  registrado_en?: string | null;
+};
+
+/** A line an admin took out of the lot: the row is kept and its note holds the log (date, quantity it had, who). */
+export type RenglonQuitado = {
+  codigo: string;
+  producto: string;
+  producto_nombre: string;
+  nota: string | null;
 };
 
 export type OrdenDetalle = OrdenResumen & {
   items: Renglon[];
   estados: EstadoDeOrden[];
+  quitados: RenglonQuitado[];
 };
 
 export type MesCasaTaller = {
@@ -649,6 +661,73 @@ export type AlcanzaCuero = {
   piezas: PiezaDisponible[];
   alternativas: AlternativaCuero[];
   mensaje: string | null;
+};
+
+/** One leather (material + color) a lot needs (GET /ordenes/{codigo}/cuero). Square meters only: no money, the taller reads it. */
+export type LoteCueroGrupo = {
+  material: string;
+  material_nombre: string;
+  color: string | null;
+  /** m² the lot's products need of this leather. */
+  necesario: string;
+  /** m² already cut against the lot's items (they are no longer in the stock). */
+  ya_cortado: string;
+  /** m² still to cut: `necesario` minus `ya_cortado`. */
+  por_cortar: string;
+  /** m² in stock of this same leather (the source of GET /cueros/alcanza). */
+  disponible: string;
+  alcanza: boolean;
+  faltante: string;
+  sobrante: string;
+  productos: string[];
+};
+
+export type LoteCuero = {
+  lote: string;
+  estado: string;
+  cueros: LoteCueroGrupo[];
+  /** Products of the lot without a model, a leather or a leather consumption: they cannot be counted. */
+  sin_consumo: { producto: string; producto_nombre: string }[];
+};
+
+/** One supply a product of a lot consumes (GET /ordenes/{codigo}/consumo). Quantities only: no money, the taller reads it. */
+export type ConsumoInsumo = {
+  material: string;
+  material_nombre: string;
+  color: string | null;
+  /** Consumption unit of the material (`m2`, `juego`, `unidad`, ...). */
+  unidad: string;
+  /** Quantity for ONE unit of the product. */
+  por_unidad: string;
+  /** `por_unidad` times the lot quantity, calculated by the API. */
+  total: string;
+};
+
+export type ConsumoProducto = {
+  item: string;
+  producto: string;
+  producto_nombre: string;
+  cantidad: string;
+  insumos: ConsumoInsumo[];
+};
+
+/** Total of one supply across every product of the lot. */
+export type ConsumoTotal = {
+  material: string;
+  material_nombre: string;
+  color: string | null;
+  unidad: string;
+  total: string;
+  productos: string[];
+};
+
+export type ConsumoLote = {
+  lote: string;
+  estado: string;
+  productos: ConsumoProducto[];
+  totales: ConsumoTotal[];
+  /** Products of the lot with no supply loaded: their consumption cannot be counted. */
+  sin_consumo: { producto: string; producto_nombre: string }[];
 };
 
 // Cost panel (GET /panel/costos). Every amount is computed by the API; the front only displays it.

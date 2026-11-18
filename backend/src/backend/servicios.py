@@ -24,8 +24,8 @@ from backend.costeo import (
 )
 from backend.models import (
     Categoria, Color, CompraReventa, Cotizacion, Etapa, FormularioConsumo, GastoPeriodo, Impuesto, KitComponente, Material, Modelo,
-    ModeloFoto, ModeloInsumo, OrdenEstado, OrdenFabricacion, OrdenItem, Parametro, Persona, PrecioMaterial, PrecioVenta, Producto,
-    ProductoReventa, Proveedor, RecetaLinea, Taller, TipoCambio, Transferencia, Venta,
+    ModeloFoto, ModeloInsumo, MovimientoCuero, OrdenEstado, OrdenFabricacion, OrdenItem, Parametro, Persona, PrecioMaterial, PrecioVenta, Producto,
+    ProductoReventa, Proveedor, RecetaLinea, Taller, TipoCambio, Transferencia, Venta, RENGLON_QUITADO, renglon_quitado,
 )
 from backend.receta import (
     Cotizado, Extra, InsumoModelo, ModeloReceta, ProductoReceta, Receta, cotizar_producto, generar_receta,
@@ -365,7 +365,7 @@ def cargar_productos(
             select(OrdenItem.producto_id, dia, OrdenItem.taller_precio_cotizado_por_unidad_ars,
                    OrdenItem.taller_precio_pagado_por_unidad_ars)
             .join(OrdenFabricacion, OrdenFabricacion.id == OrdenItem.orden_fabricacion_id)
-            .where(OrdenItem.producto_id.in_(ids), dia.is_not(None))
+            .where(OrdenItem.producto_id.in_(ids), dia.is_not(None), ~renglon_quitado())
         ):
             lotes.setdefault(producto_id, []).append(ItemLote(fecha, cotizado, pagado))
         componente = aliased(Producto)
@@ -1093,7 +1093,7 @@ def crear_orden(
 
 # --- Fabricación: lots, workshops, house vs workshop ---------------------------------------------------------
 # Plantilla sheets Lotes, Lote_Productos, Lote_Estados, Talleres, Casa_vs_Taller and Precios_Talleres. A lot's money is
-# never stored: it is derived on every read from the item prices and the product cost of today.
+# never stored: it is derived on every read from the item prices and the product cost at the lot's creation date.
 
 AVISO_SIN_TALLER = "Falta el taller"
 AVISO_SIN_ENVIO = "Falta la fecha de envío"
@@ -1104,7 +1104,7 @@ AVISO_SIN_CANTIDAD = "Falta la cantidad"
 AVISO_SIN_PRECIO_TALLER = "Falta el precio del taller"
 AVISO_SIN_FECHA = "El lote no tiene fecha"
 # Not in the sheet: its blank cost would silently drop the line from the lot total, so the app says it.
-AVISO_SIN_COSTO = "No se puede calcular el costo de hoy del producto"
+AVISO_SIN_COSTO = "No se puede calcular el costo del producto"
 SEVERIDAD_DE_AVISO_DE_LOTE = {
     AVISO_SIN_TALLER: "alta", AVISO_SIN_ENTREGA: "alta", AVISO_SIN_ENVIO: "media", AVISO_SIN_PRODUCTOS: "media",
     AVISO_SIN_CANTIDAD: "media", AVISO_SIN_PRECIO_TALLER: "media", AVISO_SIN_COSTO: "media",
@@ -1381,7 +1381,7 @@ def _cargar_items(session: Session, lote_ids: list[int]) -> list[ItemDatos]:
         select(OrdenItem, OrdenFabricacion.codigo, Producto.codigo)
         .join(OrdenFabricacion, OrdenFabricacion.id == OrdenItem.orden_fabricacion_id)
         .join(Producto, Producto.id == OrdenItem.producto_id)
-        .where(OrdenItem.orden_fabricacion_id.in_(lote_ids)).order_by(OrdenItem.id)
+        .where(OrdenItem.orden_fabricacion_id.in_(lote_ids), ~renglon_quitado()).order_by(OrdenItem.id)
     ).all()
     return [ItemDatos(
         id=i.id, codigo=i.codigo, lote=lote, producto=producto, cantidad=i.cantidad,
@@ -1440,14 +1440,58 @@ def _armar_lote(lote: LoteDatos, items: list[ItemDatos], info: dict[str, InfoPro
     }
 
 
+def _materiales_por_unidad(
+    session: Session, pares: set[tuple[str, date | None]],
+) -> dict[tuple[str, date | None], Decimal | None]:
+    """Materials per unit (total cost minus its sewing stage) of each (product, date) pair.
+
+    Quoted by the engine at that date: the prices and the dollar in force then (`cotizar_datos`, the same lookup as
+    a saved quote), so a later price or dollar never moves it. A None date is "today" (`_costo_hoy_seguro`).
+    None when the engine cannot price the product at that date (no dollar yet, a price missing, a broken kit).
+    """
+    if not pares:
+        return {}
+    base = cargar_productos(session, sorted({codigo for codigo, _ in pares}))
+    catalogo = expandir_kits(session, base)
+    ctx = cargar_contexto(session)
+    por_codigo = {datos.codigo: datos for datos in base}
+    resultado: dict[tuple[str, date | None], Decimal | None] = {}
+    for codigo, fecha in pares:
+        datos = por_codigo.get(codigo)
+        if datos is None:
+            resultado[(codigo, fecha)] = None
+            continue
+        if fecha is None:
+            costo = _desglose_a_dict(_costo_hoy_seguro(datos, ctx, catalogo)[0])
+        else:
+            try:
+                costo = _desglose_a_dict(cotizar_datos(datos, ctx, fecha, catalogo))
+            except DatosInvalidos:
+                costo = None
+        resultado[(codigo, fecha)] = None if costo is None else costo["total_ars"] - costo["etapas"]["CONFECCION"]
+    return resultado
+
+
 def _armar_lotes(session: Session, **filtros) -> list[dict]:
+    """Lots with their costs. A lot dated on its creation (`fecha_de_envio`) costs its products at that date, frozen;
+    one without a send date keeps costing at today's prices."""
     lotes = _cargar_lotes(session, **filtros)
     items = _cargar_items(session, [lote.id for lote in lotes])
-    info = _info_productos(session, {item.producto for item in items})
+    info = _info_productos(session, {item.producto for item in items}, con_costo=False)
     por_lote: dict[str, list[ItemDatos]] = {}
     for item in items:
         por_lote.setdefault(item.lote, []).append(item)
-    return [_armar_lote(lote, por_lote.get(lote.codigo, []), info) for lote in lotes]
+    envio_de = {lote.codigo: lote.envio for lote in lotes}
+    materiales = _materiales_por_unidad(session, {(item.producto, envio_de[item.lote]) for item in items})
+    resultado = []
+    for lote in lotes:
+        renglones = por_lote.get(lote.codigo, [])
+        info_del_lote = {
+            codigo: replace(info[codigo], materiales=materiales.get((codigo, lote.envio)))
+            for codigo in {item.producto for item in renglones} if codigo in info
+        }
+        resultado.append(_armar_lote(lote, renglones, info_del_lote))
+    return resultado
 
 
 def listar_ordenes(
@@ -1466,7 +1510,7 @@ def unidades_por_producto(session: Session, periodo: str | None = None) -> dict:
         select(Producto.codigo, func.sum(OrdenItem.cantidad), func.count(func.distinct(OrdenFabricacion.id)))
         .join(OrdenItem, OrdenItem.producto_id == Producto.id)
         .join(OrdenFabricacion, OrdenFabricacion.id == OrdenItem.orden_fabricacion_id)
-        .where(OrdenFabricacion.estado != "PLANIFICADA")
+        .where(OrdenFabricacion.estado != "PLANIFICADA", ~renglon_quitado())
         .group_by(Producto.codigo)
     )
     if periodo:
@@ -1489,13 +1533,30 @@ def detalle_orden(session: Session, codigo: str) -> dict:
     if not armados:
         raise NoEncontrado(f"No existe el lote {codigo}.")
     lote = armados[0]
-    lote["estados"] = [{
-        "estado": e.estado, "fecha": e.fecha, "quien": p_codigo, "quien_nombre": p_nombre,
-    } for e, p_codigo, p_nombre in session.execute(
+    filas = session.execute(
         select(OrdenEstado, Persona.codigo, Persona.nombre).outerjoin(Persona, Persona.id == OrdenEstado.quien_id)
         .where(OrdenEstado.orden_fabricacion_id == lote["id"]).order_by(OrdenEstado.fecha, OrdenEstado.id)
-    ).all()]
+    ).all()
+    # Who changed each state: the auth user id resolved to a name for the whole history at once (an unknown id stays as is).
+    nombres = _nombres_de_usuarios(session, {e.cambiado_por for e, _, _ in filas if e.cambiado_por})
+    lote["estados"] = [{
+        "estado": e.estado, "fecha": e.fecha, "quien": p_codigo, "quien_nombre": p_nombre,
+        "cambiado_por": nombres.get(e.cambiado_por, e.cambiado_por), "registrado_en": e.created_at,
+    } for e, p_codigo, p_nombre in filas]
+    lote["quitados"] = _renglones_quitados(session, lote["id"])
     return lote
+
+
+def _renglones_quitados(session: Session, lote_id: int) -> list[dict]:
+    """The lines an admin removed from the lot: kept for the record, with their log in `nota`."""
+    filas = session.execute(
+        select(OrdenItem.codigo, Producto.codigo, OrdenItem.nota)
+        .join(Producto, Producto.id == OrdenItem.producto_id)
+        .where(OrdenItem.orden_fabricacion_id == lote_id, renglon_quitado()).order_by(OrdenItem.id)
+    ).all()
+    info = _info_productos(session, {producto for _, producto, _ in filas}, con_costo=False)
+    return [{"codigo": codigo, "producto": producto, "producto_nombre": info[producto].nombre if producto in info else producto,
+             "nota": nota} for codigo, producto, nota in filas]
 
 
 def _orden_por_codigo(session: Session, codigo: str, bloquear: bool = False) -> OrdenFabricacion:
@@ -1508,8 +1569,11 @@ def _orden_por_codigo(session: Session, codigo: str, bloquear: bool = False) -> 
 
 def registrar_estado(
     session: Session, codigo: str, *, estado: str, fecha: date, quien: str | None, fecha_de_entrega: date | None,
+    usuario_id: str | None = None,
 ) -> dict:
-    """Append a history row and set the lot's state. A closed lot never changes state again."""
+    """Append a history row and set the lot's state. A closed lot never changes state again.
+
+    `quien` is the persona picked by the admin; `usuario_id` is the logged-in auth user, kept as `cambiado_por`."""
     orden = _orden_por_codigo(session, codigo, bloquear=True)
     if orden.estado == "CERRADA":
         raise Conflicto(f"El lote {codigo} ya está cerrado: no se puede cambiar su estado.")
@@ -1523,7 +1587,7 @@ def registrar_estado(
             raise DatosInvalidos("Para cerrar el lote hace falta la fecha de entrega: es la que cierra la cotización final.")
         orden.fecha_de_entrega = entrega
     _insertar(session, OrdenEstado(orden_fabricacion_id=orden.id, estado=estado, fecha=fecha,
-                                   quien_id=quien_fila.id if quien_fila else None),
+                                   quien_id=quien_fila.id if quien_fila else None, cambiado_por=usuario_id),
               "No se pudo registrar el estado del lote; intentá de nuevo.")
     orden.estado = estado
     session.commit()
@@ -1545,6 +1609,55 @@ def agregar_item_a_orden(
     ), "No se pudo asignar el código del renglón; intentá de nuevo.")
     session.commit()
     return detalle_orden(session, codigo)
+
+
+def _renglon_editable(session: Session, codigo_lote: str, codigo_item: str, accion: str) -> OrdenItem:
+    """Lock the lot and one of its lines for an admin edit. SUPUESTO: validar. A lot's lines can be edited in every state
+    but CERRADA (the cost and the final quote of a closed lot do not change); cutting having started does not block it."""
+    orden = _orden_por_codigo(session, codigo_lote, bloquear=True)
+    if orden.estado == "CERRADA":
+        raise Conflicto(f"El lote {codigo_lote} está cerrado: no se puede {accion} un renglón.")
+    item = session.scalar(
+        select(OrdenItem).where(OrdenItem.codigo == codigo_item, OrdenItem.orden_fabricacion_id == orden.id).with_for_update())
+    if item is None:
+        raise NoEncontrado(f"El lote {codigo_lote} no tiene el renglón {codigo_item}.")
+    if session.scalar(select(renglon_quitado()).where(OrdenItem.id == item.id)):
+        raise Conflicto(f"El renglón {codigo_item} ya fue quitado del lote {codigo_lote}.")
+    return item
+
+
+def _anotar_cambio(item: OrdenItem, cambio: str, usuario: str) -> None:
+    """Append one line to the line's note: date, the change and who made it. Earlier notes are kept as they were."""
+    linea = f"{date.today().isoformat()} · {cambio} · {usuario}"
+    item.nota = f"{item.nota}\n{linea}" if item.nota else linea
+
+
+def cambiar_cantidad_de_item(session: Session, codigo_lote: str, codigo_item: str, *, cantidad: Decimal, usuario: str) -> dict:
+    """Admin only. Set the units of one line of an open lot; the previous quantity is logged in the line's note."""
+    if cantidad <= ZERO:
+        raise DatosInvalidos("La cantidad tiene que ser mayor que cero; para sacar el renglón usá Quitar.")
+    item = _renglon_editable(session, codigo_lote, codigo_item, "cambiar la cantidad de")
+    if item.cantidad == cantidad:
+        # SUPUESTO: validar. Repeating the same quantity is refused, as with the state, so a double click logs once.
+        raise Conflicto(f"El renglón {codigo_item} ya tiene cantidad {cantidad.normalize():f}.")
+    _anotar_cambio(item, f"cantidad {item.cantidad.normalize():f} → {cantidad.normalize():f}", usuario)
+    item.cantidad = cantidad
+    session.commit()
+    return detalle_orden(session, codigo_lote)
+
+
+def quitar_item_de_orden(session: Session, codigo_lote: str, codigo_item: str, *, usuario: str) -> dict:
+    """Admin only. Take a line out of an open lot. Nothing is deleted (AGENTS rule 11): the row stays with 0 units and the
+    removal mark in its note, next to the quantity it had, the date and who removed it, so every sum and the leather
+    needs ignore it. SUPUESTO: validar. A line with leather already cut for it cannot be removed (the cut points to it)."""
+    item = _renglon_editable(session, codigo_lote, codigo_item, "quitar")
+    if session.scalar(select(func.count()).select_from(MovimientoCuero).where(
+            MovimientoCuero.orden_item_id == item.id, MovimientoCuero.tipo == "CORTE")):
+        raise Conflicto(f"El renglón {codigo_item} ya tiene cortes de cuero registrados: no se puede quitar del lote.")
+    _anotar_cambio(item, f"{RENGLON_QUITADO} cantidad {item.cantidad.normalize():f} → 0", usuario)
+    item.cantidad = ZERO
+    session.commit()
+    return detalle_orden(session, codigo_lote)
 
 
 def registrar_precios_item(

@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { NavGroup, NavItem } from "@/lib/nav";
-import { isActive } from "./main-nav";
+import { activeSidebarHref } from "./main-nav";
 import { ICONS, Icon } from "./nav-icons";
 
 const tabClass = (active: boolean) =>
@@ -27,6 +27,7 @@ export function MobileNav({
   restricted?: boolean;
 }) {
   const pathname = usePathname();
+  const search = useSearchParams();
   const [open, setOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   // With the center button, the bar is 2 tabs | + | 1 tab + "Más" (with only 2 tabs: 1 | + | 1).
@@ -38,7 +39,9 @@ export function MobileNav({
     ? visibleTabs.slice(Math.ceil(visibleTabs.length / 2))
     : [];
   const visibleItems = groups.flatMap((group) => group.items);
-  const active = (href: string) => isActive(pathname, href, visibleItems);
+  // Same rule as the desktop sidebar, so the filters (Mano de obra, Servicios básicos) highlight the right entry.
+  const activeHref = activeSidebarHref(groups, pathname, search);
+  const active = (href: string) => href === activeHref;
   const moreActive =
     !visibleTabs.some((item) => active(item.href)) &&
     visibleItems.some((item) => active(item.href));
@@ -91,15 +94,17 @@ export function MobileNav({
             id="mas-secciones"
             className="fixed inset-x-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-40 max-h-[70dvh] overflow-y-auto rounded-t-2xl border-t border-line bg-surface p-3 shadow-card"
           >
-            {groups.map((group) => (
+            {groups.map((group, index) => (
               <section
-                key={group.title}
-                aria-label={group.title}
+                key={`${group.title}-${index}`}
+                aria-label={group.title || undefined}
                 className="mb-3 last:mb-0"
               >
-                <h2 className="px-4 pb-1 text-xs font-semibold uppercase tracking-caps-sm text-muted">
-                  {group.title}
-                </h2>
+                {group.title ? (
+                  <h2 className="px-4 pb-1 text-xs font-semibold uppercase tracking-caps-sm text-muted">
+                    {group.title}
+                  </h2>
+                ) : null}
                 <ul>
                   {group.items.map((item) => {
                     const current = active(item.href);
@@ -108,10 +113,14 @@ export function MobileNav({
                         <Link
                           href={item.href}
                           aria-current={current ? "page" : undefined}
-                          className={`flex min-h-12 items-center rounded-card px-4 text-base ${
+                          className={`flex min-h-12 items-center gap-3 rounded-card px-4 text-base ${
                             current ? "bg-ink text-white" : "text-ink-soft"
                           }`}
                         >
+                          <Icon
+                            path={ICONS[item.icon ?? item.href] ?? ICONS.more}
+                            className="size-5 shrink-0"
+                          />
                           {item.label}
                         </Link>
                       </li>

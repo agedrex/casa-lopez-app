@@ -22,7 +22,7 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.orm import Session
 
-from backend import cueros, formulario, modelos_foto, ocr_llm, proveedores, reventa, servicios, sheets_client, voz, voz_llm
+from backend import consumo_lote, cueros, formulario, lote_estados, modelos_foto, ocr_llm, proveedores, reventa, servicios, sheets_client, voz, voz_llm
 from backend import materiales as grilla_materiales  # `materiales` is the name of the GET /materiales route below
 from backend.auth import (
     CORTE, CUALQUIER_ROL, FORMULARIO_LEER, FORMULARIO_TRABAJAR, PRODUCTOS, SOLO_ADMIN, Usuario, require_user,
@@ -172,6 +172,66 @@ class AlcanzaCueroOut(Salida):
     piezas: list[PiezaDisponibleOut]
     alternativas: list[AlternativaCueroOut]
     mensaje: str | None
+
+
+class LoteCueroGrupoOut(Salida):
+    material: str
+    material_nombre: str
+    color: str | None
+    necesario: Decimal
+    ya_cortado: Decimal
+    por_cortar: Decimal
+    disponible: Decimal
+    alcanza: bool
+    faltante: Decimal
+    sobrante: Decimal
+    productos: list[str]
+
+
+class LoteCueroSinConsumoOut(Salida):
+    producto: str
+    producto_nombre: str
+
+
+class LoteCueroOut(Salida):
+    lote: str
+    estado: str
+    cueros: list[LoteCueroGrupoOut]
+    sin_consumo: list[LoteCueroSinConsumoOut]
+
+
+class ConsumoInsumoOut(Salida):
+    material: str
+    material_nombre: str
+    color: str | None
+    unidad: str
+    por_unidad: Decimal
+    total: Decimal
+
+
+class ConsumoProductoOut(Salida):
+    item: str
+    producto: str
+    producto_nombre: str
+    cantidad: Decimal
+    insumos: list[ConsumoInsumoOut]
+
+
+class ConsumoTotalOut(Salida):
+    material: str
+    material_nombre: str
+    color: str | None
+    unidad: str
+    total: Decimal
+    productos: list[str]
+
+
+class ConsumoLoteOut(Salida):
+    lote: str
+    estado: str
+    productos: list[ConsumoProductoOut]
+    totales: list[ConsumoTotalOut]
+    sin_consumo: list[LoteCueroSinConsumoOut]
 
 
 # --- Request bodies --------------------------------------------------------------------------------
@@ -365,6 +425,12 @@ class EstadoIn(Entrada):
     fecha: date
     quien: str | None = None
     fecha_de_entrega: date | None = None
+
+
+class CantidadIn(Entrada):
+    """The new units of a lot line. Zero is not valid: removing a line is its own action."""
+
+    cantidad: Annotated[Decimal, Field(gt=0, max_digits=12, decimal_places=6)]
 
 
 class PreciosItemIn(Entrada):
@@ -1280,11 +1346,21 @@ class EstadoOut(Salida):
     fecha: date
     quien: str | None
     quien_nombre: str | None
+    cambiado_por: str | None = None  # the logged-in user who changed it (name, else id); None on the creation row
+    registrado_en: datetime | None = None  # when the change was saved (the moment, not the day the admin typed)
+
+
+class RenglonQuitadoOut(Salida):
+    codigo: str
+    producto: str
+    producto_nombre: str
+    nota: str | None
 
 
 class OrdenDetalleOut(OrdenResumenOut):
     items: list[RenglonOut]
     estados: list[EstadoOut]
+    quitados: list[RenglonQuitadoOut] = []
 
 
 class TallerDetalleOut(TallerOut):
@@ -1733,6 +1809,18 @@ def orden(codigo: str, session: Sesion):
     return servicios.detalle_orden(session, codigo)
 
 
+@router.get("/ordenes/{codigo}/cuero", dependencies=LECTURA_CORTE, response_model=LoteCueroOut)
+def cuero_de_la_orden(codigo: str, session: Sesion):
+    """Leather the lot needs by leather against its stock (square meters only, no money: the taller reads it)."""
+    return cueros.resumen_de_lote(session, codigo)
+
+
+@router.get("/ordenes/{codigo}/consumo", dependencies=LECTURA_CORTE, response_model=ConsumoLoteOut)
+def consumo_de_la_orden(codigo: str, session: Sesion):
+    """What each product of the lot consumes of each supply and the total per supply (quantities only, no money: the taller reads it)."""
+    return consumo_lote.consumo_de_lote(session, codigo)
+
+
 @router.get("/fabricacion/casa-vs-taller", dependencies=LECTURA_ADMIN, response_model=CasaVsTallerOut)
 def casa_vs_taller(session: Sesion, hasta: Annotated[str | None, Query(pattern=PERIODO)] = None):
     """The last 12 months up to `hasta` (default: this month). A lot counts in the month of its delivery date, else of its shipping date."""
@@ -1904,8 +1992,15 @@ def crear_orden(cuerpo: OrdenIn, session: Sesion):
 
 
 @router.post("/ordenes/{codigo}/estado", dependencies=ESCRITURA, response_model=OrdenDetalleOut, status_code=201)
-def cambiar_estado_de_orden(codigo: str, cuerpo: EstadoIn, session: Sesion):
-    return servicios.registrar_estado(session, codigo, **cuerpo.model_dump())
+def cambiar_estado_de_orden(codigo: str, cuerpo: EstadoIn, session: Sesion, usuario: SoloAdmin):
+    return servicios.registrar_estado(session, codigo, **cuerpo.model_dump(), usuario_id=usuario.id)
+
+
+# SUPUESTO: validar. The one write of the lots the taller gets (S11): move the lot to its NEXT state, dated today. Closing, any
+# other state and everything else of /ordenes stay admin only.
+@router.post("/ordenes/{codigo}/avanzar", response_model=OrdenDetalleOut, status_code=201)
+def avanzar_estado_de_orden(codigo: str, session: Sesion, usuario: Annotated[Usuario, Depends(CORTE)]):
+    return lote_estados.avanzar_estado(session, codigo, usuario_id=usuario.id)
 
 
 @router.post("/ordenes/{codigo}/items", dependencies=ESCRITURA, response_model=OrdenDetalleOut, status_code=201)
@@ -1916,6 +2011,18 @@ def agregar_item_a_orden(codigo: str, cuerpo: ItemIn, session: Sesion):
         cotizado=datos["taller_precio_cotizado_por_unidad_ars"], pagado=datos["taller_precio_pagado_por_unidad_ars"],
         nota=datos["nota"],
     )
+
+
+# SUPUESTO: validar. Admin only (S7 of lanzamiento-listo): an open lot's line can change units or be removed; the removal
+# keeps the row (rule 11), see servicios.quitar_item_de_orden.
+@router.put("/ordenes/{codigo}/items/{item}", dependencies=ESCRITURA, response_model=OrdenDetalleOut)
+def cambiar_cantidad_de_item(codigo: str, item: str, cuerpo: CantidadIn, session: Sesion, usuario: SoloAdmin):
+    return servicios.cambiar_cantidad_de_item(session, codigo, item, cantidad=cuerpo.cantidad, usuario=usuario.id)
+
+
+@router.delete("/ordenes/{codigo}/items/{item}", dependencies=ESCRITURA, response_model=OrdenDetalleOut)
+def quitar_item_de_orden(codigo: str, item: str, session: Sesion, usuario: SoloAdmin):
+    return servicios.quitar_item_de_orden(session, codigo, item, usuario=usuario.id)
 
 
 # SUPUESTO: validar. A taller loads its own price by voice (S3 of the roles feature); nothing else of /ordenes.

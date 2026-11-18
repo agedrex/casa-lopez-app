@@ -37,7 +37,7 @@ export function isActive(
 }
 
 /** The rendered item that matches the page best; an href with a query (a filter) also needs its params to match. */
-function activeSidebarHref(
+export function activeSidebarHref(
   groups: NavGroup[],
   pathname: string,
   search: URLSearchParams,

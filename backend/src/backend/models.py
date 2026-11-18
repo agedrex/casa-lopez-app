@@ -11,7 +11,7 @@ from decimal import Decimal
 from sqlalchemy import (
     BigInteger, Boolean, CHAR, CheckConstraint, Date, DateTime, ForeignKey,
     Identity, Index, Integer, LargeBinary, MetaData, Numeric, SmallInteger, Text,
-    UniqueConstraint, func, text,
+    UniqueConstraint, and_, func, text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -514,6 +514,16 @@ class OrdenItem(BusinessKey, Base):
     nota: Mapped[str | None] = mapped_column(Text)
 
 
+# A removed lot line is never deleted (AGENTS rule 11): its quantity goes to 0 and its note gets this mark plus the
+# log line. No column for it: the migrations are outside this change. SUPUESTO: a real `quitado` column is cleaner.
+RENGLON_QUITADO = "[QUITADO]"
+
+
+def renglon_quitado():
+    """SQL condition: the line was removed from its lot (zero units and the removal mark in its note)."""
+    return and_(OrdenItem.cantidad == 0, func.coalesce(OrdenItem.nota, "").contains(RENGLON_QUITADO, autoescape=True))
+
+
 class OrdenEstado(IdentityAndCreatedAt, Base):
     __tablename__ = "orden_estado"
     __table_args__ = (one_of("estado", LOT_STATES, "estado"),)
@@ -521,6 +531,8 @@ class OrdenEstado(IdentityAndCreatedAt, Base):
     estado: Mapped[str] = mapped_column(Text)
     fecha: Mapped[date] = mapped_column(Date)
     quien_id: Mapped[int | None] = mapped_column(ForeignKey("costos.persona.id"))
+    # Auth user id (Better Auth lives in `public`: no FK) of whoever changed the state; NULL for the creation row.
+    cambiado_por: Mapped[str | None] = mapped_column(Text)
 
 
 class RegistroTarea(IdentityAndCreatedAt, Base):

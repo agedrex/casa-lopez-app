@@ -17,24 +17,24 @@ import {
   thClass,
 } from "@/components/ui";
 import { apiGet } from "@/lib/api";
-import {
-  formatArs,
-  formatDate,
-  formatQuantity,
-  lotStateLabel,
-  todayIso,
-} from "@/lib/format";
+import { formatArs, formatDate, formatQuantity, todayIso } from "@/lib/format";
+import { resumenDeCuero, type TarjetaDeCuero } from "@/lib/lote-cuero";
 import { nombreDeLote } from "@/lib/lotes";
 import { canWrite, isTallerOnly } from "@/lib/permissions";
 import { collapseSpaces } from "@/lib/productos";
 import { requireSession } from "@/lib/session";
 import type {
+  LoteCuero,
   OrdenDetalle,
   Persona,
   PreciosTalleres,
   ProductoResumen,
   Referencia,
 } from "@/lib/types";
+import { AvanzarEstado } from "../avanzar-estado";
+import { LineaDeTiempo } from "../linea-de-tiempo";
+import { ConsumoDelLote } from "./consumo-lote";
+import { RenglonEditor, RenglonesQuitados } from "./editar-renglones";
 import { EstadoForm, ItemForm, PreciosForm } from "./forms";
 
 export const metadata: Metadata = { title: "Lote" };
@@ -107,7 +107,14 @@ export default async function LotePage({
         actions={<LotStateBadge estado={orden.estado} />}
       />
       <div className="space-y-10">
+        <CueroDelLote orden={orden} />
         <QueHayQueHacer orden={orden} />
+        <ConsumoDelLote
+          codigo={orden.codigo}
+          vacio={orden.items.length === 0}
+          costoTotal={orden.costo_total}
+          fecha={orden.fecha_de_envio}
+        />
         <Summary orden={orden} />
         {orden.avisos.length > 0 ? (
           <Notice title="Para revisar en este lote">
@@ -167,7 +174,7 @@ function Summary({ orden }: { orden: OrdenDetalle }) {
         <Metric
           label="Costo del lote"
           value={formatArs(orden.costo_total)}
-          hint="Materiales de hoy más confección"
+          hint="Materiales a la fecha del lote más confección"
         />
         <Metric
           label="Costo por unidad"
@@ -199,7 +206,9 @@ function Items({ orden }: { orden: OrdenDetalle }) {
                 <th className={`${thClass} ${numClass}`}>Cotizado</th>
                 <th className={`${thClass} ${numClass}`}>Pagado</th>
                 <th className={`${thClass} ${numClass}`}>Confección</th>
-                <th className={`${thClass} ${numClass}`}>Materiales (hoy)</th>
+                <th className={`${thClass} ${numClass}`}>
+                  Materiales (fecha del lote)
+                </th>
                 <th className={`${thClass} ${numClass}`}>Costo por unidad</th>
                 <th className={`${thClass} ${numClass}`}>Total</th>
                 <th className={thClass}>Avisos</th>
@@ -254,36 +263,7 @@ function Items({ orden }: { orden: OrdenDetalle }) {
 }
 
 function Timeline({ orden }: { orden: OrdenDetalle }) {
-  return (
-    <section>
-      <SectionTitle>Estados del lote</SectionTitle>
-      {orden.estados.length === 0 ? (
-        <Notice tone="info" title="Este lote no tiene historial de estados." />
-      ) : (
-        <ol className="space-y-0 border-l border-line pl-6">
-          {orden.estados.map((estado, index) => (
-            <li
-              key={`${estado.estado}-${estado.fecha}-${index}`}
-              className="relative pb-6 last:pb-0"
-              aria-current={
-                index === orden.estados.length - 1 ? "step" : undefined
-              }
-            >
-              <span
-                aria-hidden="true"
-                className="absolute -left-[1.85rem] top-1.5 size-2.5 rounded-full bg-gold"
-              />
-              <p className="font-bold">{lotStateLabel(estado.estado)}</p>
-              <p className="text-sm text-muted">
-                {formatDate(estado.fecha)}
-                {estado.quien_nombre ? ` · ${estado.quien_nombre}` : ""}
-              </p>
-            </li>
-          ))}
-        </ol>
-      )}
-    </section>
-  );
+  return <LineaDeTiempo estados={orden.estados} />;
 }
 
 async function WriterSections({ orden }: { orden: OrdenDetalle }) {
@@ -349,6 +329,7 @@ async function WriterSections({ orden }: { orden: OrdenDetalle }) {
           </Card>
         )}
       </section>
+      <EditarRenglones orden={orden} />
       <section>
         <SectionTitle>Cambiar el estado</SectionTitle>
         {orden.estado === "CERRADA" ? (
@@ -416,10 +397,101 @@ function TallerLote({ orden }: { orden: OrdenDetalle }) {
           </p>
           {orden.nota ? <p className="mt-2 text-sm">{orden.nota}</p> : null}
         </section>
+        <AvanzarEstado codigo={orden.codigo} estado={orden.estado} />
+        <CueroDelLote orden={orden} />
         <QueHayQueHacer orden={orden} />
+        <ConsumoDelLote
+          codigo={orden.codigo}
+          vacio={orden.items.length === 0}
+        />
         <Timeline orden={orden} />
       </div>
     </>
+  );
+}
+
+const CUERO_STYLE: Record<TarjetaDeCuero["estado"], string> = {
+  FALTA: "border-bordeaux/40 bg-bordeaux/5",
+  ALCANZA: "border-line bg-surface",
+  YA_CORTADO: "border-line bg-paper-mid",
+};
+
+function CueroCard({ tarjeta }: { tarjeta: TarjetaDeCuero }) {
+  return (
+    <li
+      className={`rounded-card border p-4 shadow-card ${CUERO_STYLE[tarjeta.estado]}`}
+    >
+      <p className="break-words font-bold">{tarjeta.titulo}</p>
+      <p
+        className={`mt-1 font-display text-2xl ${
+          tarjeta.estado === "FALTA" ? "text-bordeaux" : ""
+        }`}
+      >
+        {tarjeta.mensaje}
+      </p>
+      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+        {tarjeta.cifras.map((cifra) => (
+          <div key={cifra.label} className="contents">
+            <dt className="text-muted">{cifra.label}</dt>
+            <dd className="text-right tabular-nums">{cifra.value}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="mt-3 break-words text-xs text-muted">
+        Para: {tarjeta.productos.join(", ")}
+      </p>
+    </li>
+  );
+}
+
+/**
+ * Leather the lot needs against the leather in stock, one card per leather (material and color). Square
+ * meters only: the taller reads it, so there is no money here. The API adds up the products that share a
+ * leather and takes out what was already cut. A closed lot has nothing left to cut, so it is not shown.
+ */
+async function CueroDelLote({ orden }: { orden: OrdenDetalle }) {
+  if (orden.estado === "CERRADA" || orden.items.length === 0) return null;
+  const result = await apiGet<LoteCuero>(
+    `/ordenes/${encodeURIComponent(orden.codigo)}/cuero`,
+  );
+  if (!result.ok) {
+    return (
+      <section aria-label="Cuero del lote">
+        <SectionTitle>Cuero del lote</SectionTitle>
+        <ErrorNotice
+          title="No pudimos calcular el cuero del lote."
+          message={result.message}
+        />
+      </section>
+    );
+  }
+  const resumen = resumenDeCuero(result.data);
+  return (
+    <section aria-label="Cuero del lote">
+      <SectionTitle>Cuero del lote</SectionTitle>
+      <p
+        className={`mb-3 text-sm ${resumen.faltan > 0 ? "font-bold text-bordeaux" : "text-muted"}`}
+        role={resumen.faltan > 0 ? "alert" : undefined}
+      >
+        {resumen.titular}
+      </p>
+      {resumen.tarjetas.length > 0 ? (
+        <ul className="grid gap-3 sm:grid-cols-2">
+          {resumen.tarjetas.map((tarjeta) => (
+            <CueroCard key={tarjeta.key} tarjeta={tarjeta} />
+          ))}
+        </ul>
+      ) : null}
+      {resumen.sinConsumo.length > 0 ? (
+        <div className="mt-3">
+          <Notice title="Sin consumo de cuero cargado (no se cuentan arriba)">
+            {resumen.sinConsumo
+              .map((p) => `${p.producto_nombre} (${p.producto})`)
+              .join(", ")}
+          </Notice>
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -462,6 +534,41 @@ function QueHayQueHacer({ orden }: { orden: OrdenDetalle }) {
           </ul>
         </>
       )}
+    </section>
+  );
+}
+
+/**
+ * Admin only: change the units of a line or take it out of an open lot. The same product can be several lines, each
+ * with any quantity. A closed lot is read only. Removing asks for confirmation and keeps the row (see the quitados list).
+ */
+function EditarRenglones({ orden }: { orden: OrdenDetalle }) {
+  const quitados = orden.quitados ?? [];
+  return (
+    <section>
+      <SectionTitle>Cambiar o quitar productos</SectionTitle>
+      {orden.estado === "CERRADA" ? (
+        <Notice tone="info" title="Este lote está cerrado">
+          Los productos de un lote cerrado no se pueden cambiar ni quitar.
+        </Notice>
+      ) : orden.items.length === 0 ? (
+        <Notice tone="info" title="Este lote no tiene productos para editar." />
+      ) : (
+        <Card>
+          <ul className="divide-y divide-line/70">
+            {orden.items.map((item) => (
+              <RenglonEditor
+                key={item.codigo}
+                codigo={orden.codigo}
+                item={item.codigo}
+                producto={`${item.producto} · ${collapseSpaces(item.producto_nombre)}`}
+                cantidad={item.cantidad}
+              />
+            ))}
+          </ul>
+        </Card>
+      )}
+      <RenglonesQuitados quitados={quitados} />
     </section>
   );
 }

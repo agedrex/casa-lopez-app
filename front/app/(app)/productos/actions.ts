@@ -3,7 +3,10 @@
 import { redirect } from "next/navigation";
 import { error, type FormState } from "@/lib/action-state";
 import { apiPost } from "@/lib/api";
-import { resolveCatalogChoice } from "@/lib/catalogo-actions";
+import {
+  resolveCatalogChoice,
+  resolveCueroChoice,
+} from "@/lib/catalogo-actions";
 import { todayIso } from "@/lib/format";
 import type { Ficha } from "@/lib/types";
 import {
@@ -43,9 +46,18 @@ export async function createProducto(
   });
   if (!color.ok) return color.state;
 
+  // "+ Crear cuero nuevo…": the leather (a material without price) is created first.
+  const cuero = await resolveCueroChoice({
+    formData,
+    field: "cuero",
+    newField: "cuero_nuevo",
+    sentinel: NUEVO_CATALOGO,
+  });
+  if (!cuero.ok) return cuero.state;
+
   const result = await apiPost<Ficha>("/productos", {
     modelo,
-    cuero: optional(formData, "cuero"),
+    cuero: cuero.codigo,
     color: color.nombre,
     quien_lo_confecciona: quien,
     // Automatic: the sheet date is today in Buenos Aires, never typed.

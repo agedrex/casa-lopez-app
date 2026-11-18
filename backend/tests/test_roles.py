@@ -99,6 +99,8 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
     ("GET", "/colores"): CORTE,  # taller keeps it; the gerente pages read /catalogos instead
     ("GET", "/ordenes"): CORTE,
     ("GET", "/ordenes/{codigo}"): CORTE,
+    ("GET", "/ordenes/{codigo}/cuero"): CORTE,
+    ("GET", "/ordenes/{codigo}/consumo"): CORTE,
     ("GET", "/ordenes/unidades-por-producto"): ADMIN,
     ("GET", "/voz/estado"): CORTE,
     # Admin only reads.
@@ -130,6 +132,10 @@ ACCESO: dict[tuple[str, str], frozenset[str]] = {
         "/formularios/{codigo}/duplicar")},
     # The only write the voice grants a taller: the price a workshop quoted or was paid for a lot line.
     ("POST", "/ordenes/{codigo}/items/{item}/precios"): CORTE,
+    # Changing the units of a lot line or removing it: admin only (S7 of lanzamiento-listo).
+    ("PUT", "/ordenes/{codigo}/items/{item}"): ADMIN, ("DELETE", "/ordenes/{codigo}/items/{item}"): ADMIN,
+    # The other one: the taller moves a lot to its NEXT state (never closes it). Any state, closing and the rest of /ordenes are admin only.
+    ("POST", "/ordenes/{codigo}/avanzar"): CORTE,
     **{("POST", ruta): ADMIN for ruta in (
         "/cueros", "/productos", "/productos/{codigo}/precio-venta", "/productos/{codigo}/extras",
         "/productos/{codigo}/componentes", "/productos/{codigo}/cotizaciones", "/precios", "/dolar",
@@ -244,10 +250,11 @@ def test_admin_only_routes_refuse_everyone_else_without_calling_the_service(monk
                  ("GET", "/cvu/periodo"), ("POST", "/cvu/escenario")]),
     ("taller", [("GET", "/productos"), ("GET", "/productos/conteo"), ("GET", "/materiales"), ("GET", "/cueros"), ("GET", "/cueros/PZC-1"),
                 ("GET", "/cueros/alcanza?producto=P&cantidad=1"), ("GET", "/colores"), ("GET", "/ordenes"),
-                ("GET", "/ordenes/LOT-1"), ("GET", "/voz/estado"),
+                ("GET", "/ordenes/LOT-1"), ("GET", "/ordenes/LOT-1/consumo"), ("GET", "/voz/estado"),
                 ("GET", "/productos/X-1"),
                 ("GET", "/modelos"), ("GET", "/modelos/MOD-1"), ("GET", "/precios"), ("GET", "/categorias"), ("GET", "/catalogos"), ("GET", "/dolar"),
                 ("POST", "/cueros/PZC-1/cortes"), ("POST", "/cueros/PZC-1/sobrante"), ("POST", "/voz/interpretar"),
+                ("POST", "/ordenes/LOT-1/avanzar"),
                 ("GET", "/formularios"), ("GET", "/formularios/FCO-0001"), ("PUT", "/formularios/FCO-0001"),
                 ("POST", "/formularios/FCO-0001/completar"), ("POST", "/modelos/MOD-0001/foto")]),
     ("admin", [("GET", "/panel/costos"), ("GET", "/grilla"), ("GET", "/precios"), ("GET", "/dolar"), ("GET", "/colores"),
@@ -281,6 +288,12 @@ def test_gerente_and_taller_are_refused_on_the_representative_admin_routes(metod
     assert respuesta.status_code == 403 and respuesta.json() == SIN_PERMISO
 
 
+@pytest.mark.parametrize("ruta", ["/ordenes", "/ordenes/LOT-1/estado", "/ordenes/LOT-1/items"])
+def test_taller_only_moves_the_lot_to_the_next_state_and_nothing_else_of_the_orders_is_open(ruta):
+    respuesta = _cliente("taller").post(ruta, json={})
+    assert respuesta.status_code == 403 and respuesta.json() == SIN_PERMISO
+
+
 def test_taller_cannot_run_the_scenario_simulator(monkeypatch):
     monkeypatch.setattr(servicios, "escenario_cvu", lambda *a, **k: pytest.fail("the service must not be called"))
     respuesta = _cliente("taller").post("/cvu/escenario", json={"items": []})
@@ -291,8 +304,8 @@ def test_taller_cannot_run_the_scenario_simulator(monkeypatch):
 
 CERRADO_PARA_GERENTE = {
     "panel": [("GET", "/calidad"), ("GET", "/panel/tendencia"), ("GET", "/costos-fijos"), ("GET", "/costos-fijos/periodos")],
-    "lotes": [("GET", "/ordenes"), ("GET", "/ordenes/LOT-1"), ("GET", "/fabricacion/casa-vs-taller"),
-              ("GET", "/ordenes/unidades-por-producto"), ("POST", "/ordenes")],
+    "lotes": [("GET", "/ordenes"), ("GET", "/ordenes/LOT-1"), ("GET", "/ordenes/LOT-1/consumo"), ("GET", "/fabricacion/casa-vs-taller"),
+              ("GET", "/ordenes/unidades-por-producto"), ("POST", "/ordenes"), ("POST", "/ordenes/LOT-1/avanzar")],
     "formularios": [("GET", "/formularios"), ("GET", "/formularios/FCO-0001"), ("PUT", "/formularios/FCO-0001"),
                     ("POST", "/formularios"), ("POST", "/formularios/FCO-0001/completar"), ("POST", "/formularios/FCO-0001/validar"),
                     ("POST", "/productos/nuevo")],
