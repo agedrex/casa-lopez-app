@@ -12,7 +12,7 @@ import {
   thClass,
 } from "@/components/ui";
 import { listAdminUsers } from "@/lib/admin-users";
-import { formatDate } from "@/lib/format";
+import { formatInstantDate } from "@/lib/format";
 import { ROLE_LABELS } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
 
@@ -133,7 +133,7 @@ export default async function UsuariosPage({
                     </Badge>
                   </td>
                   <td className={`${tdClass} ${numClass}`}>
-                    {formatDate(user.createdAt)}
+                    {formatInstantDate(user.createdAt)}
                   </td>
                   <td className={tdClass}>
                     <Link

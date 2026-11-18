@@ -9,7 +9,7 @@ import {
 } from "@/components/editable-grid";
 import { Badge } from "@/components/ui";
 import { error, type FormState } from "@/lib/action-state";
-import { formatDate } from "@/lib/format";
+import { formatInstantDate } from "@/lib/format";
 import { ESTADO_TONE, estadoLabel } from "@/lib/formularios";
 import type { FormularioResumen } from "@/lib/types";
 
@@ -50,7 +50,7 @@ export function HojasGrid({ hojas }: { hojas: FormularioResumen[] }) {
             <Badge key="estado" tone={ESTADO_TONE[hoja.estado]}>
               {estadoLabel(hoja.estado)}
             </Badge>,
-            formatDate(hoja.created_at),
+            formatInstantDate(hoja.created_at),
           ],
         };
       }),

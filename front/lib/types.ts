@@ -676,9 +676,17 @@ export type LoteCueroGrupo = {
   por_cortar: string;
   /** m² in stock of this same leather (the source of GET /cueros/alcanza). */
   disponible: string;
+  /** m² the OTHER open lots still have to cut of this leather (derived reservation; it blocks nothing). */
+  reservado_por_otros: string;
+  /** Codes of those lots. */
+  reservado_por: string[];
+  /** m² left for this lot: stock minus reserved, never below 0. `alcanza` is checked against it. */
+  libre: string;
   alcanza: boolean;
   faltante: string;
   sobrante: string;
+  /** Shortage message in Spanish written by the API; null when the lot fits. */
+  mensaje: string | null;
   productos: string[];
 };
 

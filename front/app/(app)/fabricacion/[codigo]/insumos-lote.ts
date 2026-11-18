@@ -3,7 +3,7 @@
 // calculated by the API; nothing here adds or multiplies. Quantities only, never money: the taller reads it.
 import { formatQuantity } from "@/lib/format";
 import { insumoTexto, unidadTexto } from "@/lib/lote-consumo";
-import { resumenDeCuero } from "@/lib/lote-cuero";
+import { resumenDeCuero, type TarjetaDeCuero } from "@/lib/lote-cuero";
 import type { ConsumoLote, LoteCuero } from "@/lib/types";
 
 const juegos = new Intl.NumberFormat("es-AR", {
@@ -18,6 +18,14 @@ export function cantidadDeInsumo(cantidad: string, unidad: string): string {
     return `${juegos.format(redondeada)} ${unidadTexto(unidad, String(redondeada))}`;
   }
   return `${formatQuantity(cantidad)} ${unidadTexto(unidad, cantidad)}`;
+}
+
+/** The stock message plus, when other open lots hold part of the leather, who reserved how much. */
+function textoDeCuero(tarjeta: TarjetaDeCuero): string {
+  const reservado = tarjeta.cifras.find((c) => c.label.startsWith("Reservado"));
+  return reservado
+    ? `${tarjeta.mensaje} · ${reservado.label}: ${reservado.value}`
+    : tarjeta.mensaje;
 }
 
 export type FilaDeInsumo = {
@@ -69,7 +77,7 @@ export function tablaDeInsumos(
         key: `${t.material}-${t.color ?? ""}`,
         nombre: insumoTexto(t),
         total: cantidadDeInsumo(t.total, t.unidad),
-        cuero: tarjeta?.mensaje ?? null,
+        cuero: tarjeta ? textoDeCuero(tarjeta) : null,
         falta: tarjeta?.estado === "FALTA",
       };
     }),

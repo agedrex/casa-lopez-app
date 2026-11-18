@@ -8,7 +8,8 @@ import {
   PrimaryButton,
   SecondaryButton,
 } from "@/components/form";
-import { LOT_STATES, lotStateLabel } from "@/lib/format";
+import { lotStateLabel } from "@/lib/format";
+import { siguienteEstado } from "@/lib/lote-estados";
 import { useActionForm } from "@/lib/use-action-form";
 import { addItem, changeEstado, savePrecios } from "../actions";
 import { type ProductoOption, ProductRows } from "../product-rows";
@@ -31,6 +32,8 @@ export function EstadoForm({
   const { state, pending, formKey, onSubmit } = useActionForm(
     changeEstado.bind(null, codigo),
   );
+  // The API only accepts the next state of the cycle: no skipping and no going back.
+  const siguiente = siguienteEstado(actual);
   return (
     <form key={formKey} onSubmit={onSubmit} className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -43,11 +46,9 @@ export function EstadoForm({
             className={inputClass}
           >
             <option value="">Elegir…</option>
-            {LOT_STATES.filter((code) => code !== actual).map((code) => (
-              <option key={code} value={code}>
-                {lotStateLabel(code)}
-              </option>
-            ))}
+            {siguiente && (
+              <option value={siguiente}>{lotStateLabel(siguiente)}</option>
+            )}
           </select>
         </Field>
         <Field id="estado-fecha" label="Fecha del cambio">
@@ -91,7 +92,8 @@ export function EstadoForm({
         </Field>
       </div>
       <p className="text-sm text-muted">
-        Un lote cerrado no se puede reabrir. Cada cambio queda en el historial.
+        Los estados se cambian de a uno, en orden. Un lote cerrado no se puede
+        reabrir. Cada cambio queda en el historial.
       </p>
       <FormFeedback state={state} />
       <PrimaryButton pending={pending}>

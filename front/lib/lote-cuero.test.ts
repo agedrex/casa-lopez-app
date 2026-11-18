@@ -12,9 +12,13 @@ function grupo(cambios: Partial<LoteCueroGrupo>): LoteCueroGrupo {
     ya_cortado: "0",
     por_cortar: "2",
     disponible: "3.5",
+    reservado_por_otros: "0",
+    reservado_por: [],
+    libre: "3.5",
     alcanza: true,
     faltante: "0",
     sobrante: "1.5",
+    mensaje: null,
     productos: ["PRD-0001"],
     ...cambios,
   };
@@ -114,4 +118,48 @@ test("resumenDeCuero sin cueros ni consumos lo dice y no inventa tarjetas", () =
     "Todavía no hay consumo de cuero para este lote.",
   );
   assert.equal(resumen.sinConsumo.length, 1);
+});
+
+test("resumenDeCuero muestra lo reservado por otros lotes y el mensaje del API sin calcular nada", () => {
+  const resumen = resumenDeCuero(
+    lote([
+      grupo({
+        disponible: "3",
+        reservado_por_otros: "2",
+        reservado_por: ["LOT-0001"],
+        libre: "1",
+        alcanza: false,
+        faltante: "1",
+        sobrante: "0",
+        mensaje:
+          "No alcanza: faltan 1 m² de Estándar. Hay 3 m² en stock y LOT-0001 tiene reservados 2 m².",
+      }),
+    ]),
+  );
+  const tarjeta = resumen.tarjetas[0];
+  assert.equal(tarjeta.estado, "FALTA");
+  assert.equal(tarjeta.mensaje, "Falta 1 m²");
+  assert.equal(
+    tarjeta.aviso,
+    "No alcanza: faltan 1 m² de Estándar. Hay 3 m² en stock y LOT-0001 tiene reservados 2 m².",
+  );
+  assert.deepEqual(
+    tarjeta.cifras.map((c) => [c.label, c.value]),
+    [
+      ["Necesita", "2 m²"],
+      ["Hay", "3 m²"],
+      ["Reservado por LOT-0001", "2 m²"],
+      ["Libre para este lote", "1 m²"],
+    ],
+  );
+  assert.equal(resumen.faltan, 1);
+});
+
+test("resumenDeCuero no muestra reserva ni aviso cuando ningún otro lote reserva", () => {
+  const tarjeta = resumenDeCuero(lote([grupo({})])).tarjetas[0];
+  assert.equal(tarjeta.aviso, null);
+  assert.deepEqual(
+    tarjeta.cifras.map((c) => c.label),
+    ["Necesita", "Hay"],
+  );
 });

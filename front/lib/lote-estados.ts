@@ -13,6 +13,12 @@ const CICLO = [
   "CERRADA",
 ] as const;
 
+/** The state after `estado` in the cycle (the API only accepts that one); null after CERRADA or for an unknown one. */
+export function siguienteEstado(estado: string): string | null {
+  const posicion = (CICLO as readonly string[]).indexOf(estado);
+  return posicion === -1 ? null : (CICLO[posicion + 1] ?? null);
+}
+
 /** The state a taller moves a lot to from `estado`; null after LISTA (closing is not the taller's) or for an unknown one. */
 export function siguienteEstadoDelTaller(estado: string): string | null {
   const posicion = (CICLO as readonly string[]).indexOf(estado);

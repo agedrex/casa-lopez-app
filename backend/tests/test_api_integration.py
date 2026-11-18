@@ -57,7 +57,7 @@ def test_create_product_assigns_the_code_and_calculates_the_rest(api):
         ("CUERO", "MAT-CU01"), ("FORRO", "MAT-FO02"), ("FLEX", "MAT-FL01"), ("HERRAJES", "MAT-HE00"),
         ("HILO_CEMENTO", "MAT-HC01"),
     }
-    assert producto(api)["codigo"] == "PRD-0002"
+    assert producto(api, cuero="MAT-CU02")["codigo"] == "PRD-0002"  # same model + leather + colour would be a 409 (S5)
 
 
 def test_ficha_costs_today_with_the_newest_dollar_and_money_is_text(api):
@@ -241,7 +241,7 @@ def test_fixed_costs_default_to_the_current_period_and_add_up(api):
 
 def test_search_filters_by_code_name_and_category_and_counts_without_changing_the_list(api):
     codigo = producto(api)["codigo"]
-    producto(api, color=None)
+    producto(api, cuero="MAT-CU02")
     todos = api.get("/productos").json()
     assert isinstance(todos, list) and api.get("/productos/conteo").json() == {"total": 2}
     assert [p["codigo"] for p in api.get("/productos", params={"q": codigo.lower()}).json()] == [codigo]

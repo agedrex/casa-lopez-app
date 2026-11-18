@@ -58,7 +58,7 @@ def lote(client, items):
 def test_products_sharing_a_leather_are_added_up_and_checked_against_one_stock(api):
     client, role = api
     comprar(client, "1.5")
-    a, b = producto(client), producto(client)
+    a, b = producto(client), producto(client, modelo="MOD-0031")  # same leather use (0.25 m2), another model (S5)
     codigo, _ = lote(client, [(a, "4"), (b, "4")])
     # Each product alone fits in 1.5 m2 (needs 1), but together they need 2.
     for p in (a, b):

@@ -10,7 +10,7 @@ import re
 import unicodedata
 from collections import Counter
 from dataclasses import asdict, dataclass, field, replace
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy import Integer, and_, bindparam, cast, exists, func, or_, select, text, update
@@ -24,8 +24,8 @@ from backend.costeo import (
 )
 from backend.models import (
     Categoria, Color, CompraReventa, Cotizacion, Etapa, FormularioConsumo, GastoPeriodo, Impuesto, KitComponente, Material, Modelo,
-    ModeloFoto, ModeloInsumo, MovimientoCuero, OrdenEstado, OrdenFabricacion, OrdenItem, Parametro, Persona, PrecioMaterial, PrecioVenta, Producto,
-    ProductoReventa, Proveedor, RecetaLinea, Taller, TipoCambio, Transferencia, Venta, RENGLON_QUITADO, renglon_quitado,
+    ModeloFoto, ModeloInsumo, MovimientoCuero, OrdenEstado, OrdenFabricacion, OrdenItem, Parametro, PedidoLinea, PedidoProveedor, Persona, PiezaCuero, PrecioMaterial, PrecioVenta, Producto,
+    ProductoReventa, Proveedor, RecetaLinea, Taller, TipoCambio, Transferencia, Venta, LOT_STATES, RENGLON_QUITADO, renglon_quitado,
 )
 from backend.receta import (
     Cotizado, Extra, InsumoModelo, ModeloReceta, ProductoReceta, Receta, cotizar_producto, generar_receta,
@@ -48,6 +48,19 @@ UNIQUE_VIOLATION = "23505"
 # SUPUESTO: validar. A price more than this many percent away from the previous one of the same material,
 # color and currency is flagged (never blocked). The 50 comes from the task, not from the plantilla.
 SALTO_PRECIO_PCT = Decimal("50")
+
+
+# Names of the lot states as the people read them: error messages never show the internal codes.
+ETIQUETA_ESTADO_LOTE = {
+    "PLANIFICADA": "Planificada", "EN_CORTE": "En corte", "CORTADA": "Cortada", "EN_CONFECCION": "En confección",
+    "LISTA": "Lista", "CERRADA": "Cerrada",
+}
+
+
+# SUPUESTO: validar con Robert (QA 2026-11-17). The dates of a lot (shipping, delivery, the day of a state change) must be
+# from this day on and no more than this many days after today; the bounds are ours, nobody confirmed them.
+FECHA_MINIMA_DE_LOTE = date(2020, 1, 1)
+DIAS_HACIA_ADELANTE_DE_LOTE = 365
 
 
 class DatosInvalidos(ValueError):
@@ -878,6 +891,23 @@ def _material_de_receta(session: Session, codigo: str, etapa: str | None = None)
     return material
 
 
+def _comprobar_producto_repetido(session: Session, modelo: Modelo, cuero_id: int | None, color_id: int | None) -> None:
+    """S5: one product per model + leather + colour (a missing leather or colour counts as its own value).
+
+    SUPUESTO: validar con Robert. The sheet has no "archived" flag on `producto` yet, so every product counts; when one is
+    added, archived products must stop blocking a new one. The model row is locked so two simultaneous requests cannot both pass.
+    """
+    session.execute(select(Modelo.id).where(Modelo.id == modelo.id).with_for_update())
+    existente = session.scalar(
+        select(Producto.codigo).where(
+            Producto.modelo_id == modelo.id,
+            Producto.cuero_id.is_(None) if cuero_id is None else Producto.cuero_id == cuero_id,
+            Producto.color_id.is_(None) if color_id is None else Producto.color_id == color_id,
+        ).order_by(Producto.id).limit(1))
+    if existente:
+        raise Conflicto(f"Ya existe el producto {existente} con ese modelo, cuero y color: abrilo en lugar de crear otro.")
+
+
 def crear_producto(
     session: Session, *, modelo: str | None, cuero: str | None, color: str | None,
     quien_lo_confecciona: str | None, fecha_de_alta: date | None, nombre_propio: str | None,
@@ -888,10 +918,13 @@ def crear_producto(
         raise DatosInvalidos("Falta el modelo (solo un kit puede ir sin modelo).")
     modelo_fila = _por_codigo(session, Modelo, modelo, "el modelo")
     cuero_fila = _material_de_receta(session, cuero, "CUERO") if cuero else None
+    color_id = _color_id(session, color)
+    if modelo_fila is not None:  # a kit (no model) is outside the rule
+        _comprobar_producto_repetido(session, modelo_fila, cuero_fila.id if cuero_fila else None, color_id)
     codigo = f"PRD-{_siguiente_numero(session, Producto.codigo, 'PRD'):04d}"
     fila = Producto(
         codigo=codigo, modelo_id=modelo_fila.id if modelo_fila else None, cuero_id=cuero_fila.id if cuero_fila else None,
-        color_id=_color_id(session, color), quien_lo_confecciona=quien_lo_confecciona,
+        color_id=color_id, quien_lo_confecciona=quien_lo_confecciona,
         fecha_de_alta=fecha_de_alta, nombre_propio=nombre_propio, es_kit=es_kit, nota=nota, creado_por=quien,
     )
     _insertar(session, fila, "No se pudo asignar el código del producto; intentá de nuevo.")
@@ -959,6 +992,33 @@ def agregar_componente(session: Session, codigo_kit: str, *, componente: str, ca
     return ficha_producto(session, codigo_kit)
 
 
+def _precio_repetido(session: Session, material: Material, color_id: int | None, dia: date) -> str:
+    """Says what is already there for that material, colour and date (the rule is the same: only one), so the person
+    sees which price, which order and which leather pieces to look at instead of a generic refusal."""
+    mismo_color = PrecioMaterial.color_id.is_(None) if color_id is None else PrecioMaterial.color_id == color_id
+    existente = session.execute(
+        select(PrecioMaterial.id, PrecioMaterial.codigo).where(
+            PrecioMaterial.material_id == material.id, PrecioMaterial.vigente_desde == dia, mismo_color)
+    ).first()
+    texto = f"{material.nombre} para el {dia.strftime('%d/%m/%Y')}"
+    if color_id is not None:
+        texto += f" en el color {session.scalar(select(Color.nombre).where(Color.id == color_id))}"
+    detalle = []
+    if existente is not None:
+        pedido = session.scalar(
+            select(PedidoProveedor.codigo).join(PedidoLinea, PedidoLinea.pedido_id == PedidoProveedor.id)
+            .where(PedidoLinea.precio_material_id == existente.id).limit(1))
+        detalle.append(f"{existente.codigo}" + (f" (del pedido {pedido})" if pedido else ""))
+    piezas = session.scalars(
+        select(PiezaCuero.codigo).where(PiezaCuero.material_id == material.id, PiezaCuero.fecha_de_compra == dia)
+        .order_by(PiezaCuero.codigo).limit(6)).all()
+    if piezas:
+        detalle.append("las piezas " + ", ".join(piezas[:5]) + (" y otras" if len(piezas) > 5 else ""))
+    ya_existe = f": {' y '.join(detalle)}" if detalle else ""
+    return (f"Ya hay un precio de {texto}{ya_existe}. Un material admite un solo precio (y un solo pedido) por fecha: "
+            "usá otra fecha, o sumá lo nuevo al pedido que ya está cargado.")
+
+
 def crear_precio(
     session: Session, *, material: str, color: str | None, proveedor: str | None, precio: Decimal, moneda: str,
     unidad_del_precio: str, iva_incluido: bool, vigente_desde: date, nota_fuente: str | None = None,
@@ -987,7 +1047,10 @@ def crear_precio(
         unidad_del_precio=unidad_del_precio, iva_incluido=iva_incluido, vigente_desde=vigente_desde,
         nota_fuente=nota_fuente,
     )
-    _insertar(session, fila, "Ya hay un precio de ese material y color para esa fecha; cargá uno con otra fecha.")
+    try:
+        _insertar(session, fila, "")
+    except Conflicto:
+        raise Conflicto(_precio_repetido(session, material_fila, fila.color_id, vigente_desde)) from None
     if commit:
         session.commit()
     return next(p for p in listar_precios(session, material, vigente_desde) if p["codigo"] == fila.codigo)
@@ -1052,11 +1115,31 @@ def crear_gasto(
     return costos_fijos(session, periodo)
 
 
+def _fecha_razonable(valor: date | None, nombre: str) -> None:
+    """Refuse a lot date out of the reasonable range (422). `nombre` reads in a sentence: "de envío", "de entrega"."""
+    if valor is None:
+        return
+    tope = date.today() + timedelta(days=DIAS_HACIA_ADELANTE_DE_LOTE)
+    if not FECHA_MINIMA_DE_LOTE <= valor <= tope:
+        raise DatosInvalidos(
+            f"La fecha {nombre} ({valor:%d/%m/%Y}) no es válida: tiene que estar entre el "
+            f"{FECHA_MINIMA_DE_LOTE:%d/%m/%Y} y el {tope:%d/%m/%Y}.")
+
+
+def _entrega_no_anterior_al_envio(envio: date | None, entrega: date | None) -> None:
+    if envio is not None and entrega is not None and entrega < envio:
+        raise DatosInvalidos(
+            f"La fecha de entrega ({entrega:%d/%m/%Y}) no puede ser anterior a la fecha de envío ({envio:%d/%m/%Y}).")
+
+
 def crear_orden(
     session: Session, *, donde_se_hace: str, taller: str | None, persona: str | None, fecha_de_envio: date | None,
     fecha_de_entrega: date | None, estado: str, nota: str | None, items: list[dict],
 ) -> dict:
     """A lot with its items and the first row of its state history (costs are derived on read, never stored)."""
+    _fecha_razonable(fecha_de_envio, "de envío")
+    _fecha_razonable(fecha_de_entrega, "de entrega")
+    _entrega_no_anterior_al_envio(fecha_de_envio, fecha_de_entrega)
     taller_fila = _por_codigo(session, Taller, taller, "el taller")
     persona_fila = _por_codigo(session, Persona, persona, "la persona")
     productos = {}
@@ -1577,14 +1660,24 @@ def registrar_estado(
     orden = _orden_por_codigo(session, codigo, bloquear=True)
     if orden.estado == "CERRADA":
         raise Conflicto(f"El lote {codigo} ya está cerrado: no se puede cambiar su estado.")
+    etiqueta = ETIQUETA_ESTADO_LOTE
     if estado == orden.estado:
         # SUPUESTO: validar. Repeating the current state is refused so a double click leaves one history row.
-        raise Conflicto(f"El lote {codigo} ya está en estado {estado}.")
+        raise Conflicto(f"El lote {codigo} ya está en estado {etiqueta[estado]}.")
+    # SUPUESTO: validar con Robert. A lot only goes to the next state of the cycle, never skips one nor goes back (QA 2026-11-17).
+    siguiente = LOT_STATES[LOT_STATES.index(orden.estado) + 1]
+    if estado != siguiente:
+        raise Conflicto(
+            f"El lote {codigo} está en {etiqueta[orden.estado]}: el siguiente estado es {etiqueta[siguiente]}. "
+            f"No se puede pasar a {etiqueta[estado]}.")
+    _fecha_razonable(fecha, "del cambio de estado")
     quien_fila = _por_codigo(session, Persona, quien, "la persona")
     if estado == "CERRADA":
         entrega = fecha_de_entrega or orden.fecha_de_entrega
         if entrega is None:
             raise DatosInvalidos("Para cerrar el lote hace falta la fecha de entrega: es la que cierra la cotización final.")
+        _fecha_razonable(entrega, "de entrega")
+        _entrega_no_anterior_al_envio(orden.fecha_de_envio, entrega)
         orden.fecha_de_entrega = entrega
     _insertar(session, OrdenEstado(orden_fabricacion_id=orden.id, estado=estado, fecha=fecha,
                                    quien_id=quien_fila.id if quien_fila else None, cambiado_por=usuario_id),
@@ -1598,7 +1691,9 @@ def agregar_item_a_orden(
     session: Session, codigo: str, *, producto: str, cantidad: Decimal, cotizado: Decimal | None,
     pagado: Decimal | None, nota: str | None = None,
 ) -> dict:
-    orden = _orden_por_codigo(session, codigo)
+    orden = _orden_por_codigo(session, codigo, bloquear=True)
+    if orden.estado == "CERRADA":
+        raise Conflicto(f"El lote {codigo} está cerrado: no se puede agregar un producto.")
     producto_fila = session.scalar(select(Producto).where(Producto.codigo == producto))
     if producto_fila is None:
         raise DatosInvalidos(f"No existe el producto {producto}.")
@@ -2627,12 +2722,32 @@ def crear_categoria(session: Session, *, nombre: str, nota: str | None) -> dict:
     return _catalogo_a_dict(fila)
 
 
+MENSAJE_MODELO_SIN_CONSUMOS = "El modelo no tiene consumos cargados: cargá el cuero, el forro u otro consumo antes de validarlo."
+
 # Models. The consumption fields of the sheet's Modelos tab; NULL = missing data, 0 = "no lleva".
 CAMPOS_DE_CONSUMO = (
     "cuero_m2_por_unidad", "forro_m2_por_unidad", "flex_m2_por_unidad", "goma_eva_m2_por_unidad",
     "herrajes_usd_por_unidad", "hilo_y_cemento", "confeccion_estimada_ars", "horas_de_confeccion",
     "origen_de_los_consumos",
 )
+
+
+# S1: nobody uses more than this per unit of product, in m2 or units (the QA saved 5000 m2 of leather). SUPUESTO: validar con Robert.
+MAX_CONSUMO_POR_UNIDAD = Decimal("100")
+# The consumptions of a model measured in m2, with the name a person reads (never the column name).
+MEDIDAS_EN_M2 = {
+    "cuero_m2_por_unidad": "cuero", "forro_m2_por_unidad": "forro", "flex_m2_por_unidad": "flex",
+    "goma_eva_m2_por_unidad": "goma EVA",
+}
+
+
+def comprobar_tope_de_consumos(consumos: dict) -> None:
+    """422 when a m2 consumption of the model is above `MAX_CONSUMO_POR_UNIDAD`. Money amounts (herrajes in USD, confection)
+    and hours are not consumptions in m2 and have no cap."""
+    for campo, que in MEDIDAS_EN_M2.items():
+        valor = consumos.get(campo)
+        if valor is not None and valor > MAX_CONSUMO_POR_UNIDAD:
+            raise DatosInvalidos(f"El consumo de {que} no puede superar {MAX_CONSUMO_POR_UNIDAD:f} m² por unidad.")
 
 
 def detalle_modelo(session: Session, codigo: str) -> dict:
@@ -2693,6 +2808,7 @@ def crear_modelo(
     nombre = nombre_del_modelo.strip()
     if not nombre:
         raise DatosInvalidos("Falta el nombre del modelo.")
+    comprobar_tope_de_consumos(consumos)
     if _nombre_repetido(session, Modelo.nombre_del_modelo, nombre):
         raise Conflicto(f"Ya hay un modelo con el nombre {nombre}: agregá algo que lo distinga.")
     categoria_fila = session.scalar(select(Categoria).where(Categoria.nombre == categoria))
@@ -2716,15 +2832,39 @@ def _modelo_por_codigo(session: Session, codigo: str) -> Modelo:
     return modelo
 
 
+# The consumptions that make a model "not empty" (S1). Confection and hours are not materials, so they do not count.
+CAMPOS_DE_MATERIAL = (
+    "cuero_m2_por_unidad", "forro_m2_por_unidad", "flex_m2_por_unidad", "goma_eva_m2_por_unidad",
+    "herrajes_usd_por_unidad", "hilo_y_cemento",
+)
+
+
+def hay_cantidad(valores) -> bool:
+    """True when at least one value is a number above 0 (None = missing data and 0 = "no lleva" both count as nothing)."""
+    return any(v is not None and v > 0 for v in valores)
+
+
+def modelo_tiene_consumos(session: Session, modelo: Modelo) -> bool:
+    """SUPUESTO: validar con Robert. A model has consumptions when any material consumption is above 0 or it has supplies."""
+    return hay_cantidad(getattr(modelo, campo) for campo in CAMPOS_DE_MATERIAL) or bool(
+        session.scalar(select(ModeloInsumo.id).where(ModeloInsumo.modelo_id == modelo.id).limit(1)))
+
+
 def cambiar_validado(session: Session, codigo: str, validado: bool) -> dict:
-    """The one in-place flag of a model that carries no consumption: a person confirms (or withdraws) the numbers."""
-    _modelo_por_codigo(session, codigo).validado = validado
+    """The one in-place flag of a model that carries no consumption: a person confirms (or withdraws) the numbers.
+
+    S1: an empty model (no consumption above 0, no supplies) cannot be validated; withdrawing the mark is always allowed."""
+    modelo = _modelo_por_codigo(session, codigo)
+    if validado and not modelo_tiene_consumos(session, modelo):
+        raise DatosInvalidos(MENSAJE_MODELO_SIN_CONSUMOS)
+    modelo.validado = validado
     session.commit()
     return detalle_modelo(session, codigo)
 
 
 def _aplicar_consumos(session: Session, codigo: str, forro: str | None, consumos: dict) -> dict:
     """Overwrite the consumptions of a model and reset `validado`, WITHOUT committing. Returns what changed."""
+    comprobar_tope_de_consumos(consumos)
     modelo = _modelo_por_codigo(session, codigo)
     forro_fila = _forro_del_modelo(session, forro, consumos["forro_m2_por_unidad"])
     anterior_forro = session.scalar(select(Material.codigo).where(Material.id == modelo.forro_id)) if modelo.forro_id else None

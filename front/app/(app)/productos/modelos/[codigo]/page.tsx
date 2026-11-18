@@ -9,7 +9,7 @@ import {
   SectionTitle,
 } from "@/components/ui";
 import { apiGet } from "@/lib/api";
-import { formatDate } from "@/lib/format";
+import { formatInstantDate } from "@/lib/format";
 import { ESTADO_TONE, estadoLabel } from "@/lib/formularios";
 import { originLabel, sizeLabel } from "@/lib/modelos";
 import { requireRole } from "@/lib/session";
@@ -184,7 +184,7 @@ export default async function ModeloPage({
                         {estadoLabel(hoja.estado)}
                       </Badge>
                       <span className="text-muted">
-                        Creada el {formatDate(hoja.created_at)}
+                        Creada el {formatInstantDate(hoja.created_at)}
                       </span>
                     </li>
                   ))}

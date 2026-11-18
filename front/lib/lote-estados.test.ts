@@ -5,6 +5,7 @@ import {
   diasDelLote,
   diasEntre,
   lineaDeTiempo,
+  siguienteEstado,
   siguienteEstadoDelTaller,
   textoDeDias,
   textoDeResponsable,
@@ -198,4 +199,12 @@ test("S6: the responsible line only exists when somebody was recorded", () => {
     ),
     "Lo pasó Lorena",
   );
+});
+
+test("el administrador solo puede pasar al estado siguiente del ciclo, sin saltos", () => {
+  assert.equal(siguienteEstado("PLANIFICADA"), "EN_CORTE");
+  assert.equal(siguienteEstado("EN_CONFECCION"), "LISTA");
+  assert.equal(siguienteEstado("LISTA"), "CERRADA");
+  assert.equal(siguienteEstado("CERRADA"), null);
+  assert.equal(siguienteEstado("INVENTADO"), null);
 });

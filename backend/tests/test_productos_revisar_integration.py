@@ -23,7 +23,9 @@ def session(local_postgres):
 
 
 def _producto(session, nota, **cambios):
-    datos = {"modelo": "MOD-0001", "cuero": "MAT-CU01", "color": None, "quien_lo_confecciona": "INTERNA",
+    """The first product is of MOD-0001; each next one takes the next model (model + leather + colour must be unique, S5)."""
+    n = session.info["productos"] = session.info.get("productos", 0) + 1
+    datos = {"modelo": f"MOD-{n:04d}", "cuero": "MAT-CU01", "color": None, "quien_lo_confecciona": "INTERNA",
              "fecha_de_alta": None, "nombre_propio": None, "es_kit": False, "nota": nota, **cambios}
     return servicios.crear_producto(session, **datos)["codigo"]
 

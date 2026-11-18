@@ -13,10 +13,12 @@ export type TarjetaDeCuero = {
   estado: EstadoDeCuero;
   /** Headline of the card: `Falta 0,5 m²`, `Alcanza · sobran 2 m²`, `Ya está cortado`. */
   mensaje: string;
-  /** `Necesita`, `Hay` and (when something was cut) `Ya cortado`, each with its m². */
+  /** `Necesita`, `Hay`, (when something was cut) `Ya cortado` and (when other lots hold some) `Reservado por …` and `Libre`, each with its m². */
   cifras: { label: string; value: string }[];
   /** Codes of the products of the lot that use this leather. */
   productos: string[];
+  /** Shortage explanation written by the API (stock, reserved by other lots); null when it fits. */
+  aviso: string | null;
 };
 
 export type ResumenDeCuero = {
@@ -71,6 +73,15 @@ export function resumenDeCuero(datos: LoteCuero): ResumenDeCuero {
           ? [{ label: "Ya cortado", value: m2(grupo.ya_cortado) }]
           : []),
         { label: "Hay", value: m2(grupo.disponible) },
+        ...(isPositive(grupo.reservado_por_otros)
+          ? [
+              {
+                label: `Reservado por ${grupo.reservado_por.join(", ")}`,
+                value: m2(grupo.reservado_por_otros),
+              },
+              { label: "Libre para este lote", value: m2(grupo.libre) },
+            ]
+          : []),
       ];
       return [
         {
@@ -80,6 +91,7 @@ export function resumenDeCuero(datos: LoteCuero): ResumenDeCuero {
           mensaje: mensajeDe(grupo, estado),
           cifras,
           productos: grupo.productos,
+          aviso: estado === "FALTA" ? grupo.mensaje : null,
         },
         index,
       ];
