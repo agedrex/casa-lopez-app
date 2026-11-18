@@ -24,8 +24,8 @@ from backend.costeo import (
 )
 from backend.models import (
     Categoria, Color, CompraReventa, Cotizacion, Etapa, FormularioConsumo, GastoPeriodo, Impuesto, KitComponente, Material, Modelo,
-    ModeloFoto, ModeloInsumo, OrdenEstado, OrdenFabricacion, OrdenItem, Parametro, Persona, PrecioMaterial, PrecioVenta, Producto,
-    ProductoReventa, Proveedor, RecetaLinea, Taller, TipoCambio, Transferencia, Venta,
+    ModeloFoto, ModeloInsumo, MovimientoCuero, OrdenEstado, OrdenFabricacion, OrdenItem, Parametro, Persona, PrecioMaterial, PrecioVenta, Producto,
+    ProductoReventa, Proveedor, RecetaLinea, Taller, TipoCambio, Transferencia, Venta, RENGLON_QUITADO, renglon_quitado,
 )
 from backend.receta import (
     Cotizado, Extra, InsumoModelo, ModeloReceta, ProductoReceta, Receta, cotizar_producto, generar_receta,
@@ -365,7 +365,7 @@ def cargar_productos(
             select(OrdenItem.producto_id, dia, OrdenItem.taller_precio_cotizado_por_unidad_ars,
                    OrdenItem.taller_precio_pagado_por_unidad_ars)
             .join(OrdenFabricacion, OrdenFabricacion.id == OrdenItem.orden_fabricacion_id)
-            .where(OrdenItem.producto_id.in_(ids), dia.is_not(None))
+            .where(OrdenItem.producto_id.in_(ids), dia.is_not(None), ~renglon_quitado())
         ):
             lotes.setdefault(producto_id, []).append(ItemLote(fecha, cotizado, pagado))
         componente = aliased(Producto)
@@ -1381,7 +1381,7 @@ def _cargar_items(session: Session, lote_ids: list[int]) -> list[ItemDatos]:
         select(OrdenItem, OrdenFabricacion.codigo, Producto.codigo)
         .join(OrdenFabricacion, OrdenFabricacion.id == OrdenItem.orden_fabricacion_id)
         .join(Producto, Producto.id == OrdenItem.producto_id)
-        .where(OrdenItem.orden_fabricacion_id.in_(lote_ids)).order_by(OrdenItem.id)
+        .where(OrdenItem.orden_fabricacion_id.in_(lote_ids), ~renglon_quitado()).order_by(OrdenItem.id)
     ).all()
     return [ItemDatos(
         id=i.id, codigo=i.codigo, lote=lote, producto=producto, cantidad=i.cantidad,
@@ -1510,7 +1510,7 @@ def unidades_por_producto(session: Session, periodo: str | None = None) -> dict:
         select(Producto.codigo, func.sum(OrdenItem.cantidad), func.count(func.distinct(OrdenFabricacion.id)))
         .join(OrdenItem, OrdenItem.producto_id == Producto.id)
         .join(OrdenFabricacion, OrdenFabricacion.id == OrdenItem.orden_fabricacion_id)
-        .where(OrdenFabricacion.estado != "PLANIFICADA")
+        .where(OrdenFabricacion.estado != "PLANIFICADA", ~renglon_quitado())
         .group_by(Producto.codigo)
     )
     if periodo:
@@ -1539,7 +1539,20 @@ def detalle_orden(session: Session, codigo: str) -> dict:
         select(OrdenEstado, Persona.codigo, Persona.nombre).outerjoin(Persona, Persona.id == OrdenEstado.quien_id)
         .where(OrdenEstado.orden_fabricacion_id == lote["id"]).order_by(OrdenEstado.fecha, OrdenEstado.id)
     ).all()]
+    lote["quitados"] = _renglones_quitados(session, lote["id"])
     return lote
+
+
+def _renglones_quitados(session: Session, lote_id: int) -> list[dict]:
+    """The lines an admin removed from the lot: kept for the record, with their log in `nota`."""
+    filas = session.execute(
+        select(OrdenItem.codigo, Producto.codigo, OrdenItem.nota)
+        .join(Producto, Producto.id == OrdenItem.producto_id)
+        .where(OrdenItem.orden_fabricacion_id == lote_id, renglon_quitado()).order_by(OrdenItem.id)
+    ).all()
+    info = _info_productos(session, {producto for _, producto, _ in filas}, con_costo=False)
+    return [{"codigo": codigo, "producto": producto, "producto_nombre": info[producto].nombre if producto in info else producto,
+             "nota": nota} for codigo, producto, nota in filas]
 
 
 def _orden_por_codigo(session: Session, codigo: str, bloquear: bool = False) -> OrdenFabricacion:
@@ -1589,6 +1602,55 @@ def agregar_item_a_orden(
     ), "No se pudo asignar el código del renglón; intentá de nuevo.")
     session.commit()
     return detalle_orden(session, codigo)
+
+
+def _renglon_editable(session: Session, codigo_lote: str, codigo_item: str, accion: str) -> OrdenItem:
+    """Lock the lot and one of its lines for an admin edit. SUPUESTO: validar. A lot's lines can be edited in every state
+    but CERRADA (the cost and the final quote of a closed lot do not change); cutting having started does not block it."""
+    orden = _orden_por_codigo(session, codigo_lote, bloquear=True)
+    if orden.estado == "CERRADA":
+        raise Conflicto(f"El lote {codigo_lote} está cerrado: no se puede {accion} un renglón.")
+    item = session.scalar(
+        select(OrdenItem).where(OrdenItem.codigo == codigo_item, OrdenItem.orden_fabricacion_id == orden.id).with_for_update())
+    if item is None:
+        raise NoEncontrado(f"El lote {codigo_lote} no tiene el renglón {codigo_item}.")
+    if session.scalar(select(renglon_quitado()).where(OrdenItem.id == item.id)):
+        raise Conflicto(f"El renglón {codigo_item} ya fue quitado del lote {codigo_lote}.")
+    return item
+
+
+def _anotar_cambio(item: OrdenItem, cambio: str, usuario: str) -> None:
+    """Append one line to the line's note: date, the change and who made it. Earlier notes are kept as they were."""
+    linea = f"{date.today().isoformat()} · {cambio} · {usuario}"
+    item.nota = f"{item.nota}\n{linea}" if item.nota else linea
+
+
+def cambiar_cantidad_de_item(session: Session, codigo_lote: str, codigo_item: str, *, cantidad: Decimal, usuario: str) -> dict:
+    """Admin only. Set the units of one line of an open lot; the previous quantity is logged in the line's note."""
+    if cantidad <= ZERO:
+        raise DatosInvalidos("La cantidad tiene que ser mayor que cero; para sacar el renglón usá Quitar.")
+    item = _renglon_editable(session, codigo_lote, codigo_item, "cambiar la cantidad de")
+    if item.cantidad == cantidad:
+        # SUPUESTO: validar. Repeating the same quantity is refused, as with the state, so a double click logs once.
+        raise Conflicto(f"El renglón {codigo_item} ya tiene cantidad {cantidad.normalize():f}.")
+    _anotar_cambio(item, f"cantidad {item.cantidad.normalize():f} → {cantidad.normalize():f}", usuario)
+    item.cantidad = cantidad
+    session.commit()
+    return detalle_orden(session, codigo_lote)
+
+
+def quitar_item_de_orden(session: Session, codigo_lote: str, codigo_item: str, *, usuario: str) -> dict:
+    """Admin only. Take a line out of an open lot. Nothing is deleted (AGENTS rule 11): the row stays with 0 units and the
+    removal mark in its note, next to the quantity it had, the date and who removed it, so every sum and the leather
+    needs ignore it. SUPUESTO: validar. A line with leather already cut for it cannot be removed (the cut points to it)."""
+    item = _renglon_editable(session, codigo_lote, codigo_item, "quitar")
+    if session.scalar(select(func.count()).select_from(MovimientoCuero).where(
+            MovimientoCuero.orden_item_id == item.id, MovimientoCuero.tipo == "CORTE")):
+        raise Conflicto(f"El renglón {codigo_item} ya tiene cortes de cuero registrados: no se puede quitar del lote.")
+    _anotar_cambio(item, f"{RENGLON_QUITADO} cantidad {item.cantidad.normalize():f} → 0", usuario)
+    item.cantidad = ZERO
+    session.commit()
+    return detalle_orden(session, codigo_lote)
 
 
 def registrar_precios_item(

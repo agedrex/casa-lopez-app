@@ -320,9 +320,18 @@ export type EstadoDeOrden = {
   quien_nombre: string | null;
 };
 
+/** A line an admin took out of the lot: the row is kept and its note holds the log (date, quantity it had, who). */
+export type RenglonQuitado = {
+  codigo: string;
+  producto: string;
+  producto_nombre: string;
+  nota: string | null;
+};
+
 export type OrdenDetalle = OrdenResumen & {
   items: Renglon[];
   estados: EstadoDeOrden[];
+  quitados: RenglonQuitado[];
 };
 
 export type MesCasaTaller = {

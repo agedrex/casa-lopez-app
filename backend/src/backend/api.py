@@ -428,6 +428,12 @@ class EstadoIn(Entrada):
     fecha_de_entrega: date | None = None
 
 
+class CantidadIn(Entrada):
+    """The new units of a lot line. Zero is not valid: removing a line is its own action."""
+
+    cantidad: Annotated[Decimal, Field(gt=0, max_digits=12, decimal_places=6)]
+
+
 class PreciosItemIn(Entrada):
     """What the workshop quoted and/or charged per unit; at least one of the two."""
 
@@ -1343,9 +1349,17 @@ class EstadoOut(Salida):
     quien_nombre: str | None
 
 
+class RenglonQuitadoOut(Salida):
+    codigo: str
+    producto: str
+    producto_nombre: str
+    nota: str | None
+
+
 class OrdenDetalleOut(OrdenResumenOut):
     items: list[RenglonOut]
     estados: list[EstadoOut]
+    quitados: list[RenglonQuitadoOut] = []
 
 
 class TallerDetalleOut(TallerOut):
@@ -1989,6 +2003,18 @@ def agregar_item_a_orden(codigo: str, cuerpo: ItemIn, session: Sesion):
         cotizado=datos["taller_precio_cotizado_por_unidad_ars"], pagado=datos["taller_precio_pagado_por_unidad_ars"],
         nota=datos["nota"],
     )
+
+
+# SUPUESTO: validar. Admin only (S7 of lanzamiento-listo): an open lot's line can change units or be removed; the removal
+# keeps the row (rule 11), see servicios.quitar_item_de_orden.
+@router.put("/ordenes/{codigo}/items/{item}", dependencies=ESCRITURA, response_model=OrdenDetalleOut)
+def cambiar_cantidad_de_item(codigo: str, item: str, cuerpo: CantidadIn, session: Sesion, usuario: SoloAdmin):
+    return servicios.cambiar_cantidad_de_item(session, codigo, item, cantidad=cuerpo.cantidad, usuario=usuario.id)
+
+
+@router.delete("/ordenes/{codigo}/items/{item}", dependencies=ESCRITURA, response_model=OrdenDetalleOut)
+def quitar_item_de_orden(codigo: str, item: str, session: Sesion, usuario: SoloAdmin):
+    return servicios.quitar_item_de_orden(session, codigo, item, usuario=usuario.id)
 
 
 # SUPUESTO: validar. A taller loads its own price by voice (S3 of the roles feature); nothing else of /ordenes.
