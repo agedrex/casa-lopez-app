@@ -150,7 +150,7 @@ def test_a_workshop_without_lots_has_an_empty_history_and_an_unknown_one_is_404(
 
 def test_the_history_lists_what_was_paid_per_lot_and_per_product_with_its_variation(api):
     carteras = producto(api, quien_lo_confecciona="EXTERNA")["codigo"]
-    otro = producto(api, quien_lo_confecciona="EXTERNA", nombre_propio="Otra cartera")["codigo"]
+    otro = producto(api, cuero="MAT-CU02", quien_lo_confecciona="EXTERNA", nombre_propio="Otra cartera")["codigo"]
     dolar_nuevo(api)
     primero = lote_de(api, carteras, "2026-09-01", "10", "10000")
     segundo = lote_de(api, carteras, "2026-10-01", "20", "11000")

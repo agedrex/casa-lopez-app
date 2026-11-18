@@ -116,7 +116,7 @@ def test_every_line_with_leather_needs_its_cut_and_a_line_added_later_blocks_the
     cortar(api, primero)
     for nuevo in ("EN_CORTE", "CORTADA", "EN_CONFECCION"):
         assert estado(api, codigo, nuevo).status_code == 201
-    nuevo_item = api.post(f"/ordenes/{codigo}/items", json={"producto": producto(api), "cantidad": "1"})
+    nuevo_item = api.post(f"/ordenes/{codigo}/items", json={"producto": producto(api, modelo="MOD-0002"), "cantidad": "1"})
     assert nuevo_item.status_code == 201
     api.rol["value"] = "taller"
     sin_cortar = api.post(f"/ordenes/{codigo}/avanzar")

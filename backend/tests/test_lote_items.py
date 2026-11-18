@@ -36,8 +36,15 @@ def api(local_postgres, monkeypatch):
         connection.close()
 
 
+# Seed models that use 0.25 m2 of leather per unit, like MOD-0001: a test gets a new product by taking the next one
+# (model + leather + colour must be unique, S5) and the leather it needs stays the same, with no colour.
+MODELOS_DE_CUERO_025 = ("MOD-0001", "MOD-0031", "MOD-0074", "MOD-0125", "MOD-0222")
+
+
 def producto(client):
-    respuesta = client.post("/productos", json={"modelo": "MOD-0001", "cuero": "MAT-CU01", "color": None,
+    usados = client.get("/productos", params={"limit": 500}).json()
+    modelo = next(m for m in MODELOS_DE_CUERO_025 if m not in {p["modelo"] for p in usados})
+    respuesta = client.post("/productos", json={"modelo": modelo, "cuero": "MAT-CU01", "color": None,
                                                "quien_lo_confecciona": "INTERNA"})
     assert respuesta.status_code == 201, respuesta.text
     return respuesta.json()["codigo"]

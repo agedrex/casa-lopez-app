@@ -891,6 +891,23 @@ def _material_de_receta(session: Session, codigo: str, etapa: str | None = None)
     return material
 
 
+def _comprobar_producto_repetido(session: Session, modelo: Modelo, cuero_id: int | None, color_id: int | None) -> None:
+    """S5: one product per model + leather + colour (a missing leather or colour counts as its own value).
+
+    SUPUESTO: validar con Robert. The sheet has no "archived" flag on `producto` yet, so every product counts; when one is
+    added, archived products must stop blocking a new one. The model row is locked so two simultaneous requests cannot both pass.
+    """
+    session.execute(select(Modelo.id).where(Modelo.id == modelo.id).with_for_update())
+    existente = session.scalar(
+        select(Producto.codigo).where(
+            Producto.modelo_id == modelo.id,
+            Producto.cuero_id.is_(None) if cuero_id is None else Producto.cuero_id == cuero_id,
+            Producto.color_id.is_(None) if color_id is None else Producto.color_id == color_id,
+        ).order_by(Producto.id).limit(1))
+    if existente:
+        raise Conflicto(f"Ya existe el producto {existente} con ese modelo, cuero y color: abrilo en lugar de crear otro.")
+
+
 def crear_producto(
     session: Session, *, modelo: str | None, cuero: str | None, color: str | None,
     quien_lo_confecciona: str | None, fecha_de_alta: date | None, nombre_propio: str | None,
@@ -901,10 +918,13 @@ def crear_producto(
         raise DatosInvalidos("Falta el modelo (solo un kit puede ir sin modelo).")
     modelo_fila = _por_codigo(session, Modelo, modelo, "el modelo")
     cuero_fila = _material_de_receta(session, cuero, "CUERO") if cuero else None
+    color_id = _color_id(session, color)
+    if modelo_fila is not None:  # a kit (no model) is outside the rule
+        _comprobar_producto_repetido(session, modelo_fila, cuero_fila.id if cuero_fila else None, color_id)
     codigo = f"PRD-{_siguiente_numero(session, Producto.codigo, 'PRD'):04d}"
     fila = Producto(
         codigo=codigo, modelo_id=modelo_fila.id if modelo_fila else None, cuero_id=cuero_fila.id if cuero_fila else None,
-        color_id=_color_id(session, color), quien_lo_confecciona=quien_lo_confecciona,
+        color_id=color_id, quien_lo_confecciona=quien_lo_confecciona,
         fecha_de_alta=fecha_de_alta, nombre_propio=nombre_propio, es_kit=es_kit, nota=nota, creado_por=quien,
     )
     _insertar(session, fila, "No se pudo asignar el código del producto; intentá de nuevo.")
@@ -2702,12 +2722,32 @@ def crear_categoria(session: Session, *, nombre: str, nota: str | None) -> dict:
     return _catalogo_a_dict(fila)
 
 
+MENSAJE_MODELO_SIN_CONSUMOS = "El modelo no tiene consumos cargados: cargá el cuero, el forro u otro consumo antes de validarlo."
+
 # Models. The consumption fields of the sheet's Modelos tab; NULL = missing data, 0 = "no lleva".
 CAMPOS_DE_CONSUMO = (
     "cuero_m2_por_unidad", "forro_m2_por_unidad", "flex_m2_por_unidad", "goma_eva_m2_por_unidad",
     "herrajes_usd_por_unidad", "hilo_y_cemento", "confeccion_estimada_ars", "horas_de_confeccion",
     "origen_de_los_consumos",
 )
+
+
+# S1: nobody uses more than this per unit of product, in m2 or units (the QA saved 5000 m2 of leather). SUPUESTO: validar con Robert.
+MAX_CONSUMO_POR_UNIDAD = Decimal("100")
+# The consumptions of a model measured in m2, with the name a person reads (never the column name).
+MEDIDAS_EN_M2 = {
+    "cuero_m2_por_unidad": "cuero", "forro_m2_por_unidad": "forro", "flex_m2_por_unidad": "flex",
+    "goma_eva_m2_por_unidad": "goma EVA",
+}
+
+
+def comprobar_tope_de_consumos(consumos: dict) -> None:
+    """422 when a m2 consumption of the model is above `MAX_CONSUMO_POR_UNIDAD`. Money amounts (herrajes in USD, confection)
+    and hours are not consumptions in m2 and have no cap."""
+    for campo, que in MEDIDAS_EN_M2.items():
+        valor = consumos.get(campo)
+        if valor is not None and valor > MAX_CONSUMO_POR_UNIDAD:
+            raise DatosInvalidos(f"El consumo de {que} no puede superar {MAX_CONSUMO_POR_UNIDAD:f} m² por unidad.")
 
 
 def detalle_modelo(session: Session, codigo: str) -> dict:
@@ -2768,6 +2808,7 @@ def crear_modelo(
     nombre = nombre_del_modelo.strip()
     if not nombre:
         raise DatosInvalidos("Falta el nombre del modelo.")
+    comprobar_tope_de_consumos(consumos)
     if _nombre_repetido(session, Modelo.nombre_del_modelo, nombre):
         raise Conflicto(f"Ya hay un modelo con el nombre {nombre}: agregá algo que lo distinga.")
     categoria_fila = session.scalar(select(Categoria).where(Categoria.nombre == categoria))
@@ -2791,15 +2832,39 @@ def _modelo_por_codigo(session: Session, codigo: str) -> Modelo:
     return modelo
 
 
+# The consumptions that make a model "not empty" (S1). Confection and hours are not materials, so they do not count.
+CAMPOS_DE_MATERIAL = (
+    "cuero_m2_por_unidad", "forro_m2_por_unidad", "flex_m2_por_unidad", "goma_eva_m2_por_unidad",
+    "herrajes_usd_por_unidad", "hilo_y_cemento",
+)
+
+
+def hay_cantidad(valores) -> bool:
+    """True when at least one value is a number above 0 (None = missing data and 0 = "no lleva" both count as nothing)."""
+    return any(v is not None and v > 0 for v in valores)
+
+
+def modelo_tiene_consumos(session: Session, modelo: Modelo) -> bool:
+    """SUPUESTO: validar con Robert. A model has consumptions when any material consumption is above 0 or it has supplies."""
+    return hay_cantidad(getattr(modelo, campo) for campo in CAMPOS_DE_MATERIAL) or bool(
+        session.scalar(select(ModeloInsumo.id).where(ModeloInsumo.modelo_id == modelo.id).limit(1)))
+
+
 def cambiar_validado(session: Session, codigo: str, validado: bool) -> dict:
-    """The one in-place flag of a model that carries no consumption: a person confirms (or withdraws) the numbers."""
-    _modelo_por_codigo(session, codigo).validado = validado
+    """The one in-place flag of a model that carries no consumption: a person confirms (or withdraws) the numbers.
+
+    S1: an empty model (no consumption above 0, no supplies) cannot be validated; withdrawing the mark is always allowed."""
+    modelo = _modelo_por_codigo(session, codigo)
+    if validado and not modelo_tiene_consumos(session, modelo):
+        raise DatosInvalidos(MENSAJE_MODELO_SIN_CONSUMOS)
+    modelo.validado = validado
     session.commit()
     return detalle_modelo(session, codigo)
 
 
 def _aplicar_consumos(session: Session, codigo: str, forro: str | None, consumos: dict) -> dict:
     """Overwrite the consumptions of a model and reset `validado`, WITHOUT committing. Returns what changed."""
+    comprobar_tope_de_consumos(consumos)
     modelo = _modelo_por_codigo(session, codigo)
     forro_fila = _forro_del_modelo(session, forro, consumos["forro_m2_por_unidad"])
     anterior_forro = session.scalar(select(Material.codigo).where(Material.id == modelo.forro_id)) if modelo.forro_id else None

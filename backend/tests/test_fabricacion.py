@@ -415,7 +415,7 @@ def test_house_vs_workshop_endpoint(api):
 
 def test_workshop_prices_for_a_product_and_for_similar_ones(api):
     a = producto(api, quien_lo_confecciona="EXTERNA")["codigo"]
-    b = producto(api, quien_lo_confecciona="EXTERNA")["codigo"]
+    b = producto(api, cuero="MAT-CU02", quien_lo_confecciona="EXTERNA")["codigo"]  # same category, another leather (S5)
     otra_categoria = next(m for m in api.get("/modelos").json() if m["categoria"] != "Portafolios")
     c = producto(api, modelo=otra_categoria["codigo"], quien_lo_confecciona="EXTERNA")["codigo"]
 
@@ -513,8 +513,8 @@ def test_quality_report_shape_and_the_seeded_findings(api):
 
 def test_quality_flags_products_lots_example_workshops_and_recotizar(api):
     sin_quien = api.post("/productos", json={"modelo": "MOD-0001", "cuero": "MAT-CU01", "fecha_de_alta": "2026-09-03"}).json()["codigo"]
-    igual_a = producto(api)["codigo"]
-    igual_b = producto(api)["codigo"]
+    igual_a = producto(api, cuero="MAT-CU02", nombre_propio="Cartera repetida")["codigo"]
+    igual_b = producto(api, cuero="MAT-CU06", nombre_propio="Cartera repetida")["codigo"]  # same name, another leather (S5)
     api.post(f"/productos/{igual_a}/cotizaciones", json={"tipo": "INICIAL"})
     dolar_nuevo(api)
     lote_nuevo(api, igual_a, taller=None, fecha_de_envio=None)

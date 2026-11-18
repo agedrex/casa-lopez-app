@@ -52,6 +52,7 @@ uv run --with openpyxl python -I scripts/importar_productos.py "/ruta/COSTOS1 ..
 - Estado `EN_DEFINICION`, `es_kit = false`, `quien_lo_confecciona` y `fecha_de_alta` vacíos (la columna E parece fecha de cotización: **supuesto, validar con Gerardo**).
 - Todo pasa por `servicios.crear_producto` (el código `PRD-nnnn` lo asigna ese servicio).
 - **Se puede correr dos veces**: cada producto lleva `IMPORTADO-EXCEL fila <N>` en la nota y la segunda corrida lo saltea.
+- `crear_producto` no admite dos productos con el mismo modelo + cuero + color (409). Cada fila del Excel tiene su propio modelo, así que el importador no choca consigo mismo; pero si alguien ya creó a mano un producto de ese modelo con el mismo cuero y color (sin la marca `IMPORTADO-EXCEL`), el script frena con "Se frenó la importación: Ya existe el producto PRD-…" en vez de duplicarlo (lo ya importado queda; corré de nuevo después de resolverlo). SUPUESTO: validar con Robert.
 
 ## La `nota` del producto
 

@@ -246,9 +246,9 @@ def session(local_postgres):
         connection.close()
 
 
-def _crear(session, **cambios):
+def _crear(session, modelo="MOD-0001", **cambios):
     return servicios.crear_producto(
-        session, modelo="MOD-0001", cuero="MAT-CU01", color=None, quien_lo_confecciona="INTERNA",
+        session, modelo=modelo, cuero="MAT-CU01", color=None, quien_lo_confecciona="INTERNA",
         fecha_de_alta=date(2026, 9, 3), nombre_propio=None, es_kit=False, **cambios)["codigo"]
 
 
@@ -290,8 +290,8 @@ def test_the_list_keeps_every_previous_field(session):
 
 def test_the_list_reads_the_quotes_with_one_query_whatever_the_number_of_products(session):
     from sqlalchemy import event
-    for dia in (3, 4, 5):
-        servicios.guardar_cotizacion(session, _crear(session), "INICIAL", date(2026, 9, dia))
+    for dia in (3, 4, 5):  # one model each: the same model + leather + colour cannot be created twice (S5)
+        servicios.guardar_cotizacion(session, _crear(session, modelo=f"MOD-000{dia - 2}"), "INICIAL", date(2026, 9, dia))
     consultas = []
     motor = session.get_bind()
     def contar(conn, cursor, statement, *a):

@@ -21,9 +21,9 @@ def session(local_postgres):
         connection.close()
 
 
-def _producto(session, *, cuero="MAT-CU01", color=None, estado=None, nota=None, nombre_propio=None):
+def _producto(session, *, cuero="MAT-CU01", color=None, estado=None, nota=None, nombre_propio=None, modelo="MOD-0001"):
     codigo = servicios.crear_producto(
-        session, modelo="MOD-0001", cuero=cuero, color=color, quien_lo_confecciona="INTERNA", fecha_de_alta=None,
+        session, modelo=modelo, cuero=cuero, color=color, quien_lo_confecciona="INTERNA", fecha_de_alta=None,
         nombre_propio=nombre_propio, es_kit=False, nota=nota,
     )["codigo"]
     if estado:
@@ -74,7 +74,7 @@ def test_the_filters_are_additive(session, catalogo):
 
 
 def test_the_new_filters_combine_with_the_review_mark(session, catalogo):
-    marcado = _producto(session, cuero=None, nota="IMPORTADO-EXCEL fila 7 | REVISAR: sin tipo de cuero")
+    marcado = _producto(session, cuero=None, modelo="MOD-0002", nota="IMPORTADO-EXCEL fila 7 | REVISAR: sin tipo de cuero")
     assert _codigos(session, sin_cuero=True, revisar=True) == [marcado]
     assert _codigos(session, estado="EN_DEFINICION", revisar=True) == [marcado]
     assert _codigos(session, estado="COTIZADO", revisar=True) == []
