@@ -17,8 +17,15 @@ def como(rol, usuario="usuario-taller"):
     app.dependency_overrides[get_verifier] = lambda: (lambda request: Usuario(id=usuario, role=rol))
 
 
-def lote(api):
-    lote_nuevo(api, producto(api)["codigo"])
+def lote(api, con_cuero_cortado=True):
+    """LOT-0001 with one line; its leather is already cut (the taller cannot reach CORTADA otherwise, S3 of mejoras-qa-staging)."""
+    creado = lote_nuevo(api, producto(api)["codigo"])
+    if con_cuero_cortado:
+        pieza = api.post("/cueros", json={
+            "origen": "COMPRA", "material": "MAT-CU01", "color": None, "m2_iniciales": "5",
+            "fecha_de_compra": "2026-10-01", "precio_pagado_por_m2": "20", "moneda": "ARS"}).json()["codigo"]
+        corte = api.post(f"/cueros/{pieza}/cortes", json={"m2": "1", "orden_item": creado["items"][0]["codigo"], "fecha": "2026-10-06"})
+        assert corte.status_code == 201, corte.text
     return "/ordenes/LOT-0001"
 
 
@@ -53,11 +60,13 @@ def test_taller_cannot_close_the_lot_nor_skip_states(api):
 
 def test_advance_refuses_a_closed_lot_and_an_unknown_one(api):
     ruta = lote(api)
+    for estado in ("EN_CORTE", "CORTADA", "EN_CONFECCION", "LISTA"):
+        assert api.post(f"{ruta}/estado", json={"estado": estado, "fecha": "2026-10-06"}).status_code == 201
     assert api.post(f"{ruta}/estado", json={"estado": "CERRADA", "fecha": "2026-10-20", "fecha_de_entrega": "2026-10-19"}).status_code == 201
     como("taller")
     assert api.post(f"{ruta}/avanzar").status_code == 409
     assert api.post("/ordenes/LOT-9999/avanzar").status_code == 404
-    assert len(api.get(ruta).json()["estados"]) == 2
+    assert len(api.get(ruta).json()["estados"]) == 6
 
 
 def test_the_state_change_of_the_admin_records_the_logged_in_user_and_keeps_its_rules(api):
@@ -66,6 +75,8 @@ def test_the_state_change_of_the_admin_records_the_logged_in_user_and_keeps_its_
     assert avance.status_code == 201, avance.text
     ultimo = avance.json()["estados"][-1]
     assert (ultimo["quien"], ultimo["cambiado_por"]) == ("PER-0002", "usuario-de-prueba")
+    for estado in ("CORTADA", "EN_CONFECCION", "LISTA"):
+        assert api.post(f"{ruta}/estado", json={"estado": estado, "fecha": "2026-10-07"}).status_code == 201
     sin_entrega = api.post(f"{ruta}/estado", json={"estado": "CERRADA", "fecha": "2026-10-20"})
     assert sin_entrega.status_code == 422 and "entrega" in sin_entrega.json()["detail"]
 

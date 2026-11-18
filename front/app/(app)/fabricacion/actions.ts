@@ -176,9 +176,8 @@ export async function changeEstado(
     },
   );
   if (!result.ok) {
-    return fromFailure(result, {
-      409: "El lote ya está cerrado o ya está en ese estado: no se puede cambiar.",
-    });
+    // The 409 text comes from the API (closed, same state, or the state that has to come next): shown as is.
+    return fromFailure(result);
   }
   refresh();
   return ok(`Estado cambiado a «${lotStateLabel(estado)}».`);
