@@ -10,6 +10,8 @@ Lo que llega al taller son **modelos**, no productos. Un modelo lo crea **solo e
 
 Un modelo vacío (cuero, forro, flex, goma EVA, herrajes e hilo y cemento todos faltantes o en 0, y sin insumos) tampoco se puede marcar como validado a mano (`POST /modelos/<MOD>/validado`, 422 «El modelo no tiene consumos cargados…»); quitar la marca siempre se puede. SUPUESTO: validar con Robert (qué cuenta como "vacío" y que la hoja que se valida solo necesite alguna cantidad; la validación de la hoja no exige que el modelo quede con cuero).
 
+Tope por unidad (`MAX_CONSUMO_POR_UNIDAD` = 100, en `servicios.py`): al guardar un modelo (`POST /modelos`, consumos de un modelo y guardado de la grilla) el cuero, forro, flex y goma EVA no pueden superar 100 m² por unidad, y al guardar una hoja ninguna fila puede superar 100 (m² o unidades), salvo las de horas y mano de obra (`HS. DE TRABAJO`, `Y/O MANO DE OBRA TALLER`, `DESPERDICIO 30%`, `CORTE MANO DE OBRA`, `EMPAQUE`, constante `FILAS_SIN_TOPE`). Responde 422 («El consumo de cuero no puede superar 100 m² por unidad.» / «La cantidad de CUERO no puede superar 100 por unidad.»). Los importes (herrajes en USD, confección) no tienen tope. SUPUESTO: validar con Robert (el 100 y qué filas quedan exentas).
+
 La ficha del modelo (`/productos/modelos/<código>`, admin) lista sus formularios con el estado y un link a la hoja (`GET /formularios?modelo=MOD-NNNN`). Los modelos viejos (del Excel) siguen con sus consumos y no tienen formulario. SUPUESTO (validar): la categoría es obligatoria al crear y tiene que existir (solo el admin crea categorías: `POST /categorias`); si el taller necesita otro dato del modelo, va en las notas.
 
 ### Del alta a la validación

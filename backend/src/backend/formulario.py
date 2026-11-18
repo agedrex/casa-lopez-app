@@ -10,6 +10,7 @@ State machine (`ACCIONES`):
     completar  taller / admin    ENVIADO -> COMPLETADO      (sets completado_por / completado_en)
     devolver   admin    COMPLETADO -> ENVIADO               (needs a comment, stored in comentario_revision)
     validar    admin    COMPLETADO -> VALIDADO              (sets validado_por / validado_en)
+    A quantity above `MAX_CONSUMO_POR_UNIDAD` (100 per unit) is a 422 when the rows are saved (hours and labour rows excepted).
     `completar` and `validar` need at least one row with a quantity above 0 (422): a blank sheet is never completed or validated
     (`enviar` does not check it: the admin sends the blank sheet to the workshop, that is the workflow).
     VALIDADO is immutable: any change is a 409 and the way to change it is `duplicar`.
@@ -54,7 +55,7 @@ from backend.models import (
 )
 from backend.servicios import (
     TAMANOS, Conflicto, DatosInvalidos, NoEncontrado, _insertar, _patron, _por_codigo, _siguiente_numero, _texto_o_nada,
-    hay_cantidad,
+    MAX_CONSUMO_POR_UNIDAD, hay_cantidad,
 )
 
 BORRADOR, ENVIADO, COMPLETADO, VALIDADO = FORM_STATES
@@ -91,6 +92,11 @@ MENSAJE_HOJA_VACIA = {
 }
 MENSAJE_VALIDADO = "El formulario ya está validado y no se puede modificar: duplicalo para hacer cambios."
 ESTADOS_VISIBLES_PARA_TALLER = frozenset({ENVIADO, COMPLETADO})
+# Rows of the sheet that are hours, labour or percentages, not a quantity of material or units: no per-unit cap (S1).
+# SUPUESTO: validar con Robert. Every other row (leather, lining, boards, every HERRAJE, rows added by hand) is capped.
+FILAS_SIN_TOPE = frozenset({
+    "HS. DE TRABAJO", "Y/O MANO DE OBRA TALLER", "DESPERDICIO 30%", "CORTE MANO DE OBRA", "EMPAQUE",
+})
 MAX_LINEAS = 200  # per form; far above the 30 rows of the sheet, only a guard against absurd bodies
 
 
@@ -146,7 +152,8 @@ def siguiente_estado(accion: str, estado: str, roles: frozenset[str]) -> str:
 def armar_lineas(lineas: list[dict]) -> list[dict]:
     """Validate the full set of rows and number them: `orden` is the position inside each section, starting at 1.
 
-    A name is required (trimmed); the quantity is None or a decimal >= 0; an empty comment is stored as None.
+    A name is required (trimmed); the quantity is None or a decimal >= 0 and, except in the hours / labour rows
+    (`FILAS_SIN_TOPE`), at most `MAX_CONSUMO_POR_UNIDAD`; an empty comment is stored as None.
     """
     if len(lineas) > MAX_LINEAS:
         raise DatosInvalidos(f"El formulario admite hasta {MAX_LINEAS} filas.")
@@ -162,6 +169,8 @@ def armar_lineas(lineas: list[dict]) -> list[dict]:
         cantidad = linea.get("cantidad")
         if cantidad is not None and (not isinstance(cantidad, Decimal) or not cantidad.is_finite() or cantidad < 0):
             raise DatosInvalidos(f"La cantidad de {nombre} tiene que ser un número mayor o igual a cero.")
+        if cantidad is not None and cantidad > MAX_CONSUMO_POR_UNIDAD and " ".join(nombre.upper().split()) not in FILAS_SIN_TOPE:
+            raise DatosInvalidos(f"La cantidad de {nombre} no puede superar {MAX_CONSUMO_POR_UNIDAD:f} por unidad.")
         cuenta[seccion] += 1
         armadas.append({
             "seccion": seccion, "orden": cuenta[seccion], "nombre": nombre, "cantidad": cantidad,

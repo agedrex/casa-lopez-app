@@ -2657,6 +2657,24 @@ CAMPOS_DE_CONSUMO = (
 )
 
 
+# S1: nobody uses more than this per unit of product, in m2 or units (the QA saved 5000 m2 of leather). SUPUESTO: validar con Robert.
+MAX_CONSUMO_POR_UNIDAD = Decimal("100")
+# The consumptions of a model measured in m2, with the name a person reads (never the column name).
+MEDIDAS_EN_M2 = {
+    "cuero_m2_por_unidad": "cuero", "forro_m2_por_unidad": "forro", "flex_m2_por_unidad": "flex",
+    "goma_eva_m2_por_unidad": "goma EVA",
+}
+
+
+def comprobar_tope_de_consumos(consumos: dict) -> None:
+    """422 when a m2 consumption of the model is above `MAX_CONSUMO_POR_UNIDAD`. Money amounts (herrajes in USD, confection)
+    and hours are not consumptions in m2 and have no cap."""
+    for campo, que in MEDIDAS_EN_M2.items():
+        valor = consumos.get(campo)
+        if valor is not None and valor > MAX_CONSUMO_POR_UNIDAD:
+            raise DatosInvalidos(f"El consumo de {que} no puede superar {MAX_CONSUMO_POR_UNIDAD:f} m² por unidad.")
+
+
 def detalle_modelo(session: Session, codigo: str) -> dict:
     forro = aliased(Material)
     fila = session.execute(
@@ -2715,6 +2733,7 @@ def crear_modelo(
     nombre = nombre_del_modelo.strip()
     if not nombre:
         raise DatosInvalidos("Falta el nombre del modelo.")
+    comprobar_tope_de_consumos(consumos)
     if _nombre_repetido(session, Modelo.nombre_del_modelo, nombre):
         raise Conflicto(f"Ya hay un modelo con el nombre {nombre}: agregá algo que lo distinga.")
     categoria_fila = session.scalar(select(Categoria).where(Categoria.nombre == categoria))
@@ -2770,6 +2789,7 @@ def cambiar_validado(session: Session, codigo: str, validado: bool) -> dict:
 
 def _aplicar_consumos(session: Session, codigo: str, forro: str | None, consumos: dict) -> dict:
     """Overwrite the consumptions of a model and reset `validado`, WITHOUT committing. Returns what changed."""
+    comprobar_tope_de_consumos(consumos)
     modelo = _modelo_por_codigo(session, codigo)
     forro_fila = _forro_del_modelo(session, forro, consumos["forro_m2_por_unidad"])
     anterior_forro = session.scalar(select(Material.codigo).where(Material.id == modelo.forro_id)) if modelo.forro_id else None
