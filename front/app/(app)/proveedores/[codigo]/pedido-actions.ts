@@ -2,14 +2,15 @@
 
 import { refresh } from "next/cache";
 import { error, type FormState, ok } from "@/lib/action-state";
-import { apiPost } from "@/lib/api";
+import { apiGet, apiPost } from "@/lib/api";
 import {
   type LineaDePedidoBody,
   leerLineaSimpleDePedido,
   leerPielesDePedido,
   type PielesDePedidoBody,
 } from "@/lib/pedidos";
-import type { PedidoProveedor } from "@/lib/types";
+import { type MaterialOption, materialOptions } from "@/lib/proveedores";
+import type { Material, MaterialesLote, PedidoProveedor } from "@/lib/types";
 import {
   denyUnlessWriter,
   fromFailure,
@@ -99,4 +100,76 @@ export async function createPedidoDeProveedor(
   }
   refresh();
   return ok(`Pedido ${result.data.codigo} registrado.`);
+}
+
+export type MaterialRapidoResult =
+  | { ok: true; option: MaterialOption }
+  | { ok: false; message: string };
+
+const ETAPAS_RAPIDAS = [
+  "CUERO",
+  "FORRO",
+  "FLEX",
+  "GOMA_EVA",
+  "HERRAJES",
+  "HILO_CEMENTO",
+];
+const UNIDAD_POR_ETAPA: Record<string, string> = {
+  CUERO: "m2",
+  FORRO: "m2",
+  FLEX: "m2",
+  GOMA_EVA: "m2",
+  HERRAJES: "unidad",
+  HILO_CEMENTO: "unidad",
+};
+
+/**
+ * Creates a material (no price) from the order form, so a supplier's new leather can be loaded without leaving it.
+ * Prices still enter only through the order. If the name already exists the existing material is returned.
+ */
+export async function crearMaterialRapido(
+  nombreCrudo: string,
+  etapa: string,
+): Promise<MaterialRapidoResult> {
+  const denied = await denyUnlessWriter();
+  if (denied)
+    return { ok: false, message: "No tiene permiso para esta acción." };
+  const nombre = nombreCrudo.replace(/\s+/g, " ").trim();
+  if (!nombre) return { ok: false, message: "Escriba el nombre del material." };
+  if (!ETAPAS_RAPIDAS.includes(etapa)) {
+    return { ok: false, message: "Elija qué tipo de material es." };
+  }
+  const created = await apiPost<MaterialesLote>("/materiales/lote", {
+    cambios: [],
+    nuevos: [
+      {
+        nombre,
+        etapa,
+        unidad_de_consumo: UNIDAD_POR_ETAPA[etapa],
+        precio: null,
+        moneda: null,
+        proveedor: null,
+      },
+    ],
+  });
+  const lista = await apiGet<Material[]>("/materiales");
+  const todos = lista.ok ? materialOptions(lista.data) : [];
+  if (created.ok) {
+    const option = todos.find(
+      (m) => m.codigo === created.data.materiales_nuevos[0],
+    );
+    if (option) return { ok: true, option };
+  } else if (created.status === 409) {
+    const wanted = nombre.toLowerCase();
+    const option = todos.find(
+      (m) => m.label.replace(/\s+/g, " ").trim().toLowerCase() === wanted,
+    );
+    if (option) return { ok: true, option };
+  }
+  return {
+    ok: false,
+    message: created.ok
+      ? "Se creó el material pero no se pudo leer; recargue la página."
+      : created.message,
+  };
 }

@@ -11,7 +11,7 @@ import { formatQuantity } from "@/lib/format";
 import { resumenDePieles } from "@/lib/pedidos";
 import type { MaterialOption } from "@/lib/proveedores";
 import { useActionForm } from "@/lib/use-action-form";
-import { createPedidoDeProveedor } from "./pedido-actions";
+import { crearMaterialRapido, createPedidoDeProveedor } from "./pedido-actions";
 
 /**
  * A short form: the date, an optional remito and one row per material (what arrived, in the unit of the
@@ -48,6 +48,12 @@ function Fields({
   materials: MaterialOption[];
   today: string;
 }) {
+  // Materials created from this form are added to the list without reloading the page.
+  const [extra, setExtra] = useState<MaterialOption[]>([]);
+  const all = [
+    ...materials,
+    ...extra.filter((e) => !materials.some((m) => m.codigo === e.codigo)),
+  ];
   // Each row has a stable id (its React key); the field names use the position, so they stay 0, 1, 2...
   const [rows, setRows] = useState([0]);
   const [nextId, setNextId] = useState(1);
@@ -79,7 +85,7 @@ function Fields({
         {rows.map((id, index) => (
           <li key={id} className="flex items-end gap-2">
             <div className="min-w-0 flex-1">
-              <LineFields id={id} index={index} materials={materials} />
+              <LineFields id={id} index={index} materials={all} />
             </div>
             {rows.length > 1 ? (
               <button
@@ -101,10 +107,13 @@ function Fields({
           setRows([...rows, nextId]);
           setNextId(nextId + 1);
         }}
-        className="text-sm underline decoration-gold underline-offset-4"
+        className="min-h-11 text-sm underline decoration-gold underline-offset-4"
       >
         + Agregar otro material
       </button>
+      <MaterialNuevo
+        onCreated={(option) => setExtra((current) => [...current, option])}
+      />
     </div>
   );
 }
@@ -169,7 +178,7 @@ function LineFields({
   );
   const ivaField = (
     <label className="flex min-h-12 items-center gap-2 text-sm sm:min-h-0 sm:pb-2">
-      <input type="checkbox" name={name("iva")} className="size-4" />
+      <input type="checkbox" name={name("iva")} className="size-5" />
       Con IVA
     </label>
   );
@@ -271,5 +280,101 @@ function PielesResumen({ text }: { text: string }) {
     <p className="text-sm font-medium" aria-live="polite">
       {summary.pieles} {unit} · {formatQuantity(summary.m2)} m² en total
     </p>
+  );
+}
+
+const ETAPAS_NUEVAS = [
+  { value: "CUERO", label: "Cuero" },
+  { value: "FORRO", label: "Forro" },
+  { value: "FLEX", label: "Flex" },
+  { value: "GOMA_EVA", label: "Goma EVA" },
+  { value: "HERRAJES", label: "Herrajes" },
+  { value: "HILO_CEMENTO", label: "Hilo y cemento" },
+];
+
+/** "¿No está el cuero o el material?": creates it (no price) and makes it available in every row of the order. */
+function MaterialNuevo({
+  onCreated,
+}: {
+  onCreated: (option: MaterialOption) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [nombre, setNombre] = useState("");
+  const [etapa, setEtapa] = useState("CUERO");
+  const [message, setMessage] = useState("");
+  const [pending, setPending] = useState(false);
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="block min-h-11 text-sm underline decoration-gold underline-offset-4"
+      >
+        ¿No está el cuero o el material? Crearlo
+      </button>
+    );
+  }
+  return (
+    <div className="space-y-3 rounded-card border border-line p-4">
+      <p className="text-sm font-bold">Material nuevo</p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field id="material-nuevo-nombre" label="Nombre">
+          <input
+            id="material-nuevo-nombre"
+            value={nombre}
+            onChange={(event) => setNombre(event.target.value)}
+            maxLength={200}
+            autoComplete="off"
+            className={inputClass}
+          />
+        </Field>
+        <Field id="material-nuevo-etapa" label="Tipo">
+          <select
+            id="material-nuevo-etapa"
+            value={etapa}
+            onChange={(event) => setEtapa(event.target.value)}
+            className={inputClass}
+          >
+            {ETAPAS_NUEVAS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </div>
+      {message ? (
+        <p role="alert" className="text-sm text-bordeaux">
+          {message}
+        </p>
+      ) : null}
+      <div className="flex gap-3">
+        <button
+          type="button"
+          disabled={pending}
+          onClick={async () => {
+            setPending(true);
+            setMessage("");
+            const result = await crearMaterialRapido(nombre, etapa);
+            setPending(false);
+            if (!result.ok) return setMessage(result.message);
+            onCreated(result.option);
+            setNombre("");
+            setOpen(false);
+          }}
+          className="min-h-11 rounded-card bg-ink px-4 text-sm text-white disabled:opacity-60"
+        >
+          {pending ? "Creando…" : "Crear material"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className="min-h-11 px-2 text-sm text-muted underline"
+        >
+          Cancelar
+        </button>
+      </div>
+    </div>
   );
 }

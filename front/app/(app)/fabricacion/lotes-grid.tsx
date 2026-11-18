@@ -103,7 +103,7 @@ export function LotesGrid({
       columns={NO_COLUMNS}
       extraHeadersBefore={
         taller
-          ? ["Lote", "Fabricación", "Estado", "Cant. de productos"]
+          ? ["Lote", "Fabricación", "Estado", "Unidades"]
           : [
               "Fabricación",
               "Envío",

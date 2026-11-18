@@ -4,6 +4,7 @@ import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { error, type FormState, ok } from "@/lib/action-state";
 import { apiGet, apiPost } from "@/lib/api";
+import { resolveTallerChoice } from "@/lib/catalogo-actions";
 import {
   LOT_STATES,
   lotStateLabel,
@@ -31,6 +32,7 @@ import {
   optional,
   text,
 } from "@/lib/write-guard";
+import { NUEVO_CATALOGO } from "../productos/catalogo-nuevo";
 
 const DONDE = ["EXTERNA", "INTERNA"];
 
@@ -44,7 +46,15 @@ export async function createOrden(
   // The form sends the place with the "who makes it" choice (INTERNA for the factory); with none, it is a workshop.
   const donde = text(formData, "donde_se_hace") || "EXTERNA";
   if (!DONDE.includes(donde)) return error("Indique dónde se hace el lote.");
-  const taller = donde === "EXTERNA" ? optional(formData, "taller") : null;
+  // "+ Crear taller nuevo…": the workshop is created first (only its name; the rest is completed in Talleres).
+  const tallerElegido = await resolveTallerChoice({
+    formData,
+    field: "taller",
+    newField: "taller_nuevo",
+    sentinel: NUEVO_CATALOGO,
+  });
+  if (!tallerElegido.ok) return tallerElegido.state;
+  const taller = donde === "EXTERNA" ? tallerElegido.codigo : null;
   if (donde === "EXTERNA" && taller === null) {
     return error("Elija quién hace el lote: la fábrica o un taller.");
   }

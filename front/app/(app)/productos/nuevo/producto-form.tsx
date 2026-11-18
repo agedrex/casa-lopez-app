@@ -55,21 +55,18 @@ export function ProductoForm({
             className={inputClass}
           />
         </Field>
-        <Field id="producto-cuero" label="Cuero">
-          <select
-            id="producto-cuero"
-            name="cuero"
-            defaultValue=""
-            className={inputClass}
-          >
-            <option value="">Elegir…</option>
-            {cueros.map((cuero) => (
-              <option key={cuero.codigo} value={cuero.codigo}>
-                {cuero.label}
-              </option>
-            ))}
-          </select>
-        </Field>
+        <CatalogoSelect
+          id="producto-cuero"
+          name="cuero"
+          label="Cuero"
+          createLabel="+ Crear cuero nuevo…"
+          newNameLabel="Nombre del cuero nuevo"
+          emptyLabel="Elegir…"
+          options={cueros.map((cuero) => ({
+            value: cuero.codigo,
+            label: cuero.label,
+          }))}
+        />
         <CatalogoSelect
           id="producto-color"
           name="color"

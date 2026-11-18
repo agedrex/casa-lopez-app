@@ -14,6 +14,7 @@ import {
   responsableDelLote,
 } from "@/lib/lote-buscador";
 import { useActionForm } from "@/lib/use-action-form";
+import { NUEVO_CATALOGO } from "../../productos/catalogo-nuevo";
 import { cargarUltimoLote, createOrden } from "../actions";
 import { CueroPanel } from "./cuero-panel";
 import { BuscadorDeProductos } from "./lote-buscador";
@@ -40,7 +41,7 @@ export function LoteForm({
 
   // Last lot of the chosen workshop. The history is admin only: when it is refused the panel stays hidden.
   useEffect(() => {
-    if (taller === "" || donde !== "EXTERNA") {
+    if (taller === "" || taller === NUEVO_CATALOGO || donde !== "EXTERNA") {
       setPanel({ status: "idle" });
       return;
     }
@@ -102,7 +103,27 @@ export function LoteForm({
                 ))}
               </optgroup>
             ) : null}
+            <option value={NUEVO_CATALOGO}>+ Crear taller nuevo…</option>
           </select>
+          {taller === NUEVO_CATALOGO ? (
+            <div className="mt-3">
+              <label htmlFor="lote-taller-nuevo" className="sr-only">
+                Nombre del taller nuevo
+              </label>
+              <input
+                id="lote-taller-nuevo"
+                name="taller_nuevo"
+                required
+                maxLength={200}
+                autoComplete="off"
+                placeholder="Nombre del taller nuevo"
+                className={inputClass}
+              />
+              <p className="mt-1 text-sm text-muted sm:text-xs">
+                Después podés completar teléfono y CUIT en Talleres.
+              </p>
+            </div>
+          ) : null}
         </Field>
       </div>
       <UltimoLotePanel state={panel} filas={filas} />
