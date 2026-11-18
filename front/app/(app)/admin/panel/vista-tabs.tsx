@@ -4,17 +4,15 @@ import Link from "next/link";
 export const VISTAS_DEL_PANEL = {
   costos: {
     title: "Costos",
-    description: "Los costos del mes comparados con el anterior.",
+    description: "Costos del mes contra el anterior.",
   },
   fabrica: {
     title: "Fábrica",
-    description:
-      "Los costos de la fábrica del mes, uno por línea, y cuánto tiene que vender para cubrirlos.",
+    description: "Costos de la fábrica y cuánto vender para cubrirlos.",
   },
   tienda: {
     title: "Tienda",
-    description:
-      "Los costos de la tienda del mes, con la Mercadería que compró, y cuánto tiene que vender para cubrirlos.",
+    description: "Costos de la tienda y cuánto vender para cubrirlos.",
   },
 } as const;
 

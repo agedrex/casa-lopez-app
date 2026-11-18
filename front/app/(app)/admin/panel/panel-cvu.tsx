@@ -91,9 +91,7 @@ export function PanelCvu({ panel }: { panel: PanelCostos }) {
       <Card>
         <h2 className="mb-2 text-lg">Precios de materiales</h2>
         {subidas.length === 0 ? (
-          <p className="text-sm text-muted">
-            Ningún precio subió respecto del período anterior.
-          </p>
+          <p className="text-sm text-muted">Ningún precio subió.</p>
         ) : (
           <ul>
             {subidas.slice(0, 5).map((precio) => (
@@ -116,9 +114,8 @@ export function PanelCvu({ panel }: { panel: PanelCostos }) {
           <p className="mt-3 text-xs text-muted">
             {panel.precios_viejos.cantidad} precios sin actualizar
             {panel.precios_viejos.mas_viejos[0]
-              ? ` (el más viejo, ${panel.precios_viejos.mas_viejos[0].material}, desde ${formatDate(panel.precios_viejos.mas_viejos[0].vigente_desde)})`
+              ? ` · el más viejo: ${panel.precios_viejos.mas_viejos[0].material}, ${formatDate(panel.precios_viejos.mas_viejos[0].vigente_desde)}`
               : ""}
-            .
           </p>
         ) : null}
       </Card>
