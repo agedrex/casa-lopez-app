@@ -48,14 +48,18 @@ Fuentes oficiales (consultadas 2026-11-10):
 
 ## 1. Estado conocido
 
+> **Verificado el 2026-11-27.** Las filas de abajo se comprobaron contra Railway y contra la base de production ese día. Lo anterior (production en `0004`, `main` en `0007`, "production no tuvo un deploy exitoso todavía") queda desactualizado.
+
 | Dato | Estado | Marca |
 |---|---|---|
-| Production tiene Postgres + backend + frontend, cada uno con URL pública | Lo informó Agustin | [I] |
-| Base de production en la migración `0004_semillas_v3` | Lo informó Agustin; **se confirma con `alembic current` antes de promover** | [I] |
-| Staging y `main` en `0007_proveedores_documentos` (head) | `main` [V: es la última de `backend/migrations/versions`]; staging [I] | [V]/[I] |
+| Production tiene Postgres (`Postgres-rZDV`) + `backend` + `frontend` + `dolar-cron-production`, cada uno con URL pública los dos del medio | `railway service list -e production` | [V] |
+| Base de production en `0026_orden_estado_cambiado_por` (head) | `alembic current` dentro del contenedor, 2026-11-27 | [V] |
+| Staging, production y `main` en el mismo commit `1662253`, los tres servicios de cada ambiente | `railway deployment list` por servicio, 2026-11-27 | [V] |
 | Production **no** despliega sola (auto-deploy apagado) | README, sección Deployment | [V] |
-| Un push a `main` despliega staging (si CI pasa) pero **no migra** (hasta este cambio) | README + `docs/wo2-staging.md` | [V] |
-| El README dice que production "no tuvo un deploy exitoso todavía"; no coincide con una base ya migrada a 0004 | Hay que mirar `railway deployment list` | [I] |
+| Un push a `main` despliega staging (si CI pasa) y **migra** en el pre-deploy | README + `backend/railway.toml` | [V] |
+| La base de production tiene **solo catálogos y usuarios**: `etapa` 8, `categoria` 16, `parametro` 10, `tipo_cambio` 10, `public.user` 4. Sin modelos, productos, materiales, precios ni gastos. Es lo esperado | Conteos por tabla, 2026-11-27; confirmado por el usuario | [V] |
+| El cron del dólar **sí** corre en production: servicio `dolar-cron-production`, schedule `0 12 * * 1-5` | Config del servicio, 2026-11-27 | [V] |
+| Los backups automáticos del volumen **no** están activados (ver sección 6) | Config live del mount, 2026-11-27 | [V] |
 | `/api/health` responde `200 {"status":"ok"}` solo si la base contesta un `SELECT 1` (tope de 2 s) y `503 {"status":"unavailable"}` si no; es público y no muestra detalles | `backend/src/backend/main.py`, `db_check.py` | [V] |
 | `/db/estado` devuelve `alembic_revision` y `tablas_costos`; **solo admin** (sin sesión da 401) | `backend/src/backend/routers.py` | [V] |
 | Better Auth vive en el schema `public`; Alembic solo mira el schema `costos` | `backend/migrations/env.py` (`include_name`) | [V] |
@@ -215,6 +219,8 @@ Se usa cuando la base quedó dañada o se perdieron datos. **Pierde todo lo escr
 3. Apretar **Create backup** (manual) y esperar que aparezca en la lista con su fecha. Anotar la fecha y hora.
 4. Activar los **schedules**. Los que ofrece Railway [V]: Diario (cada 24 h, se guarda 6 días), Semanal (cada 7 días, se guarda 27 días), Mensual (cada 30 días, se guarda 89 días). Se pueden elegir varios a la vez.
 
+**Estado al 2026-11-27 [V]: siguen SIN activar, y no se pueden activar por fuera del dashboard.** Se intentó dos veces (una el 2026-11-10, otra el 2026-11-27): al escribir `backupSchedules: ["DAILY", "WEEKLY"]` en el mount del volumen, el patch del ambiente se commitea pero **el cambio no queda en la config live** — después de asentarse, `volumeMounts` sigue teniendo solo `mountPath`. Tampoco hay camino por CLI (`railway volume` no tiene backups) ni por la API pública, que documenta `volumeInstanceBackupScheduleList` para **listar** y `volumeInstanceBackupCreate` para un backup suelto, pero **ninguna mutación para crear un schedule** [V: doc de Manage Volumes]. Queda como un clic de una persona en el dashboard, pasos en 6A.
+
 **PROPUESTA (no decidida):** activar **Diario + Semanal**, y hacer un **backup manual justo antes de cada promoción**. Los backups manuales están limitados al 50 % del tamaño del volumen [V]. Disponibilidad y costo según el plan de Railway [I]: confirmarlo con quien paga la cuenta. Los backups son incrementales y se cobran como el volumen [V].
 
 Opcional: **Point-in-Time Recovery** (PITR). Archiva el WAL de Postgres en un bucket y permite restaurar a un momento exacto; el restore crea un servicio Postgres **nuevo** al lado y no toca el original [V: doc de PITR]. Se activa desde la pestaña Backups. Lleva un bucket y redeploy del Postgres (hay un momento de reinicio) [V], por eso conviene hacerlo en una ventana tranquila, no el día de una promoción.
@@ -223,20 +229,32 @@ Límites a tener presentes [V]: "wiping a volume deletes all backups" (borrar el
 
 ### 6B. Alternativa manual: `pg_dump`
 
-- **¿Existe `pg_dump` en la imagen del backend?** No lo sé: la imagen del backend se arma con Railpack a partir de `backend/pyproject.toml`, y ahí (y en `uv.lock`) solo está el driver `psycopg[binary]`, que **no incluye** `pg_dump` [V: leí ambos archivos]. Que el contenedor igual lo tenga por el sistema base es [I]; no lo asumas: probalo con `railway ssh -e production -s backend -- pg_dump --version`.
-- **El servicio Postgres de Railway sí lo tendría**, porque su imagen deriva de la imagen oficial de PostgreSQL [V: doc de PostgreSQL de Railway; que traiga `pg_dump` es [I]].
+Resuelto el 2026-11-27 [V: se corrió de punta a punta]:
 
-Dos formas (elegir una, **en el environment production**, sin imprimir contraseñas en pantalla ni en logs):
+- **El backend NO tiene `pg_dump`** (`which pg_dump` → vacío). No lo busques ahí.
+- **El servicio Postgres SÍ lo tiene**: `pg_dump (PostgreSQL) 18.6`, en `/usr/bin/pg_dump`. El servicio se llama `Postgres-rZDV` (confirmalo con `railway service list -e production`).
 
-1. **Desde tu computadora**, con `pg_dump` local de la **misma versión mayor** que el Postgres de Railway. Necesita que el Postgres tenga *Public Access* activado (crea la variable `DATABASE_PUBLIC_URL`; el tráfico por ese proxy cobra egress) [V: doc de PostgreSQL de Railway]:
+**Procedimiento verificado**, sin imprimir credenciales nunca. Primero el dump adentro del contenedor, con su tamaño y su SHA:
 
-   ```sh
-   mkdir -p ~/backups-casa-lopez
-   railway run -e production -s Postgres -- sh -c 'pg_dump --format=custom --no-owner "$DATABASE_PUBLIC_URL" > ~/backups-casa-lopez/production-$(date +%Y%m%d-%H%M).dump'
-   ```
+```sh
+railway ssh -e production -s Postgres-rZDV 'set -e
+D="${DATABASE_URL:-postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:5432/${POSTGRES_DB}}"
+pg_dump --no-owner --no-privileges -Fc -f /tmp/prod.dump "$D"
+echo "SIZE=$(stat -c %s /tmp/prod.dump)"
+echo "SHA=$(sha256sum /tmp/prod.dump | cut -d" " -f1)"'
+```
 
-   (`Postgres` es el nombre supuesto del servicio; confirmalo con `railway status -e production`. `railway run` pone las variables del servicio en un comando **local**: nunca uses `railway run env` ni `printenv` porque imprimen secretos [V: `railway run --help`].)
-2. **Dentro del servicio Postgres** por `railway ssh`, escribiendo el archivo adentro y copiándolo después (requiere un mecanismo para bajar el archivo que no verifiqué [I]).
+Y después se baja y se compara el SHA, que es la verificación de que llegó entero:
+
+```sh
+mkdir -p ~/backups-casa-lopez
+railway ssh -e production -s Postgres-rZDV 'base64 -w0 /tmp/prod.dump' 2>/dev/null \
+  | tr -d '\r' | awk 'length($0)>1000' > /tmp/prod.b64
+base64 -D -i /tmp/prod.b64 -o ~/backups-casa-lopez/production-$(date +%Y%m%d-%H%M).dump
+shasum -a 256 ~/backups-casa-lopez/production-*.dump   # tiene que dar el mismo SHA de arriba
+```
+
+Dos detalles que cuestan tiempo si no se saben: el `awk` saca la línea `Using SSH key…` que `railway ssh` mete en la salida (con `grep -o` el macOS falla por límite de repetición), y `/tmp` dentro del contenedor es efímero, así que el dump sirve solo durante la sesión. `railway run -e production -s <svc>` es la alternativa si el Postgres tiene *Public Access* activado (variable `DATABASE_PUBLIC_URL`, cobra egress) [V: doc de PostgreSQL de Railway]; nunca uses `railway run env` ni `printenv`, que imprimen secretos [V].
 
 Para ambas: el dump incluye **todos los schemas**, o sea `costos` **y** `public` (tablas de Better Auth, usuarios y sesiones). Eso es lo que queremos.
 
@@ -294,5 +312,5 @@ Este cambio **no** los resuelve; quedan como trabajo aparte.
 | 5 | Rotar la credencial de admin de staging | Pendiente de la auditoría; hacerlo antes de usar datos reales |
 | 6 | Observabilidad | Sin alertas ni monitoreo continuo: Railway no vigila el healthcheck después del deploy [V: doc de healthchecks] |
 | 7 | ~~CI sin Postgres~~ | **Resuelto** en el workflow (servicio `postgres:16` y `TEST_DATABASE_URL`); falta verlo correr en GitHub |
-| 8 | Cron del dólar | La actualización automática del dólar no está programada |
+| 8 | ~~Cron del dólar~~ | **Resuelto** [V: 2026-11-27]: servicio `dolar-cron-production` con schedule `0 12 * * 1-5` y 10 cotizaciones cargadas en la base |
 | 9 | Migrar `railway.toml` a Infrastructure as Code | Config as Code deja de leerse el **2026-12-01** [V]; mientras tanto el pre-deploy va también en el dashboard (sección 0) |
