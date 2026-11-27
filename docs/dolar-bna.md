@@ -47,12 +47,35 @@ uv run python -m backend.actualizar_dolar
   distinta, base inaccesible). El mensaje nunca incluye la página ni la conexión.
 - Habla directo con la base: no necesita usuario ni token de la API.
 
-## Programarlo (todavía NO está configurado)
+## Programarlo (ya está configurado)
 
-Se puede agendar con un **cron de Railway** que corra ese mismo comando, por ejemplo los días
-hábiles a las 10:30 y a las 16:00 hs de Argentina (el banco actualiza durante el día; correr
-dos veces es seguro porque no duplica). **Hoy no hay ningún cron creado**: hasta que se
-configure, el dólar se actualiza al abrir el Panel (ver arriba).
+Hay un **cron de Railway** que corre ese mismo comando, de lunes a viernes a las `0 12 * * 1-5`
+UTC (09:00 de Argentina). Correr el comando dos veces es seguro porque no duplica.
+
+Existe en los dos ambientes (creados el 2026-11-15; el nombre de servicio es único en el
+proyecto, de ahí los dos nombres):
+
+| Ambiente | Servicio | Base |
+|---|---|---|
+| staging | `dolar-cron` | `${{Postgres.DATABASE_URL}}` |
+| production | `dolar-cron-production` | `${{Postgres-rZDV.DATABASE_URL}}` |
+
+Los dos tienen raíz `/backend`, comando `uv run python -m backend.actualizar_dolar` y
+`restartPolicyType: NEVER` (sin reintentos). Están declarados en `.railway/railway.ts`.
+
+**Verificado que corre en production** [V: 2026-11-27]: en `costos.tipo_cambio` hay cinco filas
+con `created_at` entre las 12:01 y las 12:04 UTC (19, 20, 23, 25 y 26 de noviembre), que es
+exactamente la ventana del schedule, todas con `fuente = BNA` y `tipo = VENDEDOR`. Las demás
+filas tienen otras horas: esas las cargó el botón del Panel.
+
+Si el cron falla, el Panel sigue trayendo el dólar al abrirse (ver arriba), así que una corrida
+perdida no deja la app sin cotización.
+
+Una cosa a tener presente: el cron de production **también** corre `uv run alembic upgrade head`
+como pre-deploy y expone el healthcheck `/api/health`, porque los heredó de
+`backend/railway.toml` (Railway lo lee para todo servicio con raíz `/backend`). Un cron no sirve
+HTTP, y es un segundo camino que migra la base. En staging el cron no tiene nada de eso. Está
+pendiente de decidir si se saca; ver `docs/produccion.md` sección 9.
 
 ## Cuándo se rompe
 
