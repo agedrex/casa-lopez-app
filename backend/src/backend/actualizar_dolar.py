@@ -1,6 +1,7 @@
 """Loads the BNA dollar quote once and exits: `python -m backend.actualizar_dolar`.
 
-Meant for a scheduler (a Railway cron later; none is configured yet). It talks to the database directly through
+Meant for a scheduler: the Railway `dolar-cron` (staging) and `dolar-cron-production` services run it on
+`0 12 * * 1-5`; see docs/dolar-bna.md. It talks to the database directly through
 DATABASE_URL, so it needs no HTTP token. Exit 0 when the quote was loaded or was already there, 1 otherwise,
 with a short Spanish message on stderr that never carries the page, a URL or a connection string.
 """
