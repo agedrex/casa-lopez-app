@@ -32,8 +32,21 @@ Contra Railway y la base de production, no contra el código:
 - **S8 cerrada:** el cron del dólar corre con schedule `0 12 * * 1-5` y hay 10 cotizaciones en la base.
 - **Backups: siguen sin activar y no se pueden activar por código.** Ni el CLI, ni el MCP, ni la API pública ofrecen una mutación para crear un schedule, y escribir `backupSchedules` en el mount del volumen no queda en la config live (se intentó el 2026-11-10 y el 2026-11-27). Es un clic de una persona en el dashboard. El procedimiento manual con `pg_dump`, ya probado, quedó en `docs/produccion.md` sección 6B.
 - **La base de production tiene solo catálogos y usuarios, y es lo esperado** (confirmado por el usuario): no se cargan las semillas de modelos ni materiales.
-- **Sigue pendiente, fuera de este trabajo:** rotar la credencial de admin de staging, observabilidad, y pasar `railway.toml` a Infrastructure as Code antes del 2026-12-01.
+- **IaC en staging: hecho** (ver abajo). Pendiente el cutover de production.
+- **Sigue pendiente, fuera de este trabajo:** rotar la credencial de admin de staging y observabilidad.
 - **Hallazgo nuevo, sin resolver:** `pnpm build` del frontend aborta el **primer** intento con `SecurityFatalError` porque Next.js 16.4.3 tiene una vulnerabilidad conocida; el reintento pasa. No bloquea el CI ni el deploy de Railway, pero el aviso de actualizar Next sigue en pie.
+
+## Infrastructure as Code, staging (2026-11-27)
+
+S9 nueva, no estaba en las specs de arriba: pasar `backend/railway.toml` (Config as Code, que Railway deja de leer el **2027-01-01**, no el 2026-12-01 que decían nuestros docs) a `.railway/railway.ts`.
+
+- **Staging aplicado.** `railway config plan` da "already up to date" y el apply no cambió nada: el archivo describe exactamente el estado real. Volumen `Ready`, deploys SUCCESS, health 200. Backup previo de la base: 158.603 bytes, SHA `6f194e22…`.
+- **Ningún servicio de staging leía Config as Code**, así que ahí no hubo cutover. El `toml` solo afecta production (`backend` y `dolar-cron-production`).
+- **Production pendiente** por decisión del usuario: cutover, plan y apply con su propia revisión. Procedimiento paso a paso en `docs/produccion.md` sección 9. **No borrar `backend/railway.toml` antes de ese cutover.**
+- **El riesgo que motivaba la urgencia no existía:** el pre-deploy, el healthcheck y el start command ya estaban en la config live de `backend` en los dos ambientes.
+- **Los dos ambientes no son simétricos** y el archivo lo resuelve con `ctx.environment`: el Postgres, su volumen y el cron tienen nombres distintos, y staging sigue `main` con `checkSuites: true` mientras production no declara branch (es lo que mantiene su auto-deploy apagado).
+- **Dos cosas preservadas a propósito, cada una merece su decisión:** el cron de production corre `alembic upgrade head` y expone un healthcheck heredados del `toml` (un cron no sirve HTTP, y es un segundo camino que migra la base); y `postgres-volume-tOuD` está en production sin montar, declarado solo para que el apply no lo borre.
+- **Bug del SDK:** `railway/iac` deduce el ejecutable de `process.env._`, que en zsh trae el directorio; sin `env _="$(which railway)"` falla pidiendo actualizar un CLI que ya está al día.
 
 ## Log
 - L1 (2026-11-10): "hagamos todo eso antes de empezar una nueva sesion" — referring to the list: backups, probar production logueado, rotar credenciales, healthcheck real, cerrar `/db/estado` y rutas demo, cabeceras de seguridad, CI con Postgres, errores en producción, cron del dólar, filtros de la interfaz de productos, AGENTS.md desactualizado y limpieza de worktrees.

@@ -29,10 +29,12 @@ Marcas: **[V]** = verificado (se leyó el repo, la documentación oficial o `--h
 2. **Poner el mismo pre-deploy directo en el dashboard** (Settings → Deploy → Pre-deploy Command =
    `uv run alembic upgrade head`) y un **Pre-deploy Timeout** de 600 segundos, para que no cuelgue un deploy para siempre
    [V: por defecto el pre-deploy no tiene límite de tiempo; acepta 1 a 3600 s].
-   Motivo: **Railway declaró "Config as Code" (railway.toml) como deprecado y dice que los archivos existentes dejan de leerse
-   el 2026-12-01** [V]. Después de esa fecha el `railway.toml` puede ser ignorado y los deploys dejarían de migrar la base sin ningún error visible.
-   Si el servicio `backend` cuenta como "legacy" (existente) y lo lee hasta esa fecha, no lo sé [I]. Lo más seguro es dejar
-   el pre-deploy en el dashboard. El reemplazo oficial es Infrastructure as Code (`.railway/railway.ts`); migrar a eso queda como pendiente (sección 7).
+   Motivo: **Railway declaró "Config as Code" (railway.toml) como deprecado y los archivos existentes dejan de leerse
+   el 2027-01-01** [V: doc de IaC de Railway, 2026-11-27; una versión anterior de este archivo decía 2026-12-01, que estaba mal].
+   Después de esa fecha el `railway.toml` queda ignorado y los deploys dejarían de migrar la base sin ningún error visible.
+   **Ya está cubierto por dos lados** [V: 2026-11-27]: el pre-deploy, el healthcheck y el start command figuran en la config
+   live de `backend` en los dos ambientes, y el reemplazo oficial (`.railway/railway.ts`) ya está aplicado a staging.
+   Falta el cutover de production (sección 9).
 
 Fuentes oficiales (consultadas 2026-11-10):
 
@@ -308,9 +310,59 @@ Este cambio **no** los resuelve; quedan como trabajo aparte.
 | 1 | ~~Healthcheck real que mire la base~~ | **Resuelto** (`feat/hardening-backend`): `/api/health` da 503 si la base no contesta |
 | 2 | ~~`/db/estado` es público~~ | **Resuelto**: ahora exige rol admin |
 | 3 | ~~Rutas demo~~ | **Resuelto**: se eliminó `/api/demo/resources` |
-| 4 | Cabeceras de seguridad (frontend) | En curso en `feat/productos-filtros` |
+| 4 | ~~Cabeceras de seguridad (frontend)~~ | **Resuelto** [V: 2026-11-27]: `next.config.ts` las aplica con `lib/security-headers.ts` (CSP, nosniff, `X-Frame-Options: DENY`, Referrer-Policy y Permissions-Policy) |
 | 5 | Rotar la credencial de admin de staging | Pendiente de la auditoría; hacerlo antes de usar datos reales |
 | 6 | Observabilidad | Sin alertas ni monitoreo continuo: Railway no vigila el healthcheck después del deploy [V: doc de healthchecks] |
 | 7 | ~~CI sin Postgres~~ | **Resuelto** en el workflow (servicio `postgres:16` y `TEST_DATABASE_URL`); falta verlo correr en GitHub |
 | 8 | ~~Cron del dólar~~ | **Resuelto** [V: 2026-11-27]: servicio `dolar-cron-production` con schedule `0 12 * * 1-5` y 10 cotizaciones cargadas en la base |
-| 9 | Migrar `railway.toml` a Infrastructure as Code | Config as Code deja de leerse el **2026-12-01** [V]; mientras tanto el pre-deploy va también en el dashboard (sección 0) |
+| 9 | Migrar `railway.toml` a Infrastructure as Code | **Staging hecho** [V: 2026-11-27]; falta el cutover de production. Config as Code deja de leerse el **2027-01-01** (sección 9) |
+
+---
+
+## 9. Infrastructure as Code (reemplazo de `railway.toml`)
+
+Railway deprecó Config as Code (`railway.toml`) y lo deja de leer el **2027-01-01**. El reemplazo es Infrastructure as Code: un solo archivo `.railway/railway.ts` que describe el proyecto entero. **Railway no lo lee en los deploys**: se aplica a mano, por ambiente, con el CLI.
+
+### Estado (2026-11-27)
+
+| Ambiente | Estado |
+|---|---|
+| staging | **Aplicado.** `railway config plan` da "already up to date" y el apply no cambió nada. Ningún servicio de staging leía Config as Code, así que no hubo cutover. |
+| production | **Pendiente.** Los servicios `backend` y `dolar-cron-production` todavía tienen el Config File path apuntando a `backend/railway.toml`. |
+
+**No borres `backend/railway.toml` todavía.** Mientras production tenga el path seteado, Railway lo lee en cada deploy; si el archivo no está en el commit desplegado, el build falla con "config file not found". Primero el cutover, después se borra.
+
+### Cómo correrlo
+
+El SDK se instala desde la raíz del repo (`package.json` de la raíz, que existe **solo** para esto; la app sigue en `front/` con pnpm y `backend/` con uv):
+
+```sh
+corepack pnpm install
+```
+
+Y los comandos llevan `_` seteado a mano, porque el SDK deduce el ejecutable de `process.env._` y en zsh esa variable trae el directorio, no el comando [V: `node_modules/railway/dist/iac/index.js`, función `assertMinimumIacCliVersion`]. Sin eso falla con un mensaje engañoso que pide actualizar el CLI aunque ya esté al día:
+
+```sh
+env _="$(which railway)" railway config plan    # lectura, segura
+env _="$(which railway)" railway config apply   # aplica
+```
+
+`plan` solo lee. Lo único peligroso es `apply`: **borra todo recurso que el archivo no declare, volumen de base de datos incluido.** Nunca apliques un plan que liste un borrado que no buscabas.
+
+### Lo que falta para production
+
+1. Backup de la base (sección 6B) y verificarlo.
+2. `railway environment production`.
+3. `railway config migrate status` — tiene que listar `backend` y `dolar-cron-production`.
+4. `railway config migrate cutover` — limpia el Config File path y **redespliega** esos servicios. Guarda un snapshot en `.railway/.cac-migration.json`; se revierte con `railway config migrate undo`.
+5. `env _="$(which railway)" railway config plan` — tiene que dar "already up to date". **Si lista cualquier borrado, parar.**
+6. `env _="$(which railway)" railway config apply`.
+7. Verificar: deploys en SUCCESS, `/api/health` en 200, `alembic current` en head y el volumen `Ready`.
+8. Recién entonces borrar `backend/railway.toml` (y su test `backend/tests/test_railway_config.py`) en un commit aparte.
+
+### Dos cosas que el archivo preserva a propósito
+
+Están explicadas en el encabezado de `.railway/railway.ts` y cada una merece su propia decisión, aparte de esta migración:
+
+- **El cron del dólar de production corre `alembic upgrade head` y expone un healthcheck.** Los heredó de `backend/railway.toml`, que Railway lee para todo servicio con root `/backend`. Un cron no sirve HTTP, y es un segundo camino que migra la base. En staging el cron no tiene nada de eso.
+- **`postgres-volume-tOuD` existe en production y no está montado en ningún servicio.** Lo más probable es que sea el sobrante de una restauración de backup, que deja el volumen anterior desmontado. Está declarado **solo** para que el apply no lo borre. Averiguá qué es antes de sacarlo.

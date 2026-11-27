@@ -1,0 +1,12 @@
+{
+  "name": "casa-lopez-infra",
+  "private": true,
+  "description": "Root package only so the Railway CLI can evaluate .railway/railway.ts (Infrastructure as Code). The app itself lives in front/ (pnpm) and backend/ (uv); nothing here is deployed.",
+  "scripts": {
+    "infra:plan": "railway config plan",
+    "infra:apply": "railway config apply"
+  },
+  "devDependencies": {
+    "railway": "^3.19.1"
+  }
+}

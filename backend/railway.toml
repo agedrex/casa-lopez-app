@@ -2,8 +2,16 @@
 # Railway does not follow the root directory for this file: the service setting
 # "Railway Config File" must be the absolute path /backend/railway.toml.
 # The start command is NOT set here on purpose; it lives in the dashboard.
-# Config as Code is deprecated by Railway and stops being read on 2026-12-01:
-# keep the pre-deploy command in the dashboard too (see docs/produccion.md).
+# Config as Code is deprecated by Railway and stops being read on 2027-01-01 (hard
+# cutoff, per Railway's IaC docs; an earlier note here said 2026-12-01, which was wrong).
+# The replacement lives in .railway/railway.ts and is already applied to staging.
+#
+# DO NOT DELETE THIS FILE YET. Production still has a Config File path pointing here for
+# the `backend` and `dolar-cron-production` services, and Railway reads it on every deploy.
+# Deleting it before `railway config migrate cutover` runs in production makes the next
+# build fail with "config file not found". Staging reads no Config as Code at all, so its
+# settings come from the dashboard and from .railway/railway.ts.
+# The pre-deploy command is also set in the dashboard (see docs/produccion.md).
 
 [deploy]
 # Runs in a separate container after the build and before the new deployment starts.
