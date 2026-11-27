@@ -10,7 +10,8 @@
     "test": "tsx --test lib/*.test.ts",
     "format": "biome format --write",
     "auth:migrate": "node --env-file-if-exists=.env.local ./node_modules/auth/dist/index.mjs migrate --config lib/auth.ts --yes",
-    "seed:user": "tsx --env-file-if-exists=.env.local scripts/seed-user.ts"
+    "seed:user": "tsx --env-file-if-exists=.env.local scripts/seed-user.ts",
+    "set:password": "tsx --env-file-if-exists=.env.local scripts/set-password.ts"
   },
   "dependencies": {
     "better-auth": "^1.7.14",
